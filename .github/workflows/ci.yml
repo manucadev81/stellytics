@@ -117,6 +117,9 @@ jobs:
           fi
           curl -fsS http://127.0.0.1:3001/api/heartbeat
           curl -fsS http://127.0.0.1:3000/api/auth/ok
+          # Mailpit recebe os e-mails do portal (#60).
+          curl -fsS http://127.0.0.1:8025/api/v1/info >/dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/sign-up)" = 200
           # Rota privada sem sessão redireciona para o login.
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/dashboard)" = 307
       # ADR 0001 / #58: a chave de API de um usuário comum do Umami basta para o

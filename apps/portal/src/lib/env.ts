@@ -30,6 +30,15 @@ export const env = {
   get umamiUrl() {
     return (process.env.UMAMI_URL ?? "http://127.0.0.1:3001").replace(/\/$/, "");
   },
+  // SMTP para os e-mails de confirmação e de redefinição de senha (#60), ex.:
+  // smtp://mailpit:1025 no Compose ou smtps://usuario:senha@host:465 em produção.
+  // Lido só ao enviar, então o portal sobe sem ele.
+  get smtpUrl() {
+    return required("SMTP_URL");
+  },
+  get mailFrom() {
+    return process.env.MAIL_FROM ?? "notify <no-reply@notify.localhost>";
+  },
   // Chave de API da conta de serviço (scripts/umami-service-account.mjs).
   // Lida só quando o portal chama o Umami, então o portal sobe sem ela.
   get umamiApiKey() {

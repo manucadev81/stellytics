@@ -108,14 +108,18 @@ describe("login por e-mail e senha", () => {
     expect(await getSession(cookie)).toBeNull();
   });
 
-  it("não permite cadastro pela API enquanto o self-service não existe", async () => {
+  // O cadastro está aberto desde a #60 (fluxo completo em email-flows.test.ts),
+  // mas o papel nunca vem do cliente.
+  it("o cadastro não deixa escolher o papel de operador", async () => {
     const response = await post("/sign-up/email", {
       email: `signup${DOMAIN}`,
       password: PASSWORD,
       name: "Intruder",
+      role: "operator",
     });
-    expect(response.ok).toBe(false);
-    const created = await db.select().from(user).where(eq(user.email, `signup${DOMAIN}`));
-    expect(created).toHaveLength(0);
+    const [created] = await db.select().from(user).where(eq(user.email, `signup${DOMAIN}`));
+    // O Better Auth recusa o campo ou cria a conta como tenant; nunca como operador.
+    if (created) expect(created.role).toBe("tenant");
+    else expect(response.ok).toBe(false);
   });
 });
