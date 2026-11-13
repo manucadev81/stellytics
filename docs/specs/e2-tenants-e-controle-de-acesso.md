@@ -218,7 +218,7 @@ Quando o cadastro com aprovação for ligado (#49), o passo 3 passa a criar o te
 - O portal **não cria usuários nem equipes no Umami**. Ninguém entra no Umami: ele fica só na rede interna (#62) e o isolamento é do portal (ADR 0003).
 - Ordem ao criar: primeiro o site no Umami, depois a linha em `site`. Se a gravação falhar, o portal apaga o site recém-criado no Umami.
 - Um teste de consistência confere que todo `umami_website_id` existe no Umami e que não há site no Umami sem linha em `site`.
-- A forma de autenticar a conta de serviço (chave de API ou login) continua a confirmar na #58, como registrado no ADR 0001.
+- A conta de serviço é um usuário comum do Umami (papel `user`), autenticado por chave de API em `UMAMI_API_KEY`. Confirmado na #58 e registrado no ADR 0001.
 
 ## 8. Testes de isolamento (#21)
 

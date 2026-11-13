@@ -12,7 +12,8 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "user:create": "node scripts/create-user.mjs"
+    "user:create": "node scripts/create-user.mjs",
+    "umami:service-account": "node scripts/umami-service-account.mjs"
   },
   "dependencies": {
     "better-auth": "1.7.14",
