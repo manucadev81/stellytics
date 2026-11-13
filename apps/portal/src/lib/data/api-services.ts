@@ -103,8 +103,10 @@ export async function createApiService(
     const firstKey = await insertKey(tx, ctx, service!.id);
     return { service: service!, firstKey };
   }).catch((error: unknown) => {
-    // Corrida entre dois cadastros com o mesmo nome: vale o índice único.
-    if ((error as { constraint_name?: string }).constraint_name === "api_service_tenant_id_name_key") {
+    // Corrida entre dois cadastros com o mesmo nome: vale o índice único. O
+    // Drizzle embrulha o erro do Postgres, que fica em `cause`.
+    const pg = (error as { cause?: { constraint_name?: string } }).cause;
+    if (pg?.constraint_name === "api_service_tenant_id_name_key") {
       throw new ApiServiceError("duplicate_name", "There is already a service with this name.");
     }
     throw error;
