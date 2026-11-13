@@ -97,6 +97,8 @@ read -rs UMAMI_ADMIN_PASSWORD && export UMAMI_ADMIN_PASSWORD
 UMAMI_URL=http://127.0.0.1:3001 pnpm umami:service-account
 ```
 
+O Umami só fica em `127.0.0.1:3001` com o override de desenvolvimento (`infra/compose/umami-port.yaml`, ver o [README da raiz](../../README.md#ambiente-local-docker-compose)).
+
 Ponha a chave em `UMAMI_API_KEY` (no `.env` da raiz para o Compose) e recrie o portal (`docker compose up -d portal`). Para trocar a chave, rode de novo, atualize o portal e depois rode com `--revoke-old`, que deixa só a chave mais nova.
 
 Use `127.0.0.1`, não `localhost`: se outro programa escutar a mesma porta em IPv6, `localhost` cai nele.
@@ -139,7 +141,7 @@ Quem ainda não tem projeto e abre uma página do tenant é levado a `/onboardin
 | `MAIL_FROM` | Não | Remetente (padrão `notify <no-reply@notify.localhost>`) |
 | `BETTER_AUTH_URL` | Não | URL pública do portal (padrão `http://localhost:3000`) |
 | `RUN_MIGRATIONS` | Não | `true` aplica as migrações do Drizzle na subida do servidor |
-| `UMAMI_URL` | Não | Endereço interno do Umami (padrão `http://127.0.0.1:3001`; no Compose, `http://umami:3000`) |
+| `UMAMI_URL` | Não | Endereço interno do Umami (padrão `http://127.0.0.1:3001`, publicado só pelo `infra/compose/umami-port.yaml`; no Compose, `http://umami:3000`) |
 | `UMAMI_API_KEY` | Para sites | Chave de API da conta de serviço. Sem ela o portal sobe, mas não cria sites nem lê estatísticas |
 
 ## Banco e migrações
