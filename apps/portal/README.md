@@ -9,7 +9,7 @@ Lê as estatísticas web pela API do Umami (com uma conta de serviço, [#58](htt
 - Login por e-mail e senha com sessão no servidor (Better Auth, tabelas no banco `notify`).
 - Rotas privadas: `/dashboard` (área do tenant) e `/operator` (área do operador SCF, só para o papel `operator`; outros recebem 404).
 - O `proxy.ts` redireciona para `/sign-in` quem não tem cookie de sessão; a validação de verdade é feita no servidor (`src/lib/access.ts`).
-- O cadastro pela API está desligado até o self-service ([#17](https://github.com/romulospl/notify/issues/17)) e a verificação de e-mail ([#60](https://github.com/romulospl/notify/issues/60)). Contas são criadas pelo script abaixo.
+- Cadastro aberto com confirmação de e-mail e recuperação de senha ([#60](https://github.com/romulospl/notify/issues/60)); ver a seção "Cadastro e e-mail".
 - O IP de quem entra no portal não é gravado na sessão; ele só é usado em memória para o limite de tentativas.
 
 A interface é em inglês, porque o público são os projetos do ecossistema Stellar e o SCF.
@@ -82,12 +82,24 @@ Use `127.0.0.1`, não `localhost`: se outro programa escutar a mesma porta em IP
 - Funções em `src/lib/data/api-services.ts`. Criar um serviço já gera a primeira chave. Limite de 5 chaves ativas por serviço, garantido com trava na linha do serviço. Criar e revogar chave entram no `audit_log` só com o prefixo.
 - A chave completa aparece uma única vez, no retorno da server action, e nunca é registrada em log. Revogar tira a chave da visão do coletor na hora; o cache do coletor faz valer em até 60 segundos.
 
+## Cadastro e e-mail ([#60](https://github.com/romulospl/notify/issues/60))
+
+- `/sign-up` cria a conta e envia o link de confirmação (vale 24 horas). Sem confirmar, a pessoa não entra, então não cria projeto; ao tentar entrar, recebe outro link.
+- O link de confirmação abre a sessão e leva a `/dashboard`. Link vencido ou inválido leva a `/email-verified`, que explica o que fazer.
+- `/forgot-password` envia um link de redefinição que vale 30 minutos e uma vez só. Trocar a senha encerra todas as sessões.
+- Cadastro com e-mail já existente e pedido de redefinição para e-mail sem conta recebem a mesma resposta dos casos normais, sem revelar quem tem conta.
+- Limites por IP (em memória, por instância): entrar, 3 a cada 10 segundos; cadastrar, 10 por hora; pedir redefinição ou novo link de confirmação, 5 por hora. Atrás do proxy, o IP vem de `X-Forwarded-For`, então o portal não deve ficar exposto sem o Caddy na frente.
+- Os e-mails são só texto (`src/lib/mail.ts`), sem HTML, e nem o destinatário nem o link vão para o log.
+- No Compose, os e-mails vão para o Mailpit: caixa de entrada em http://127.0.0.1:8025 e SMTP em `127.0.0.1:1025` (para o `next dev`, use `SMTP_URL=smtp://127.0.0.1:1025`). Em produção, o SMTP vem da IaC ([#14](https://github.com/romulospl/notify/issues/14)).
+
 ## Variáveis de ambiente
 
 | Variável | Obrigatória | Uso |
 |---|---|---|
 | `DATABASE_URL` | Sim | Conexão com o banco `notify` |
 | `BETTER_AUTH_SECRET` | Sim | Segredo das sessões (gere com `openssl rand -base64 32` em produção) |
+| `SMTP_URL` | Para e-mail | Servidor SMTP, ex.: `smtp://mailpit:1025` ou `smtps://usuario:senha@host:465`. Sem ele, o portal sobe, mas os e-mails de confirmação e de senha falham (o erro vai para o log) |
+| `MAIL_FROM` | Não | Remetente (padrão `notify <no-reply@notify.localhost>`) |
 | `BETTER_AUTH_URL` | Não | URL pública do portal (padrão `http://localhost:3000`) |
 | `RUN_MIGRATIONS` | Não | `true` aplica as migrações do Drizzle na subida do servidor |
 | `UMAMI_URL` | Não | Endereço interno do Umami (padrão `http://127.0.0.1:3001`; no Compose, `http://umami:3000`) |
@@ -109,4 +121,4 @@ Use `127.0.0.1`, não `localhost`: se outro programa escutar a mesma porta em IP
 
 ## Testes
 
-`pnpm test` roda os testes com Vitest. Os de integração (`test/auth.test.ts`, `test/tenant-model.test.ts`, `test/umami.test.ts`, `test/access.test.ts` e `test/ingest-keys.test.ts`) usam o Postgres de `DATABASE_URL` (padrão: o do Compose local) e aplicam as migrações antes de rodar. Os testes de permissão assumem os papéis de ingestão com `SET ROLE`, por isso o script acima também dá ao usuário `notify` o direito de assumi-los (sem herdar nada deles). Os testes do Umami usam um Umami falso (`test/fake-umami.ts`); o job `compose` do CI confere a conta de serviço contra o Umami de verdade.
+`pnpm test` roda os testes com Vitest. Os de integração (`test/auth.test.ts`, `test/tenant-model.test.ts`, `test/umami.test.ts`, `test/access.test.ts` e `test/ingest-keys.test.ts` e `test/email-flows.test.ts`) usam o Postgres de `DATABASE_URL` (padrão: o do Compose local) e aplicam as migrações antes de rodar. Os testes de permissão assumem os papéis de ingestão com `SET ROLE`, por isso o script acima também dá ao usuário `notify` o direito de assumi-los (sem herdar nada deles). Os testes do Umami usam um Umami falso (`test/fake-umami.ts`); o job `compose` do CI confere a conta de serviço contra o Umami de verdade.

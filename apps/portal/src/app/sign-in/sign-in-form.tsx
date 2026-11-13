@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { buttonClass, inputClass } from "@/components/auth-card";
 import { authClient } from "@/lib/auth-client";
 
 export function SignInForm({ next }: { next: string }) {
@@ -20,7 +21,11 @@ export function SignInForm({ next }: { next: string }) {
     });
     setPending(false);
     if (error) {
-      setError(error.status === 429 ? "Too many attempts. Try again in a minute." : "Invalid email or password.");
+      if (error.status === 429) setError("Too many attempts. Try again in a minute.");
+      // Senha certa, e-mail ainda não confirmado: o Better Auth manda outro link.
+      else if (error.code === "EMAIL_NOT_VERIFIED")
+        setError("Confirm your email first. We sent you a new confirmation link.");
+      else setError("Invalid email or password.");
       return;
     }
     router.replace(next);
@@ -36,7 +41,7 @@ export function SignInForm({ next }: { next: string }) {
           type="email"
           required
           autoComplete="email"
-          className="mt-1 block w-full rounded-md border border-zinc-300 bg-transparent px-3 py-2 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:focus:border-zinc-100"
+          className={inputClass}
         />
       </label>
       <label className="block">
@@ -46,7 +51,7 @@ export function SignInForm({ next }: { next: string }) {
           type="password"
           required
           autoComplete="current-password"
-          className="mt-1 block w-full rounded-md border border-zinc-300 bg-transparent px-3 py-2 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:focus:border-zinc-100"
+          className={inputClass}
         />
       </label>
       {error && (
@@ -57,7 +62,7 @@ export function SignInForm({ next }: { next: string }) {
       <button
         type="submit"
         disabled={pending}
-        className="w-full rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+        className={buttonClass}
       >
         {pending ? "Signing in…" : "Sign in"}
       </button>

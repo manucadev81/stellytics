@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { AuthCard, linkClass } from "@/components/auth-card";
 import { auth } from "@/lib/auth";
 import { safeNext } from "@/lib/safe-next";
 import { SignInForm } from "./sign-in-form";
@@ -12,17 +14,27 @@ export default async function SignInPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const next = safeNext((await searchParams).next);
+  const params = await searchParams;
+  const next = safeNext(params.next);
   const session = await auth.api.getSession({ headers: await headers() });
   if (session) redirect(next);
 
   return (
-    <main className="flex min-h-dvh items-center justify-center px-4">
-      <div className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <h1 className="text-xl font-semibold">Sign in to notify</h1>
-        <p className="mt-1 text-sm text-zinc-500">Web and API analytics for Stellar projects.</p>
-        <SignInForm next={next} />
+    <AuthCard title="Sign in to notify" subtitle="Web and API analytics for Stellar projects.">
+      {params.reset === "1" && (
+        <p role="status" className="mt-4 text-sm text-emerald-700 dark:text-emerald-400">
+          Your password was changed. Sign in with the new one.
+        </p>
+      )}
+      <SignInForm next={next} />
+      <div className="mt-6 flex justify-between text-sm text-zinc-500">
+        <Link href="/sign-up" className={linkClass}>
+          Create an account
+        </Link>
+        <Link href="/forgot-password" className={linkClass}>
+          Forgot password?
+        </Link>
       </div>
-    </main>
+    </AuthCard>
   );
 }
