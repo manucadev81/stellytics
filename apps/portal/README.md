@@ -75,6 +75,13 @@ Ponha a chave em `UMAMI_API_KEY` (no `.env` da raiz para o Compose) e recrie o p
 
 Use `127.0.0.1`, não `localhost`: se outro programa escutar a mesma porta em IPv6, `localhost` cai nele.
 
+## Serviços de API e chaves de ingestão ([#59](https://github.com/romulospl/notify/issues/59))
+
+- Telas: `/services` (lista e criação de serviços) e `/services/[serviceId]` (chaves do serviço: criar e revogar).
+- Formato e hash da chave em `src/lib/ingest-key.ts`: `ntf_<prefixo>_<segredo>`, prefixo de 8 caracteres base32 e segredo de 32 bytes em base64url. O banco guarda só o prefixo e o SHA-256 da chave completa; é o contrato com o coletor ([#30](https://github.com/romulospl/notify/issues/30)), que lê a visão `ingest_key_active`.
+- Funções em `src/lib/data/api-services.ts`. Criar um serviço já gera a primeira chave. Limite de 5 chaves ativas por serviço, garantido com trava na linha do serviço. Criar e revogar chave entram no `audit_log` só com o prefixo.
+- A chave completa aparece uma única vez, no retorno da server action, e nunca é registrada em log. Revogar tira a chave da visão do coletor na hora; o cache do coletor faz valer em até 60 segundos.
+
 ## Variáveis de ambiente
 
 | Variável | Obrigatória | Uso |
@@ -102,4 +109,4 @@ Use `127.0.0.1`, não `localhost`: se outro programa escutar a mesma porta em IP
 
 ## Testes
 
-`pnpm test` roda os testes com Vitest. Os de integração (`test/auth.test.ts`, `test/tenant-model.test.ts`, `test/umami.test.ts` e `test/access.test.ts`) usam o Postgres de `DATABASE_URL` (padrão: o do Compose local) e aplicam as migrações antes de rodar. Os testes de permissão assumem os papéis de ingestão com `SET ROLE`, por isso o script acima também dá ao usuário `notify` o direito de assumi-los (sem herdar nada deles). Os testes do Umami usam um Umami falso (`test/fake-umami.ts`); o job `compose` do CI confere a conta de serviço contra o Umami de verdade.
+`pnpm test` roda os testes com Vitest. Os de integração (`test/auth.test.ts`, `test/tenant-model.test.ts`, `test/umami.test.ts`, `test/access.test.ts` e `test/ingest-keys.test.ts`) usam o Postgres de `DATABASE_URL` (padrão: o do Compose local) e aplicam as migrações antes de rodar. Os testes de permissão assumem os papéis de ingestão com `SET ROLE`, por isso o script acima também dá ao usuário `notify` o direito de assumi-los (sem herdar nada deles). Os testes do Umami usam um Umami falso (`test/fake-umami.ts`); o job `compose` do CI confere a conta de serviço contra o Umami de verdade.

@@ -18,9 +18,14 @@ export default async function PrivateLayout({ children }: { children: React.Reac
                 SCF overview
               </Link>
             ) : (
-              <Link href="/dashboard" className="hover:underline">
-                Project
-              </Link>
+              <>
+                <Link href="/dashboard" className="hover:underline">
+                  Project
+                </Link>
+                <Link href="/services" className="hover:underline">
+                  API services
+                </Link>
+              </>
             )}
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
