@@ -42,7 +42,33 @@ read -rs PORTAL_USER_PASSWORD && export PORTAL_USER_PASSWORD
 pnpm user:create --email voce@example.com --name "Seu nome"
 ```
 
-Use `--role operator` para um operador SCF. O comando de administração definitivo e o seed de desenvolvimento entram na [#19](https://github.com/romulospl/notify/issues/19).
+O usuário nasce com e-mail confirmado e sem projeto; ao entrar, cai em `/onboarding`. Esse script não cria operador.
+
+### Seed de desenvolvimento ([#19](https://github.com/romulospl/notify/issues/19))
+
+Cria 2 projetos de teste (cada um com dono, um serviço de API e uma chave) e 1 operador SCF. Pode rodar mais de uma vez; o que já existe fica como está. Com `UMAMI_API_KEY` definida, cada projeto ganha também um site no Umami.
+
+```bash
+cd apps/portal
+read -rs SEED_PASSWORD && export SEED_PASSWORD
+pnpm db:seed
+```
+
+Contas, todas com a senha de `SEED_PASSWORD`: `owner-a@seed.notify.localhost`, `owner-b@seed.notify.localhost` e `operator@seed.notify.localhost`. Os testes de integração rodam o seed com a senha de teste deles, então o banco local fica com essas contas.
+
+## Operador SCF ([#19](https://github.com/romulospl/notify/issues/19))
+
+- Lê todos os projetos, inclusive os removidos: `/operator` lista os projetos com contagens e `/operator/tenants/[tenantId]` mostra membros, sites e serviços. Das chaves de ingestão aparecem só o prefixo e as datas.
+- Não é membro de tenant (D2). O banco recusa pôr um operador num tenant e promover um membro a operador (`drizzle/0003_operator_not_member.sql`); quem é do SCF e tem um projeto usa duas contas.
+- Só nasce pelo comando de administração (D3), nunca pela tela de cadastro, onde o papel enviado pelo cliente é ignorado. Cada mudança vai para o `audit_log` e encerra as sessões da conta:
+
+```bash
+cd apps/portal
+read -rs OPERATOR_PASSWORD && export OPERATOR_PASSWORD
+pnpm operator:create --email scf@example.org --name "Nome"
+pnpm operator:promote --email pessoa@example.org
+pnpm operator:demote --email pessoa@example.org
+```
 
 ## Umami ([#58](https://github.com/romulospl/notify/issues/58))
 
