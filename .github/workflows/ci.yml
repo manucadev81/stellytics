@@ -42,6 +42,13 @@ jobs:
           cache: pnpm
       # Falha se o pnpm-lock.yaml estiver ausente ou desatualizado.
       - run: pnpm install --frozen-lockfile
+      # Usuários do gateway e do coletor, exigidos pelas migrações do portal.
+      - name: Cria os usuários de ingestão no Postgres
+        env:
+          PGHOST: localhost
+          PGPASSWORD: notify
+          POSTGRES_USER: notify
+        run: infra/compose/postgres/init/02-ingest-roles.sh
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
@@ -99,6 +106,15 @@ jobs:
         run: |
           docker compose exec -T postgres psql -U postgres -Atc \
             "select count(*) from pg_database where datname in ('umami','notify')" | grep -qx 2
+          # Usuários de ingestão leem só as visões (spec do E2, D4).
+          docker compose exec -T postgres psql -U notify_ingest -d notify -Atc \
+            "select count(*) from ingest_site" | grep -qx 0
+          docker compose exec -T postgres psql -U notify_collector -d notify -Atc \
+            "select count(*) from ingest_key_active" | grep -qx 0
+          if docker compose exec -T postgres psql -U notify_ingest -d notify -Atc \
+            "select count(*) from \"user\"" 2>/dev/null; then
+            echo "notify_ingest não deveria ler a tabela user"; exit 1
+          fi
           curl -fsS http://127.0.0.1:3001/api/heartbeat
           curl -fsS http://127.0.0.1:3000/api/auth/ok
           # Rota privada sem sessão redireciona para o login.

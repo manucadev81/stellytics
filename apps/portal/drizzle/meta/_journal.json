@@ -8,6 +8,20 @@
       "when": 1794601838020,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794604788029,
+      "tag": "0001_tenant_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794604788993,
+      "tag": "0002_ingest_views",
+      "breakpoints": true
     }
   ]
 }
