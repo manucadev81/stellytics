@@ -5,6 +5,7 @@
 - **Épico:** [#2 (E2)](https://github.com/romulospl/notify/issues/2)
 - **Issues cobertas:** #16, #58, #59, #60, #17, #18, #19, #20 e #21
 - **Depende de:** [ADR 0003](../adr/0003-isolamento-no-portal.md)
+- **Implementação:** [o que foi feito no E2](../e2-implementacao.md)
 
 Este documento fixa o contrato que as issues do E2 precisam respeitar: o modelo de dados do banco `notify`, os papéis, a regra de isolamento, a chave de ingestão e o que cada status de tenant bloqueia. Decisão com alternativas descartadas fica em ADR; aqui fica só o contrato escolhido.
 

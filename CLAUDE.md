@@ -8,7 +8,7 @@ Plataforma open source e multi-tenant de **analytics web e de API** para projeto
 
 ## Estado atual
 
-O monorepo tem a estrutura do ADR 0002 (issue #11). O código de aplicação até agora é o **esqueleto do portal** (`apps/portal`, issue #57), com login, rotas privadas e layout, o **script de rastreamento** (`packages/tracker`, issue #22) e o **gateway de ingestão web** (`services/ingest-web`, issue #61). As outras pastas têm só um `README.md` dizendo o que vai nela e qual issue a cria.
+O monorepo tem a estrutura do ADR 0002 (issue #11). O código de aplicação até agora é o **portal** (`apps/portal`), com o E2 quase completo (login, tenants, cadastro self-service, chaves de ingestão, operador SCF; faltam #20 e #21, ver `docs/e2-implementacao.md`), o **script de rastreamento** (`packages/tracker`, issue #22) e o **gateway de ingestão web** (`services/ingest-web`, issue #61). As outras pastas têm só um `README.md` dizendo o que vai nela e qual issue a cria.
 
 - **TypeScript:** pnpm workspaces (`apps/*`, `packages/*`, `examples/*`) + Turborepo. Comandos na raiz: `pnpm install`, `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test` (todos via `turbo run`).
 - **Go:** um módulo só em `services/` (`github.com/romulospl/notify/services`, Go 1.26). Rodar `go` de dentro de `services/`: `gofmt -l .`, `go mod tidy -diff`, `go vet -tags e2e ./...` e `go test -race ./...` (o CI roda os quatro). Testes ponta a ponta levam a tag `e2e` e rodam no job `compose`.
@@ -53,6 +53,7 @@ O monorepo tem a estrutura do ADR 0002 (issue #11). O código de aplicação at�
 ## Onde está o planejamento
 
 - **Decisões de arquitetura:** `docs/adr/` (índice em `docs/adr/README.md`). Leia os ADRs 0001 e 0002 antes de propor mudanças de stack ou de estrutura, e o 0003 antes de mexer em acesso a dados.
+- **Andamento:** `docs/andamento.md` (resumo, commits e próximos passos) e `docs/e2-implementacao.md` (o que foi feito no E2, escolhas e pendências). Atualize os dois ao fechar issues.
 - **Specs:** `docs/specs/`, um por épico que tem contrato entre componentes. O spec fixa o contrato (tabelas, papéis, formatos); decisão com alternativas vai para ADR. Antes de implementar qualquer issue do E2 (#16–#21, #58–#60), leia `docs/specs/e2-tenants-e-controle-de-acesso.md`. Os specs do E3 e do E5 ainda não existem: escreva cada um ao começar o épico.
 - **Backlog:** issues em `romulospl/notify`, organizadas em épicos E1–E9 (issues #1–#9) e E10 (#63), com sub-issues numeradas `[X.Y]` (#10–#62, #64 e #65). Cada issue tem "O que fazer", critérios de aceite e "Depende de". O número `[X.Y]` não é a ordem de execução: siga o "Depende de".
 - **Quadro:** GitHub Project `romulospl/projects/1`. Itens em **Ready** são o código do MVP (E1–E6) e a proposta ao SCF (E10); E7 (documentação), E8 (pilotos) e E9 (pós-MVP) ficam em Backlog.

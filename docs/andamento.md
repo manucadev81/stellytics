@@ -8,11 +8,11 @@ Registro do que já foi feito, das decisões tomadas e dos próximos passos. Atu
 |---|---|
 | Escopo do MVP | Definido a partir do RFP (seção [MVP](#1-mvp-definido-a-partir-do-rfp)) |
 | Backlog | 10 épicos e 55 issues no GitHub (#1–#65), revisado em 13/11/2026 |
-| Quadro do projeto | 45 itens em Ready, 19 em Backlog e 1 em Done |
+| Quadro do projeto | 16 itens em Done, 3 em In progress, 27 em Ready e 19 em Backlog |
 | Ferramenta base | **Umami v3.4.1** ([ADR 0001](adr/0001-ferramenta-base.md)) |
 | Arquitetura e stack | Definidas ([ADR 0002](adr/0002-arquitetura-e-stack.md)) |
-| Repositório | Estrutura do monorepo (#11), ambiente local com Docker Compose (#12) e CI (#13) |
-| Código | Nenhum ainda |
+| Repositório | Estrutura do monorepo (#11), ambiente local com Docker Compose (#12), CI (#13), Renovate e releases assinadas (#55) |
+| Código | Portal com 8 das 10 issues do E2 (faltam #20 e #21), detalhado em [`e2-implementacao.md`](e2-implementacao.md). No E3, script de rastreamento (#22) e gateway de ingestão (#61) |
 
 ## 1. MVP definido a partir do RFP
 
@@ -107,9 +107,12 @@ O backlog foi comparado com o RFP e com o ADR 0002. A cobertura do RFP estava co
 
 Quadro: [GitHub Project 1](https://github.com/users/romulospl/projects/1/views/1).
 
-- **Ready (45):** os épicos E1–E6 e E10, as issues de **código do MVP** (#11–#38 e #55–#62) e as da proposta (#64 e #65).
+Contagem conferida em 13/11/2026, no fim do dia:
+
+- **Done (16):** inclui, do E2, as issues #16, #17, #18, #19, #57, #58, #59 e #60.
+- **In progress (3):** inclui o épico E2 (#2).
+- **Ready (27):** as issues de código do MVP que faltam, entre elas #20 e #21 do E2, e as da proposta (#64 e #65).
 - **Backlog (19):** os épicos E7, E8 e E9 e as issues #39–#54 (documentação, pilotos e pós-MVP).
-- **Done (1):** a #10, fechada pelo commit `847dcad`.
 
 ## 4. Decisões
 
@@ -164,13 +167,16 @@ O portal lê o Umami com uma conta de serviço que enxerga tudo, então o isolam
 | [`README.md`](../README.md) | Visão do projeto, métricas, arquitetura, privacidade, roadmap e contribuição |
 | [`docs/adr/`](adr/README.md) | Índice, template e ADRs 0001, 0002 e 0003 |
 | [`docs/specs/`](specs/e2-tenants-e-controle-de-acesso.md) | Spec do E2: tenants e controle de acesso |
+| [`docs/e2-implementacao.md`](e2-implementacao.md) | O que foi implementado no E2: issues, escolhas, como rodar, testes e pendências |
 | `docs/andamento.md` | Este registro |
 | `LICENSE`, `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `services/go.mod` | Estrutura do monorepo (#11) |
 | `compose.yaml`, `infra/compose/`, `.env.example` | Ambiente local com Postgres 17 e Umami 3.4.1 (#12) |
 | `.github/workflows/ci.yml` | CI com jobs de TypeScript, Go e Compose (#13) |
 | `SECURITY.md`, `CONTRIBUTING.md`, `.github/ISSUE_TEMPLATE/` | Canal de vulnerabilidades, guia de contribuição e modelos de issue (#56) |
 | `renovate.json`, `.github/workflows/release.yml` | Renovate e release com SBOM e imagens assinadas (#55) |
-| `apps/portal/` | Portal Next.js: login, rotas privadas, Dockerfile e migrações (#57) |
+| `apps/portal/` | Portal Next.js: login (#57), modelo de tenant (#16), Umami (#58), camada única de dados (#18), chaves de ingestão (#59), cadastro com confirmação de e-mail (#60 e #17) e operador SCF (#19) |
+| `infra/compose/postgres/init/02-ingest-roles.sh` | Usuários `notify_ingest` e `notify_collector` do banco (#16) |
+| `packages/tracker/`, `services/ingest-web/` | Script de rastreamento (#22) e gateway de ingestão web (#61), do E3 |
 
 ### Commits na `main` (já no GitHub)
 
@@ -183,6 +189,20 @@ O portal lê o Umami com uma conta de serviço que enxerga tudo, então o isolam
 | `d38c783` | `build(infra): add local docker compose with postgres and umami` (fechou a #12) |
 | `9e21e2f` | `ci: add github actions workflow with lint, tests and postgres (#66)` (fechou a #13) |
 | `22c37d1` | `docs: add security policy, contributing guide and issue templates (#67)` (fechou a #56) |
+| `cdb329a` | `ci: add renovate and signed releases with sbom (#68)` (fechou a #55) |
+| `8564748` | `ci(renovate): require dashboard approval for major updates (#69)` |
+| `39e8f17` | `feat(portal): add portal skeleton with email and password sign-in (#70)` (fechou a #57) |
+| `75658a7` | `docs: add E2 spec and ADR 0003 on tenant isolation` (PR #71) |
+| `4eb25c3` | `feat(portal): add tenant data model with ingest views and roles` (PR #71, fechou a #16) |
+| `4c3da83` | `feat(portal): add umami service account and site provisioning` (PR #71, fechou a #58) |
+| `2f8a2d1` | `feat(portal): enforce single data access layer per tenant` (PR #72, fechou a #18) |
+| `9d33fdf` | `feat(portal): add api services and ingest keys` (PR #73, fechou a #59) |
+| `73e555a` | `feat(tracker): adiciona script de rastreamento com versão fixa e SRI` (PR #74, fechou a #22) |
+| `b986d97` | `feat(ingest-web): adiciona o gateway de ingestão web` (PR #75, fechou a #61) |
+| `a6534fa` | `fix(portal): map concurrent duplicate service names to a clear error` (PR #76) |
+| `e037b11` | `feat(portal): add email verification and password reset` (PR #76, fechou a #60) |
+| `6f0a1cf` | `feat(portal): add self-service project onboarding` (PR #77, fechou a #17) |
+| `b262905` | `feat(portal): add scf operator overview and admin commands` (PR #78, fechou a #19) |
 
 ## 6. Pendências e próximos passos
 
@@ -191,7 +211,9 @@ O portal lê o Umami com uma conta de serviço que enxerga tudo, então o isolam
    **Concluída:** a [#13 (1.4)](https://github.com/romulospl/notify/issues/13), com CI no GitHub Actions (actions fixadas por SHA, Postgres nos testes e o Compose testado a cada PR). Por decisão de 13/11/2026, a `main` fica **sem proteção de branch**: o CI roda, mas não bloqueia merge nem push direto. Se a proteção for ligada, basta exigir o check `ci`.
    **Concluída:** a [#56 (1.8)](https://github.com/romulospl/notify/issues/56), com `SECURITY.md`, `CONTRIBUTING.md` e modelos de issue (bug, dúvida de tenant, pedido de recurso). **Pendência:** o relato privado de vulnerabilidades do GitHub só existe em repositório público; ao abrir o repositório, ligar em *Settings → Code security → Private vulnerability reporting*.
    **Concluída:** a [#55 (1.7)](https://github.com/romulospl/notify/issues/55), com Renovate (14 dias de espera) e o workflow de release com SBOM, imagens no GHCR assinadas com cosign e o comando de verificação no README. **Pendência:** instalar o app do Renovate no repositório (github.com/apps/renovate), que é uma ação da conta; sem ele o `renovate.json` não tem efeito.
-3. **Concluída:** a [#57 (2.7)](https://github.com/romulospl/notify/issues/57), esqueleto do portal com login (Better Auth + Drizzle), rotas privadas, imagem Docker e portal no Compose. **Próximo passo:** a #16 (modelo de tenant), a #58 (conta de serviço no Umami), a #60 (verificação de e-mail) e o gateway ([#61](https://github.com/romulospl/notify/issues/61)) destravam o E2, o E3, o E4 e o E6.
+3. **Concluída:** a [#57 (2.7)](https://github.com/romulospl/notify/issues/57), esqueleto do portal com login (Better Auth + Drizzle), rotas privadas, imagem Docker e portal no Compose.
+   **E2 quase completo:** concluídas a #16, #58, #18, #59, #60, #17 e #19, todas em 13/11/2026 (detalhes em [`e2-implementacao.md`](e2-implementacao.md)). **Próximo passo do E2:** a [#21](https://github.com/romulospl/notify/issues/21) (suíte de testes de isolamento), que já pode começar, e a parte do portal da [#20](https://github.com/romulospl/notify/issues/20) (remover e reativar projeto). A recusa da ingestão na #20 depende do coletor ([#30](https://github.com/romulospl/notify/issues/30), E5).
+   **E3:** concluídas a [#22](https://github.com/romulospl/notify/issues/22) (script de rastreamento) e a [#61](https://github.com/romulospl/notify/issues/61) (gateway de ingestão web), pelos PRs #74 e #75.
 4. **Pode ser feita a qualquer momento:** a [#32 (5.3)](https://github.com/romulospl/notify/issues/32), normalização de rotas, que não depende de nada.
 5. **Fora do código, sem dependência:**
    - buscar o código de indicação e enviar o Interest form ([#64](https://github.com/romulospl/notify/issues/64));
@@ -203,7 +225,7 @@ O portal lê o Umami com uma conta de serviço que enxerga tudo, então o isolam
    - tirar os épicos da coluna Ready ou filtrá-los da visão;
    - dividir a #50 em eventos customizados (o Umami já suporta) e captura do Wallets Kit.
 7. **Idioma:** decidir se a documentação do repositório passa para inglês antes da submissão. Os revisores do SCF leem em inglês, e isso pesa na avaliação da documentação e na transferência para outra equipe.
-8. **Concluído:** o ADR 0003 registra que o isolamento é do portal, e o spec do E2 fixa o contrato. A próxima issue de código é a #16, seguindo o spec.
+8. **Concluído:** o ADR 0003 registra que o isolamento é do portal, e o spec do E2 fixa o contrato. A pendência do ADR 0001 sobre a chave de API do Umami foi resolvida na #58: a chave de um usuário comum do Umami basta, sem a senha de administrador.
 9. **Lacunas sem issue, apontadas pelo spec do E2:**
    - convite de membros para um tenant (hoje só quem cria o projeto tem acesso);
    - exclusão da própria conta pelo usuário, que o documento de privacidade (#40) precisa prever.
