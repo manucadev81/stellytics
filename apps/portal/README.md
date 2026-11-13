@@ -8,7 +8,7 @@ Lê as estatísticas web pela API do Umami (com uma conta de serviço, [#58](htt
 
 - Login por e-mail e senha com sessão no servidor (Better Auth, tabelas no banco `notify`).
 - Rotas privadas: `/dashboard` (área do tenant) e `/operator` (área do operador SCF, só para o papel `operator`; outros recebem 404).
-- O `proxy.ts` redireciona para `/sign-in` quem não tem cookie de sessão; a validação de verdade é feita no servidor (`src/lib/session.ts`).
+- O `proxy.ts` redireciona para `/sign-in` quem não tem cookie de sessão; a validação de verdade é feita no servidor (`src/lib/access.ts`).
 - O cadastro pela API está desligado até o self-service ([#17](https://github.com/romulospl/notify/issues/17)) e a verificação de e-mail ([#60](https://github.com/romulospl/notify/issues/60)). Contas são criadas pelo script abaixo.
 - O IP de quem entra no portal não é gravado na sessão; ele só é usado em memória para o limite de tentativas.
 
@@ -52,7 +52,14 @@ O portal fala com o Umami só por `src/lib/umami/` (o ESLint proíbe importar `s
 - `getSiteStats(ctx, siteId, …)` recebe o ID do site do portal, confere que é do tenant do contexto e só então chama o Umami com o `umami_website_id`. Site de outro tenant devolve nulo sem nenhuma chamada ao Umami.
 - `findUmamiInconsistencies()` lista sites do portal que sumiram do Umami e sites do Umami sem linha em `site`.
 
-O portal cria só sites no Umami, nunca usuários nem equipes (ADR 0003). O contexto do tenant (`TenantContext`, em `src/lib/access.ts`) vem da sessão; a #18 completa a camada de dados e a regra de lint para o banco.
+O portal cria só sites no Umami, nunca usuários nem equipes (ADR 0003).
+
+## Isolamento entre tenants ([#18](https://github.com/romulospl/notify/issues/18))
+
+- `src/lib/access.ts` cria os contextos a partir da sessão: `requireTenantContext()` / `getTenantContext()` para membros de tenant e `requireOperatorContext()` para operadores. Os tipos são marcados, então só esse arquivo consegue criá-los.
+- Toda leitura e gravação passa por `src/lib/data/` (banco) e `src/lib/umami/` (Umami), com o contexto como primeiro argumento. Funções do operador ficam em `src/lib/data/operator/`.
+- O ESLint proíbe importar o cliente do banco, o driver `postgres` e o cliente HTTP do Umami fora dessas pastas. O esquema (`src/lib/db/schema.ts`) pode ser importado em qualquer lugar.
+- Quem não tem acesso recebe 404: operador em `/dashboard` é levado a `/operator`, membro de tenant em `/operator` recebe 404, e usuário sem projeto vê um aviso até o cadastro self-service ([#17](https://github.com/romulospl/notify/issues/17)).
 
 ### Conta de serviço
 
@@ -95,4 +102,4 @@ Use `127.0.0.1`, não `localhost`: se outro programa escutar a mesma porta em IP
 
 ## Testes
 
-`pnpm test` roda os testes com Vitest. Os de integração (`test/auth.test.ts`, `test/tenant-model.test.ts` e `test/umami.test.ts`) usam o Postgres de `DATABASE_URL` (padrão: o do Compose local) e aplicam as migrações antes de rodar. Os testes de permissão assumem os papéis de ingestão com `SET ROLE`, por isso o script acima também dá ao usuário `notify` o direito de assumi-los (sem herdar nada deles). Os testes do Umami usam um Umami falso (`test/fake-umami.ts`); o job `compose` do CI confere a conta de serviço contra o Umami de verdade.
+`pnpm test` roda os testes com Vitest. Os de integração (`test/auth.test.ts`, `test/tenant-model.test.ts`, `test/umami.test.ts` e `test/access.test.ts`) usam o Postgres de `DATABASE_URL` (padrão: o do Compose local) e aplicam as migrações antes de rodar. Os testes de permissão assumem os papéis de ingestão com `SET ROLE`, por isso o script acima também dá ao usuário `notify` o direito de assumi-los (sem herdar nada deles). Os testes do Umami usam um Umami falso (`test/fake-umami.ts`); o job `compose` do CI confere a conta de serviço contra o Umami de verdade.
