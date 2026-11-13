@@ -1,0 +1,178 @@
+# Andamento do projeto
+
+Registro do que já foi feito, das decisões tomadas e dos próximos passos. Atualizado em **13/11/2026**.
+
+## Resumo
+
+| Item | Situação |
+|---|---|
+| Escopo do MVP | Definido a partir do RFP (seção [MVP](#1-mvp-definido-a-partir-do-rfp)) |
+| Backlog | 10 épicos e 55 issues no GitHub (#1–#65), revisado em 13/11/2026 |
+| Quadro do projeto | 45 itens em Ready, 19 em Backlog e 1 em Done |
+| Ferramenta base | **Umami v3.4.1** ([ADR 0001](adr/0001-ferramenta-base.md)) |
+| Arquitetura e stack | Definidas ([ADR 0002](adr/0002-arquitetura-e-stack.md)) |
+| Repositório | `CLAUDE.md`, `README.md` e `docs/adr/`, já no GitHub (2 commits na `main`) |
+| Código | Nenhum ainda |
+
+## 1. MVP definido a partir do RFP
+
+Fonte: documento `rfp1-web-api-analytics-poc.md`, que resume o RFP *Web and API Analytics for Stellar Ecosystem Projects* do Stellar Community Fund (consultado em 13/11/2026).
+
+O MVP foi definido como a menor versão que **projetos-piloto reais** (3 com analytics web e 1 com analytics de API) conseguem usar e que o SCF consegue consultar. Ficou de fora o que é operação de 12 meses, escala ou transferência.
+
+### Entra no MVP
+
+1. **Base e multi-tenant:**
+   - Umami sobre PostgreSQL;
+   - cadastro self-service;
+   - isolamento estrito com testes;
+   - operador SCF com visão global;
+   - remoção de projeto pelo operador.
+2. **Coleta web:**
+   - script com versão fixa e SRI;
+   - nomes que ad blockers não bloqueiam;
+   - anti-bot: prova de execução de JS e limite de fingerprints por IP;
+   - privacidade: IP truncado, sem cookies e sem dado pessoal;
+   - exemplos de instalação para HTML estático, SPA e SSR.
+3. **Painéis web:**
+   - painel do tenant com as 7 métricas mínimas (visualizações, visitantes únicos, referenciadores, duração da sessão, rejeição, país, dispositivo e navegador);
+   - painel global comparativo do SCF.
+4. **Pipeline de API:**
+   - coletor OTLP com chave de ingestão, que descarta traces, spans e logs;
+   - normalização de rotas com testes;
+   - contadores e histogramas no Postgres;
+   - agregação com retenção de 24 meses;
+   - guia de dual-export.
+5. **Painéis de API:**
+   - painel do tenant com volume, status code e p50/p95 por endpoint;
+   - painel global do SCF.
+6. **Monorepo e operação mínima:** licença OSI, IaC, CI com testes, documentação mínima e monitoramento básico.
+7. **Prova de uso:** 3 pilotos web, 1 piloto de API e vídeo da experiência do tenant.
+
+### Fica para depois do MVP
+
+- SLA de 99,99% e 99,9% e alta disponibilidade
+- Escala de 1 milhão de requisições por dia (validar com teste de carga)
+- Chaves de API do SCF para outros sistemas consumirem as métricas
+- Cadastro com aprovação prévia (o modelo já prevê o status `pendente`)
+- Fluxo de apagamento (dispensável enquanto não houver dado pessoal guardado)
+- Eventos customizados e captura automática do Stellar Wallets Kit
+- Runbooks completos e transferência para outra equipe
+
+## 2. Backlog no GitHub
+
+Repositório: [romulospl/notify](https://github.com/romulospl/notify/issues).
+
+- **Épicos:** E1–E9 são as issues #1–#9; o E10 é a #63.
+- **Issues:**
+  - numeradas `[X.Y]` (#10–#62, #64 e #65), cada uma ligada ao seu épico como **sub-issue**;
+  - cada uma tem "O que fazer", critérios de aceite em checklist e "Depende de", com links;
+  - o número `[X.Y]` identifica a issue dentro do épico, mas **não é a ordem de execução**: vale o "Depende de" (a [2.7] vem antes da [2.1], por exemplo).
+- **Labels:**
+  - `epic`;
+  - uma por épico (`E1: Fundação`, `E2: Multi-tenant` etc.);
+  - `mvp` nas issues dos épicos E1 a E8;
+  - `pos-mvp` nas issues do E9;
+  - as issues do E10 levam só `E10: Proposta`.
+
+| Épico | Issues | Escopo |
+|---|---|---|
+| [#1 E1](https://github.com/romulospl/notify/issues/1) | #10–#15, #55, #56 | Fundação do monorepo e infraestrutura |
+| [#2 E2](https://github.com/romulospl/notify/issues/2) | #16–#21, #57–#60 | Multi-tenant, cadastro e controle de acesso |
+| [#3 E3](https://github.com/romulospl/notify/issues/3) | #22–#27, #61, #62 | Coleta de analytics web |
+| [#4 E4](https://github.com/romulospl/notify/issues/4) | #28–#29 | Painéis de analytics web |
+| [#5 E5](https://github.com/romulospl/notify/issues/5) | #30–#36 | Pipeline de analytics de API (OpenTelemetry) |
+| [#6 E6](https://github.com/romulospl/notify/issues/6) | #37–#38 | Painéis de analytics de API |
+| [#7 E7](https://github.com/romulospl/notify/issues/7) | #39–#43 | Documentação, privacidade e conformidade |
+| [#8 E8](https://github.com/romulospl/notify/issues/8) | #44–#47 | Pilotos e prova de adoção |
+| [#9 E9](https://github.com/romulospl/notify/issues/9) | #48–#54 | Pós-MVP |
+| [#63 E10](https://github.com/romulospl/notify/issues/63) | #64, #65 | Proposta e submissão ao SCF |
+
+### Revisão de 13/11/2026
+
+O backlog foi comparado com o RFP e com o ADR 0002. A cobertura do RFP estava completa, mas faltavam issues para peças centrais e várias issues eram anteriores ao ADR 0002.
+
+- **Issues criadas:**
+  - portal: [#57](https://github.com/romulospl/notify/issues/57) (esqueleto e login), [#58](https://github.com/romulospl/notify/issues/58) (conta de serviço no Umami), [#59](https://github.com/romulospl/notify/issues/59) (chaves de ingestão) e [#60](https://github.com/romulospl/notify/issues/60) (verificação de e-mail);
+  - gateway: [#61](https://github.com/romulospl/notify/issues/61) (o serviço) e [#62](https://github.com/romulospl/notify/issues/62) (Umami só na rede interna, gravação de sessão e heatmaps desligados);
+  - fundação: [#55](https://github.com/romulospl/notify/issues/55) (cadeia de suprimentos aplicada) e [#56](https://github.com/romulospl/notify/issues/56) (`SECURITY.md`, `CONTRIBUTING.md` e modelos de issue);
+  - proposta: épico [#63](https://github.com/romulospl/notify/issues/63), com [#64](https://github.com/romulospl/notify/issues/64) (Interest form e código de indicação) e [#65](https://github.com/romulospl/notify/issues/65) (redigir a proposta).
+- **Texto corrigido:** #11, #12, #14, #18, #19, #20, #28 e #41.
+- **Dependências ou critérios corrigidos:** #16, #17, #23, #24, #25, #27, #30 e #37.
+- **Mudanças que valem lembrar:**
+  - a #12 passou a subir só Postgres e Umami; cada serviço próprio entra no Compose na issue que o cria, e o seed de 2 tenants e 1 operador foi para a #19;
+  - a #18 assume que o isolamento é responsabilidade do portal, porque a conta de serviço do Umami enxerga todos os sites. O tenant é sempre resolvido pela sessão, em uma camada única de acesso a dados.
+
+## 3. Quadro do projeto
+
+Quadro: [GitHub Project 1](https://github.com/users/romulospl/projects/1/views/1).
+
+- **Ready (45):** os épicos E1–E6 e E10, as issues de **código do MVP** (#11–#38 e #55–#62) e as da proposta (#64 e #65).
+- **Backlog (19):** os épicos E7, E8 e E9 e as issues #39–#54 (documentação, pilotos e pós-MVP).
+- **Done (1):** a #10, fechada pelo commit `847dcad`.
+
+## 4. Decisões
+
+### Umami como ferramenta base ([ADR 0001](adr/0001-ferramenta-base.md))
+
+Dados conferidos no GitHub em 13/11/2026:
+
+- **Licença:** o Umami é MIT. O GoatCounter usa uma EUPL 1.2 modificada, que formalmente não é a licença aprovada pela OSI.
+- **Atividade:** o Umami tem releases mensais e equipe de mantenedores. O GoatCounter depende essencialmente de uma pessoa.
+- **Banco e equipes:** o Umami v3 roda só em PostgreSQL (o banco que o RFP exige) e já tem equipes e vários sites.
+- **Versão:** fixada em **v3.4.1**. A v3.5.0 saiu em 12/11/2026, e a regra é só adotar release com pelo menos duas semanas.
+
+**Consequências:**
+- O Umami não tem cadastro aberto, então o cadastro fica no portal.
+- O painel comparativo e as métricas de API também ficam no portal.
+- Gravação de sessão e heatmaps precisam ficar desligados.
+
+### Arquitetura e stack ([ADR 0002](adr/0002-arquitetura-e-stack.md))
+
+- **TypeScript:**
+  - portal em Next.js (cadastro, painéis do tenant e painéis globais);
+  - script de rastreamento próprio.
+- **Go**, só na ingestão:
+  - gateway web (anti-bot e truncamento do IP);
+  - coletor OpenTelemetry montado com OCB, com autenticação por chave, normalização de rotas e exporter para Postgres.
+- **PostgreSQL:**
+  - bancos `umami` e `notify`;
+  - particionamento nativo por mês e rollups de 1 min para 1 h e 1 dia;
+  - sem TimescaleDB, por causa da licença TSL.
+- **Infra:** Terraform, Ansible, Docker Compose e Caddy, com hospedagem na União Europeia.
+
+## 5. Arquivos do repositório
+
+| Arquivo | Conteúdo |
+|---|---|
+| [`CLAUDE.md`](../CLAUDE.md) | Contexto para o Claude Code: arquitetura, restrições não óbvias, padrão de commits (Conventional Commits 1.0.0-beta.4, sem `Co-Authored-By`) |
+| [`README.md`](../README.md) | Visão do projeto, métricas, arquitetura, privacidade, roadmap e contribuição |
+| [`docs/adr/`](adr/README.md) | Índice, template e ADRs 0001 e 0002 |
+| `docs/andamento.md` | Este registro (ainda não commitado) |
+
+### Commits na `main` (já no GitHub)
+
+| Commit | Mensagem |
+|---|---|
+| `847dcad` | `docs(adr): registra a escolha do Umami e a arquitetura do produto` (fechou a #10) |
+| `f3a1a60` | `docs: adiciona o README do projeto` (refs #11) |
+
+## 6. Pendências e próximos passos
+
+1. **Fazer a [#11 (1.2)](https://github.com/romulospl/notify/issues/11).** É o próximo passo e já está desbloqueada.
+   - **Falta:** o arquivo `LICENSE` (MIT) e o esqueleto de pastas do ADR 0002: `apps/portal`, `packages/tracker`, `services/`, `infra/` e `examples/`, mais `pnpm-workspace.yaml`, `turbo.json` e `go.mod`.
+   - **Já feito:** o README.
+2. **Depois da #11:** as issues [#12](https://github.com/romulospl/notify/issues/12) (Docker Compose) e [#13](https://github.com/romulospl/notify/issues/13) (CI) podem andar em paralelo.
+3. **Depois da #12:** o portal ([#57](https://github.com/romulospl/notify/issues/57)) e o gateway ([#61](https://github.com/romulospl/notify/issues/61)) destravam o E2, o E3, o E4 e o E6.
+4. **Pode ser feita a qualquer momento:** a [#32 (5.3)](https://github.com/romulospl/notify/issues/32), normalização de rotas, que não depende de nada.
+5. **Fora do código, sem dependência:**
+   - buscar o código de indicação e enviar o Interest form ([#64](https://github.com/romulospl/notify/issues/64));
+   - captar 3 ou 4 projetos financiados pelo SCF como pilotos e pedir cartas de interesse ([#44](https://github.com/romulospl/notify/issues/44)).
+6. **Decisões em aberto sobre o quadro:**
+   - criar uma label `poc` para marcar, dentro do Ready, o que precisa existir antes da submissão;
+   - criar 4 milestones, uma por parcela (10/20/30/40%), depois que a #65 definir os marcos;
+   - mover #39 (diagrama) e #44 (pilotos) para Ready, porque não dependem de código;
+   - tirar os épicos da coluna Ready ou filtrá-los da visão;
+   - dividir a #50 em eventos customizados (o Umami já suporta) e captura do Wallets Kit.
+7. **Idioma:** decidir se a documentação do repositório passa para inglês antes da submissão. Os revisores do SCF leem em inglês, e isso pesa na avaliação da documentação e na transferência para outra equipe.
+8. **ADR novo:** registrar que o isolamento na leitura é do portal (ver #18). O ADR 0001 dizia que o isolamento partia do modelo de equipes do Umami.

@@ -13,8 +13,8 @@ O repositório ainda **não tem código**: só as decisões de arquitetura em `d
 ## Onde está o planejamento
 
 - **Decisões de arquitetura:** `docs/adr/` (índice em `docs/adr/README.md`). Leia os ADRs 0001 e 0002 antes de propor mudanças de stack ou de estrutura.
-- **Backlog:** issues em `romulospl/notify`, organizadas em épicos E1–E9 (issues #1–#9), com sub-issues numeradas `[X.Y]` (#10–#54). Cada issue tem "O que fazer", critérios de aceite e "Depende de".
-- **Quadro:** GitHub Project `romulospl/projects/1`. Itens em **Ready** são o código do MVP; E7 (documentação), E8 (pilotos) e E9 (pós-MVP) ficam em Backlog.
+- **Backlog:** issues em `romulospl/notify`, organizadas em épicos E1–E9 (issues #1–#9) e E10 (#63), com sub-issues numeradas `[X.Y]` (#10–#62, #64 e #65). Cada issue tem "O que fazer", critérios de aceite e "Depende de". O número `[X.Y]` não é a ordem de execução: siga o "Depende de".
+- **Quadro:** GitHub Project `romulospl/projects/1`. Itens em **Ready** são o código do MVP (E1–E6) e a proposta ao SCF (E10); E7 (documentação), E8 (pilotos) e E9 (pós-MVP) ficam em Backlog.
 - Use `gh issue view <n> -R romulospl/notify` para ler o escopo exato antes de implementar uma issue.
 
 ## Arquitetura planejada (ADR 0002)
