@@ -1,0 +1,2 @@
+# Versões publicadas do script são servidas byte a byte e conferidas por SRI.
+packages/tracker/published/** -text
