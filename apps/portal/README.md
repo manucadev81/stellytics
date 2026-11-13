@@ -44,6 +44,30 @@ pnpm user:create --email voce@example.com --name "Seu nome"
 
 Use `--role operator` para um operador SCF. O comando de administração definitivo e o seed de desenvolvimento entram na [#19](https://github.com/romulospl/notify/issues/19).
 
+## Umami ([#58](https://github.com/romulospl/notify/issues/58))
+
+O portal fala com o Umami só por `src/lib/umami/` (o ESLint proíbe importar `src/lib/umami/http.ts` de outro lugar):
+
+- `createSite(ctx, …)` em `src/lib/data/sites.ts` cria o site no Umami e depois grava a linha em `site`; se a gravação falhar, apaga o site no Umami.
+- `getSiteStats(ctx, siteId, …)` recebe o ID do site do portal, confere que é do tenant do contexto e só então chama o Umami com o `umami_website_id`. Site de outro tenant devolve nulo sem nenhuma chamada ao Umami.
+- `findUmamiInconsistencies()` lista sites do portal que sumiram do Umami e sites do Umami sem linha em `site`.
+
+O portal cria só sites no Umami, nunca usuários nem equipes (ADR 0003). O contexto do tenant (`TenantContext`, em `src/lib/access.ts`) vem da sessão; a #18 completa a camada de dados e a regra de lint para o banco.
+
+### Conta de serviço
+
+Um usuário comum do Umami (`notify-portal`, papel `user`), autenticado por chave de API. O script abaixo cria o usuário (ou troca a senha dele por uma aleatória, que ninguém guarda) e imprime uma chave nova. A senha de administrador só é usada aqui:
+
+```bash
+cd apps/portal
+read -rs UMAMI_ADMIN_PASSWORD && export UMAMI_ADMIN_PASSWORD
+UMAMI_URL=http://127.0.0.1:3001 pnpm umami:service-account
+```
+
+Ponha a chave em `UMAMI_API_KEY` (no `.env` da raiz para o Compose) e recrie o portal (`docker compose up -d portal`). Para trocar a chave, rode de novo, atualize o portal e depois rode com `--revoke-old`, que deixa só a chave mais nova.
+
+Use `127.0.0.1`, não `localhost`: se outro programa escutar a mesma porta em IPv6, `localhost` cai nele.
+
 ## Variáveis de ambiente
 
 | Variável | Obrigatória | Uso |
@@ -52,6 +76,8 @@ Use `--role operator` para um operador SCF. O comando de administração definit
 | `BETTER_AUTH_SECRET` | Sim | Segredo das sessões (gere com `openssl rand -base64 32` em produção) |
 | `BETTER_AUTH_URL` | Não | URL pública do portal (padrão `http://localhost:3000`) |
 | `RUN_MIGRATIONS` | Não | `true` aplica as migrações do Drizzle na subida do servidor |
+| `UMAMI_URL` | Não | Endereço interno do Umami (padrão `http://127.0.0.1:3001`; no Compose, `http://umami:3000`) |
+| `UMAMI_API_KEY` | Para sites | Chave de API da conta de serviço. Sem ela o portal sobe, mas não cria sites nem lê estatísticas |
 
 ## Banco e migrações
 
@@ -69,4 +95,4 @@ Use `--role operator` para um operador SCF. O comando de administração definit
 
 ## Testes
 
-`pnpm test` roda os testes com Vitest. Os de integração (`test/auth.test.ts` e `test/tenant-model.test.ts`) usam o Postgres de `DATABASE_URL` (padrão: o do Compose local) e aplicam as migrações antes de rodar. Os testes de permissão assumem os papéis de ingestão com `SET ROLE`, por isso o script acima também dá ao usuário `notify` o direito de assumi-los (sem herdar nada deles).
+`pnpm test` roda os testes com Vitest. Os de integração (`test/auth.test.ts`, `test/tenant-model.test.ts` e `test/umami.test.ts`) usam o Postgres de `DATABASE_URL` (padrão: o do Compose local) e aplicam as migrações antes de rodar. Os testes de permissão assumem os papéis de ingestão com `SET ROLE`, por isso o script acima também dá ao usuário `notify` o direito de assumi-los (sem herdar nada deles). Os testes do Umami usam um Umami falso (`test/fake-umami.ts`); o job `compose` do CI confere a conta de serviço contra o Umami de verdade.

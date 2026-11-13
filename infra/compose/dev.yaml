@@ -61,6 +61,11 @@ services:
       BETTER_AUTH_URL: http://localhost:${PORTAL_PORT:-3000}
       # Aplica as migrações do Drizzle na subida.
       RUN_MIGRATIONS: "true"
+      # Conta de serviço no Umami (#58). A chave sai de
+      # `pnpm --filter @notify/portal umami:service-account`; sem ela o portal
+      # sobe, mas não cria sites nem lê estatísticas.
+      UMAMI_URL: http://umami:3000
+      UMAMI_API_KEY: ${UMAMI_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

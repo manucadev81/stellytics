@@ -119,6 +119,21 @@ jobs:
           curl -fsS http://127.0.0.1:3000/api/auth/ok
           # Rota privada sem sessão redireciona para o login.
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/dashboard)" = 307
+      # ADR 0001 / #58: a chave de API de um usuário comum do Umami basta para o
+      # portal. Confere de novo a cada mudança, inclusive ao subir o Umami.
+      - name: Confere a conta de serviço no Umami
+        env:
+          UMAMI_URL: http://127.0.0.1:3001
+          UMAMI_ADMIN_PASSWORD: umami
+        run: |
+          key=$(node apps/portal/scripts/umami-service-account.mjs)
+          auth="authorization: Bearer $key"
+          id=$(curl -fsS -H "$auth" -H 'content-type: application/json' -X POST "$UMAMI_URL/api/websites" \
+            -d '{"name":"ci","domain":"ci.example.org"}' | jq -r .id)
+          curl -fsS -H "$auth" "$UMAMI_URL/api/websites/$id/stats?startAt=0&endAt=$(date +%s)000" | jq -e .pageviews
+          # A chave não administra usuários.
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H "$auth" "$UMAMI_URL/api/admin/users")" = 401
+          curl -fsS -H "$auth" -X DELETE "$UMAMI_URL/api/websites/$id"
       - name: Logs em caso de falha
         if: failure()
         run: docker compose logs
