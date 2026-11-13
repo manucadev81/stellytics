@@ -1,0 +1,203 @@
+//go:build e2e
+
+// Teste ponta a ponta contra o ambiente do Docker Compose:
+//
+//	docker compose up -d --build --wait
+//	cd services && go test -tags e2e ./ingest-web/e2e/...
+//
+// Cria um website no Umami pela API e um tenant ativo com esse site no banco
+// notify (o que aparece na ingest_site), envia um page view ao gateway e
+// confere que ele aparece no Umami, e que o evento enviado antes do cadastro não.
+// As URLs podem ser trocadas por GATEWAY_URL, UMAMI_URL e NOTIFY_DATABASE_URL.
+package e2e
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+)
+
+const browserUA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+
+func env(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
+
+var (
+	gatewayURL = env("GATEWAY_URL", "http://127.0.0.1:3002")
+	umamiURL   = env("UMAMI_URL", "http://127.0.0.1:3001")
+	notifyDB   = env("NOTIFY_DATABASE_URL", "postgresql://notify:notify@127.0.0.1:5432/notify")
+)
+
+// siteCacheTTL é o SITE_CACHE_TTL do gateway no Compose.
+const siteCacheTTL = 5 * time.Second
+
+func TestEventReachesUmami(t *testing.T) {
+	ctx := context.Background()
+
+	resp, err := http.Get(gatewayURL + "/healthz")
+	if err != nil {
+		t.Fatalf("gateway fora do ar: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("/healthz = %d", resp.StatusCode)
+	}
+
+	token := umamiLogin(t)
+	websiteID := umamiCreateWebsite(t, token)
+	t.Cleanup(func() { umamiDo(t, token, http.MethodDelete, "/api/websites/"+websiteID, nil, nil) })
+
+	db, err := pgx.Connect(ctx, notifyDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close(ctx)
+
+	// Antes do cadastro, o gateway responde como se aceitasse (spec do E2,
+	// seção 6), mas descarta: o pageview não pode chegar ao Umami.
+	if code := sendEvent(t, websiteID, "/antes"); code != http.StatusNoContent {
+		t.Fatalf("site fora da ingest_site: status = %d, quero 204", code)
+	}
+
+	var tenantID string
+	slug := "e2e-" + websiteID
+	if err := db.QueryRow(ctx,
+		`INSERT INTO tenant (name, slug) VALUES ($1, $1) RETURNING id`, slug,
+	).Scan(&tenantID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO site (tenant_id, name, domain, umami_website_id)
+		VALUES ($1, 'e2e', 'e2e.example', $2)`, tenantID, websiteID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx := context.Background()
+		_, _ = db.Exec(ctx, `DELETE FROM site WHERE tenant_id = $1`, tenantID)
+		_, _ = db.Exec(ctx, `DELETE FROM tenant WHERE id = $1`, tenantID)
+	})
+
+	// A resposta negativa fica no cache do gateway por SITE_CACHE_TTL (5 s no
+	// Compose).
+	time.Sleep(siteCacheTTL + time.Second)
+	start := time.Now().Add(-time.Minute)
+	deadline := time.Now().Add(90 * time.Second)
+	if code := sendEvent(t, websiteID, "/docs/e2e"); code != http.StatusNoContent {
+		t.Fatalf("evento válido: status = %d, quero 204", code)
+	}
+
+	for {
+		views := umamiPageviews(t, token, websiteID, start)
+		if views == 1 {
+			return
+		}
+		if views > 1 {
+			t.Fatalf("pageviews = %d, quero 1 (o evento recusado chegou ao Umami?)", views)
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("o page view não apareceu no Umami")
+		}
+		time.Sleep(time.Second)
+	}
+}
+
+func sendEvent(t *testing.T, websiteID, path string) int {
+	t.Helper()
+	body := fmt.Sprintf(`{"type":"event","payload":{"website":%q,"hostname":"e2e.example","url":%q,`+
+		`"title":"e2e","language":"pt-BR","screen":"1920x1080"}}`, websiteID, path)
+	req, _ := http.NewRequest(http.MethodPost, gatewayURL+"/e", strings.NewReader(body))
+	req.Header.Set("Content-Type", "text/plain;charset=UTF-8")
+	req.Header.Set("User-Agent", browserUA)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	return resp.StatusCode
+}
+
+func umamiLogin(t *testing.T) string {
+	t.Helper()
+	var out struct {
+		Token string `json:"token"`
+	}
+	umamiDo(t, "", http.MethodPost, "/api/auth/login",
+		map[string]string{"username": env("UMAMI_USER", "admin"), "password": env("UMAMI_PASSWORD", "umami")}, &out)
+	if out.Token == "" {
+		t.Fatal("login no Umami sem token")
+	}
+	return out.Token
+}
+
+func umamiCreateWebsite(t *testing.T, token string) string {
+	t.Helper()
+	var out struct {
+		ID string `json:"id"`
+	}
+	name := "e2e-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	umamiDo(t, token, http.MethodPost, "/api/websites", map[string]string{"name": name, "domain": "e2e.example"}, &out)
+	if out.ID == "" {
+		t.Fatal("Umami não devolveu o id do website")
+	}
+	return out.ID
+}
+
+func umamiPageviews(t *testing.T, token, websiteID string, since time.Time) int {
+	t.Helper()
+	var out map[string]json.RawMessage
+	path := fmt.Sprintf("/api/websites/%s/stats?startAt=%d&endAt=%d",
+		websiteID, since.UnixMilli(), time.Now().Add(time.Minute).UnixMilli())
+	umamiDo(t, token, http.MethodGet, path, nil, &out)
+	raw, ok := out["pageviews"]
+	if !ok {
+		t.Fatalf("stats sem pageviews: %v", out)
+	}
+	// v3 devolve um número; versões antigas, {"value": n}.
+	var n int
+	if err := json.Unmarshal(raw, &n); err == nil {
+		return n
+	}
+	var v struct{ Value int }
+	if err := json.Unmarshal(raw, &v); err != nil {
+		t.Fatalf("pageviews inesperado: %s", raw)
+	}
+	return v.Value
+}
+
+func umamiDo(t *testing.T, token, method, path string, in, out any) {
+	t.Helper()
+	var body bytes.Buffer
+	if in != nil {
+		_ = json.NewEncoder(&body).Encode(in)
+	}
+	req, _ := http.NewRequest(method, umamiURL+path, &body)
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		t.Fatalf("%s %s = %d", method, path, resp.StatusCode)
+	}
+	if out != nil {
+		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+			t.Fatalf("%s %s: %v", method, path, err)
+		}
+	}
+}

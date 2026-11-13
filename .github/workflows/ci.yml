@@ -76,6 +76,15 @@ jobs:
       DATABASE_URL: postgresql://notify:notify@localhost:5432/notify
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # O teste de integração do gateway aplica as migrações do portal, que
+      # exigem os usuários de ingestão.
+      - name: Cria os usuários de ingestão no Postgres
+        working-directory: .
+        env:
+          PGHOST: localhost
+          PGPASSWORD: notify
+          POSTGRES_USER: notify
+        run: infra/compose/postgres/init/02-ingest-roles.sh
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: services/go.mod
@@ -91,7 +100,8 @@ jobs:
         run: |
           # go vet/test falham quando o módulo ainda não tem pacotes.
           if [ -z "$(go list ./... 2>/dev/null)" ]; then echo "Nenhum pacote Go ainda."; exit 0; fi
-          go vet ./...
+          # A tag e2e inclui os testes ponta a ponta, que rodam no job compose.
+          go vet -tags e2e ./...
           go test -race ./...
 
   compose:
@@ -137,6 +147,13 @@ jobs:
           # A chave não administra usuários.
           test "$(curl -s -o /dev/null -w '%{http_code}' -H "$auth" "$UMAMI_URL/api/admin/users")" = 401
           curl -fsS -H "$auth" -X DELETE "$UMAMI_URL/api/websites/$id"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: services/go.mod
+          cache-dependency-path: services/go.*
+      - name: Ponta a ponta do gateway web
+        working-directory: services
+        run: go test -tags e2e -count=1 ./ingest-web/e2e/...
       - name: Logs em caso de falha
         if: failure()
         run: docker compose logs
