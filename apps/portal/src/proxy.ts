@@ -13,5 +13,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/operator/:path*"],
+  matcher: ["/dashboard/:path*", "/operator/:path*", "/services/:path*"],
 };
