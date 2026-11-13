@@ -1,0 +1,6 @@
+# Ambiente local de desenvolvimento. Os serviços ficam em infra/compose/.
+# Uso: docker compose up -d
+name: notify
+
+include:
+  - infra/compose/dev.yaml

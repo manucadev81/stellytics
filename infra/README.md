@@ -4,7 +4,7 @@ Infraestrutura recriável a partir deste repositório, com hospedagem na União 
 
 | Pasta (planejada) | Ferramenta | Papel |
 |---|---|---|
-| `compose/` | Docker Compose | Ambiente local ([#12](https://github.com/romulospl/notify/issues/12)) e deploy |
+| [`compose/`](compose/) | Docker Compose | Ambiente local ([#12](https://github.com/romulospl/notify/issues/12)), incluído pelo `compose.yaml` da raiz, e depois o deploy |
 | `terraform/` | Terraform | VM, firewall e DNS |
 | `ansible/` | Ansible | Deploy das imagens |
 | `caddy/` | Caddy | TLS e proxy reverso |

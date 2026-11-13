@@ -14,7 +14,9 @@ O monorepo tem a estrutura do ADR 0002 (issue #11), mas **ainda não há código
 - **Go:** um módulo só em `services/` (`github.com/romulospl/notify/services`, Go 1.26). Rodar `go` de dentro de `services/`.
 - **Versões novas:** o `pnpm-workspace.yaml` tem `minimumReleaseAge: 20160` (14 dias), então o pnpm recusa releases mais novas que isso. Fixe versões exatas no `package.json`.
 
-Quando a #12 (Compose) e a #13 (CI) entrarem, atualize esta seção com os comandos reais.
+- **Ambiente local:** `docker compose up -d --wait` na raiz sobe PostgreSQL 17 (bancos `umami` e `notify`, cada um com usuário próprio) e Umami 3.4.1 em `http://localhost:3001` (login `admin`/`umami`). O `compose.yaml` da raiz só inclui `infra/compose/dev.yaml`. Imagens fixadas por tag **e digest**; o script de criação dos bancos (`infra/compose/postgres/init/`) só roda com o volume vazio, então mudanças nele exigem `docker compose down -v`. Portas e senhas podem ser trocadas num `.env` (ver `.env.example`). Cada serviço próprio entra no `dev.yaml` na issue que o cria.
+
+Quando a #13 (CI) entrar, atualize esta seção com os comandos reais.
 
 ## Onde está o planejamento
 
