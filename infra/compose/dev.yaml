@@ -1,5 +1,5 @@
-# Ambiente local: PostgreSQL (bancos umami e notify), Umami v3.4.1, Mailpit e o portal.
-# Gateway e coletor entram aqui nas issues que os criam.
+# Ambiente local: PostgreSQL (bancos umami e notify), Umami v3.4.1, Mailpit, o portal
+# e o gateway de ingestão web. O coletor entra aqui na issue que o cria.
 # Valores padrão são só para desenvolvimento; sobrescreva em um .env na raiz.
 
 services:
@@ -35,6 +35,8 @@ services:
       DATABASE_URL: postgresql://umami:${UMAMI_DB_PASSWORD:-umami}@postgres:5432/umami
       APP_SECRET: ${UMAMI_APP_SECRET:-dev-only-umami-app-secret}
       DISABLE_TELEMETRY: "1"
+      # IP do cliente, já truncado pelo gateway.
+      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-x-notify-client-ip}
     depends_on:
       postgres:
         condition: service_healthy
@@ -101,6 +103,40 @@ services:
       timeout: 5s
       retries: 20
       start_period: 20s
+    restart: unless-stopped
+
+  ingest-web:
+    build:
+      context: ../..
+      dockerfile: services/ingest-web/Dockerfile
+    image: notify-ingest-web:dev
+    environment:
+      # Usuário que só lê a ingest_site.
+      DATABASE_URL: postgresql://notify_ingest:${NOTIFY_INGEST_DB_PASSWORD:-notify_ingest}@postgres:5432/notify
+      UMAMI_URL: http://umami:3000
+      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-x-notify-client-ip}
+      # CIDRs dos proxies cujo X-Forwarded-For vale (o Caddy, em produção).
+      TRUSTED_PROXIES: ${INGEST_TRUSTED_PROXIES:-}
+      RATE_LIMIT: ${INGEST_RATE_LIMIT:-20}
+      RATE_BURST: ${INGEST_RATE_BURST:-40}
+      # Curto no ambiente local, para um site novo valer logo.
+      SITE_CACHE_TTL: ${INGEST_SITE_CACHE_TTL:-5s}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      umami:
+        condition: service_healthy
+      # A visão ingest_site vem das migrações que o portal aplica ao subir.
+      portal:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${INGEST_WEB_PORT:-3002}:8080"
+    healthcheck:
+      test: ["CMD", "/ingest-web", "-healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
     restart: unless-stopped
 
 volumes:
