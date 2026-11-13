@@ -1,6 +1,6 @@
 import "server-only";
 import { eq } from "drizzle-orm";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { db } from "./db";
 import { tenant, tenantMember } from "./db/schema";
 import { requireSession } from "./session";
@@ -54,10 +54,30 @@ export async function getTenantContext(): Promise<TenantContext | null> {
   return loadTenantContext(session.user.id);
 }
 
+// Quem ainda não tem projeto vai para a criação do projeto (#17).
 export async function requireTenantContext(): Promise<TenantContext> {
   const ctx = await getTenantContext();
-  if (!ctx) notFound();
+  if (!ctx) redirect("/onboarding");
   return ctx;
+}
+
+// Quem pode criar um projeto (#17): membro com e-mail confirmado e ainda sem
+// tenant (D1: um tenant por usuário). Quem já tem projeto vai para o painel.
+declare const onboardingContextBrand: unique symbol;
+
+export type OnboardingContext = {
+  readonly userId: string;
+  readonly [onboardingContextBrand]: true;
+};
+
+export async function requireOnboardingContext(): Promise<OnboardingContext> {
+  const session = await requireSession();
+  if (session.user.role === "operator") notFound();
+  // O login já exige e-mail confirmado (#60); conferir de novo aqui garante
+  // que conta sem confirmação nunca cria projeto.
+  if (!session.user.emailVerified) notFound();
+  if (await loadTenantContext(session.user.id)) redirect("/dashboard");
+  return { userId: session.user.id } as OnboardingContext;
 }
 
 export async function requireOperatorContext(): Promise<OperatorContext> {

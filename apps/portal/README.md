@@ -82,6 +82,17 @@ Use `127.0.0.1`, não `localhost`: se outro programa escutar a mesma porta em IP
 - Funções em `src/lib/data/api-services.ts`. Criar um serviço já gera a primeira chave. Limite de 5 chaves ativas por serviço, garantido com trava na linha do serviço. Criar e revogar chave entram no `audit_log` só com o prefixo.
 - A chave completa aparece uma única vez, no retorno da server action, e nunca é registrada em log. Revogar tira a chave da visão do coletor na hora; o cache do coletor faz valer em até 60 segundos.
 
+## Cadastro self-service ([#17](https://github.com/romulospl/notify/issues/17))
+
+Um projeto Stellar entra sozinho, sem ajuda do SCF:
+
+1. `/sign-up`: cria a conta e confirma o e-mail pelo link (ver a seção seguinte).
+2. `/onboarding`: dá nome ao projeto. O portal cria o tenant `active` e torna a pessoa `owner`, na mesma transação, e registra `tenant.created` no `audit_log`. Só chega aqui quem tem e-mail confirmado e ainda não tem projeto (`requireOnboardingContext()`); quem já tem vai para o painel.
+3. `/sites`: cadastra os sites web; cada um vira um site no Umami e mostra o ID que o script de rastreamento usa.
+4. `/services`: cadastra os serviços de API; cada um já sai com a primeira chave de ingestão.
+
+Quem ainda não tem projeto e abre uma página do tenant é levado a `/onboarding`. O slug do projeto vem do nome; se já existir, ganha um sufixo aleatório.
+
 ## Cadastro e e-mail ([#60](https://github.com/romulospl/notify/issues/60))
 
 - `/sign-up` cria a conta e envia o link de confirmação (vale 24 horas). Sem confirmar, a pessoa não entra, então não cria projeto; ao tentar entrar, recebe outro link.
