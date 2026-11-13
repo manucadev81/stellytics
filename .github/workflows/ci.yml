@@ -111,6 +111,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Sobe o ambiente local
+        env:
+          # Só no CI: o gateway aceita o X-Forwarded-For vindo das redes do
+          # Docker, para o teste de privacidade (#24) simular o Caddy.
+          INGEST_TRUSTED_PROXIES: 172.16.0.0/12,192.168.0.0/16,10.0.0.0/8
         run: docker compose up -d --build --wait --wait-timeout 300
       - name: Confere bancos, Umami e portal
         run: |

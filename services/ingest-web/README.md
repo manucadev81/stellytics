@@ -57,6 +57,14 @@ O gateway conecta no banco `notify` com o usuário `notify_ingest` e só lê a v
 
 Vem do `RemoteAddr`. O `X-Forwarded-For` só é lido quando a conexão chega de um CIDR de `TRUSTED_PROXIES` (o Caddy, em produção); nesse caso o cliente é o primeiro endereço, da direita para a esquerda, que não é de um proxy confiável. O IP completo só existe na memória do request: o limite de taxa e o repasse usam o IP truncado.
 
+## Privacidade (#24)
+
+- **IP:** o Umami recebe só o IP truncado (último octeto do IPv4 zerado, IPv6 cortado em /48) e geolocaliza a partir dele. O IP completo não vai para banco, log nem cache.
+- **Logs:** nenhum registro leva IP, `X-Forwarded-For` ou `User-Agent`. Um panic é tratado pelo próprio gateway, porque o `net/http` o registraria com o endereço do cliente.
+- **Cookies:** nenhuma resposta grava cookie, e o `Cookie` que chega não é repassado ao Umami. O script não usa cookie nem storage (ver `packages/tracker`).
+- **Dado pessoal:** o Umami guarda navegador, sistema, tipo de aparelho, tela, idioma e país, região e cidade do IP truncado. Nada disso identifica uma pessoa, então não há dado sujeito a apagamento.
+- **Testes:** `privacy_test.go` (logs e cookies) e `e2e/privacy_test.go`. Este último manda IPs conhecidos pelo `X-Forwarded-For` e confere duas coisas: que o país da sessão no Umami saiu do IP truncado, e que nenhuma coluna de texto dos bancos `umami` e `notify` contém o IP completo.
+
 ## Configuração
 
 | Variável | Padrão | Uso |
@@ -79,7 +87,7 @@ De dentro de `services/`:
 go test -race ./ingest-web/...
 ```
 
-O teste de integração do pacote `site` roda quando `DATABASE_URL` aponta para o banco `notify`. Ele cria o usuário `notify_ingest` se faltar (precisa de superusuário; no Compose o usuário já existe) e conecta como ele com a senha `notify_ingest`, ou pela URL de `INGEST_DATABASE_URL`.
+O teste de integração do pacote `site` roda quando `DATABASE_URL` aponta para o banco `notify`. Ele precisa dos usuários de `infra/compose/postgres/init/02-ingest-roles.sh` e aplica as migrações do portal quando a visão `ingest_site` não existe. Depois conecta como `notify_ingest`, com a senha `notify_ingest` ou pela URL de `INGEST_DATABASE_URL`.
 
 O teste ponta a ponta precisa do ambiente do Compose no ar:
 
@@ -91,6 +99,6 @@ docker compose up -d --build --wait
 go test -tags e2e -count=1 ./ingest-web/e2e/...
 ```
 
-Ele cria um website no Umami pela API (`admin`/`umami`), marca o site como `active` na `ingest_site`, manda um page view ao gateway (porta 3002) e confere que ele aparece no Umami. As URLs podem ser trocadas por `GATEWAY_URL`, `UMAMI_URL` e `NOTIFY_DATABASE_URL`.
+Ele cria um website no Umami pela API (`admin`/`umami`) e um tenant ativo com esse site no banco `notify`. Depois manda page views ao gateway (porta 3002) e confere o que chega ao Umami. O teste de privacidade precisa que o gateway confie no `X-Forwarded-For` do teste: suba o Compose com `INGEST_TRUSTED_PROXIES=172.16.0.0/12,192.168.0.0/16,10.0.0.0/8`, como no CI. As URLs podem ser trocadas por `GATEWAY_URL`, `UMAMI_URL`, `NOTIFY_DATABASE_URL` e `UMAMI_DATABASE_URL`.
 
 A imagem (`Dockerfile`, contexto na raiz) é `scratch` com o binário e as versões publicadas do script, copiadas de `packages/tracker/published` quando a pasta existe. O healthcheck do contêiner é `ingest-web -healthcheck`.

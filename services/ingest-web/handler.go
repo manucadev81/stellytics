@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"mime"
@@ -47,7 +48,24 @@ func (g *gateway) routes() http.Handler {
 	if g.scripts != nil {
 		mux.HandleFunc("GET /s/", g.script)
 	}
-	return mux
+	return g.recoverPanic(mux)
+}
+
+// recoverPanic responde 500 a um panic e registra só o erro. Sem ele, o
+// net/http registraria o panic junto com o endereço completo do cliente.
+func (g *gateway) recoverPanic(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if v := recover(); v != nil {
+				if v == http.ErrAbortHandler {
+					panic(v)
+				}
+				g.log.Error("panic no handler", "path", r.URL.Path, "panic", fmt.Sprint(v))
+				http.Error(w, "internal error", http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
 }
 
 func healthz(w http.ResponseWriter, _ *http.Request) {
