@@ -23,6 +23,7 @@ O monorepo tem a estrutura do ADR 0002 (issue #11). O único código de aplicaç
 
 - Next.js 16 (App Router, `src/proxy.ts` no lugar do antigo `middleware.ts`), Better Auth com Drizzle, Tailwind 4, Vitest. Interface em inglês; comentários e docs em português.
 - Toda página privada chama `requireSession()` ou `requireOperator()` de `src/lib/session.ts`. O `proxy.ts` é só um redirecionamento otimista e **não** substitui essa checagem.
+- **Isolamento (ADR 0003):** o tenant vem sempre da sessão, nunca de valor do cliente. A partir da #18, todo acesso ao banco fica em `src/lib/data/` e todo acesso ao Umami em `src/lib/umami/`, sempre recebendo um contexto de `src/lib/access.ts`. Recurso de outro tenant responde 404. O portal cria só sites no Umami, sem usuários nem equipes.
 - Variáveis lidas por `src/lib/env.ts`; no `next build` ele usa valores inertes, então não acesse o banco em tempo de build.
 - Esquema em `src/lib/db/schema.ts` (colunas em snake_case); depois de mudar, `pnpm db:generate --name <descricao>` e commite o SQL de `drizzle/`.
 - O cadastro pela API está desligado (`disableSignUp`) até a #17/#60. Usuários de teste: `pnpm user:create` (senha em `PORTAL_USER_PASSWORD`).
@@ -31,7 +32,8 @@ O monorepo tem a estrutura do ADR 0002 (issue #11). O único código de aplicaç
 
 ## Onde está o planejamento
 
-- **Decisões de arquitetura:** `docs/adr/` (índice em `docs/adr/README.md`). Leia os ADRs 0001 e 0002 antes de propor mudanças de stack ou de estrutura.
+- **Decisões de arquitetura:** `docs/adr/` (índice em `docs/adr/README.md`). Leia os ADRs 0001 e 0002 antes de propor mudanças de stack ou de estrutura, e o 0003 antes de mexer em acesso a dados.
+- **Specs:** `docs/specs/`, um por épico que tem contrato entre componentes. O spec fixa o contrato (tabelas, papéis, formatos); decisão com alternativas vai para ADR. Antes de implementar qualquer issue do E2 (#16–#21, #58–#60), leia `docs/specs/e2-tenants-e-controle-de-acesso.md`. Os specs do E3 e do E5 ainda não existem: escreva cada um ao começar o épico.
 - **Backlog:** issues em `romulospl/notify`, organizadas em épicos E1–E9 (issues #1–#9) e E10 (#63), com sub-issues numeradas `[X.Y]` (#10–#62, #64 e #65). Cada issue tem "O que fazer", critérios de aceite e "Depende de". O número `[X.Y]` não é a ordem de execução: siga o "Depende de".
 - **Quadro:** GitHub Project `romulospl/projects/1`. Itens em **Ready** são o código do MVP (E1–E6) e a proposta ao SCF (E10); E7 (documentação), E8 (pilotos) e E9 (pós-MVP) ficam em Backlog.
 - Use `gh issue view <n> -R romulospl/notify` para ler o escopo exato antes de implementar uma issue.

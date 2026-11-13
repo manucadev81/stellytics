@@ -141,13 +141,29 @@ Dados conferidos no GitHub em 13/11/2026:
   - sem TimescaleDB, por causa da licença TSL.
 - **Infra:** Terraform, Ansible, Docker Compose e Caddy, com hospedagem na União Europeia.
 
+### Isolamento no portal ([ADR 0003](adr/0003-isolamento-no-portal.md)) e spec do E2
+
+O portal lê o Umami com uma conta de serviço que enxerga tudo, então o isolamento entre tenants é responsabilidade só do portal. O contrato está no [spec do E2](specs/e2-tenants-e-controle-de-acesso.md), aceito em 13/11/2026 com seis decisões:
+
+- **D1:** um usuário pertence a um único tenant.
+- **D2:** operador SCF não é membro de tenant.
+- **D3:** não há papel de administrador; operador é criado por script.
+- **D4:** um usuário de banco por serviço (`notify`, `notify_ingest`, `notify_collector`).
+- **D5:** o serviço de API vem da chave de ingestão; o `service.name` do cliente é ignorado.
+- **D6:** o operador pode reativar um tenant removido.
+
+**Consequência para o ADR 0001:** o portal cria só sites no Umami, sem usuários nem equipes.
+
+**Specs:** só os épicos com contrato entre componentes têm spec (E2, E3 e E5). Os do E3 e do E5 serão escritos ao começar cada épico.
+
 ## 5. Arquivos do repositório
 
 | Arquivo | Conteúdo |
 |---|---|
 | [`CLAUDE.md`](../CLAUDE.md) | Contexto para o Claude Code: arquitetura, restrições não óbvias, padrão de commits (Conventional Commits 1.0.0-beta.4, sem `Co-Authored-By`) |
 | [`README.md`](../README.md) | Visão do projeto, métricas, arquitetura, privacidade, roadmap e contribuição |
-| [`docs/adr/`](adr/README.md) | Índice, template e ADRs 0001 e 0002 |
+| [`docs/adr/`](adr/README.md) | Índice, template e ADRs 0001, 0002 e 0003 |
+| [`docs/specs/`](specs/e2-tenants-e-controle-de-acesso.md) | Spec do E2: tenants e controle de acesso |
 | `docs/andamento.md` | Este registro |
 | `LICENSE`, `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `services/go.mod` | Estrutura do monorepo (#11) |
 | `compose.yaml`, `infra/compose/`, `.env.example` | Ambiente local com Postgres 17 e Umami 3.4.1 (#12) |
@@ -187,4 +203,8 @@ Dados conferidos no GitHub em 13/11/2026:
    - tirar os épicos da coluna Ready ou filtrá-los da visão;
    - dividir a #50 em eventos customizados (o Umami já suporta) e captura do Wallets Kit.
 7. **Idioma:** decidir se a documentação do repositório passa para inglês antes da submissão. Os revisores do SCF leem em inglês, e isso pesa na avaliação da documentação e na transferência para outra equipe.
-8. **ADR novo:** registrar que o isolamento na leitura é do portal (ver #18). O ADR 0001 dizia que o isolamento partia do modelo de equipes do Umami.
+8. **Concluído:** o ADR 0003 registra que o isolamento é do portal, e o spec do E2 fixa o contrato. A próxima issue de código é a #16, seguindo o spec.
+9. **Lacunas sem issue, apontadas pelo spec do E2:**
+   - convite de membros para um tenant (hoje só quem cria o projeto tem acesso);
+   - exclusão da própria conta pelo usuário, que o documento de privacidade (#40) precisa prever.
+10. **Specs seguintes:** o do E3 ao começar a #61 e o do E5 ao começar a #30 ou a #33.
