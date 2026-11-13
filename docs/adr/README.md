@@ -8,6 +8,7 @@ Registro das decisões de arquitetura do projeto. Cada ADR descreve o contexto, 
 |---|---|---|---|
 | [0001](0001-ferramenta-base.md) | Umami como ferramenta base de analytics web | Aceito | 13/11/2026 |
 | [0002](0002-arquitetura-e-stack.md) | Arquitetura e stack do produto | Aceito | 13/11/2026 |
+| [0003](0003-isolamento-no-portal.md) | Isolamento entre tenants é responsabilidade do portal | Aceito | 13/11/2026 |
 
 ## Como escrever um novo ADR
 
