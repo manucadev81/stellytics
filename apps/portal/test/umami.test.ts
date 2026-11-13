@@ -3,7 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { eq, inArray, like } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { loadTenantContext, type TenantContext } from "@/lib/access";
+import { loadTenantContext, type OperatorContext, type TenantContext } from "@/lib/access";
 import { createSite, getSite, listSites, normalizeDomain, SiteInputError } from "@/lib/data/sites";
 import { db, sql } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
@@ -200,7 +200,9 @@ describe("consistência entre portal e Umami", () => {
     const orphanId = randomUUID();
     umami.websites.set(orphanId, { id: orphanId, name: "Orphan", domain: "orphan.example.org" });
 
-    const result = await findUmamiInconsistencies();
+    // Só o teste monta o contexto à mão; no portal ele vem de requireOperatorContext().
+    const operator = { userId: "test-operator" } as OperatorContext;
+    const result = await findUmamiInconsistencies(operator);
     expect(result.missingInUmami).toContain(lost.id);
     expect(result.missingInUmami).not.toContain(kept.id);
     expect(result.orphanedInUmami).toEqual([orphanId]);

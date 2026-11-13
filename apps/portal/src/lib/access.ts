@@ -5,12 +5,19 @@ import { db } from "./db";
 import { tenant, tenantMember } from "./db/schema";
 import { requireSession } from "./session";
 
-// Contexto de acesso do spec do E2, seção 4. O tenant vem sempre da sessão,
-// nunca de um valor enviado pelo cliente (ADR 0003). O tipo é marcado
-// (branded): fora deste arquivo ninguém consegue montar um contexto à mão,
-// então as funções de src/lib/data/ e src/lib/umami/ só recebem contextos
-// criados aqui. A regra de lint e o contexto do operador completam isto na #18.
+// Contextos de acesso do spec do E2, seção 4 (ADR 0003). O tenant vem sempre
+// da sessão, nunca de um valor enviado pelo cliente.
+//
+// Os tipos são marcados (branded): fora deste arquivo ninguém consegue montar
+// um contexto à mão, então as funções de src/lib/data/ e src/lib/umami/ só
+// recebem contextos criados aqui, a partir da sessão. Junto com a regra de
+// lint (eslint.config.mjs), isso faz de data/ e umami/ a camada única.
+//
+// Quem não tem acesso recebe 404, nunca 403, para não revelar que o recurso
+// ou a área existe.
+
 declare const tenantContextBrand: unique symbol;
+declare const operatorContextBrand: unique symbol;
 
 export type TenantContext = {
   readonly userId: string;
@@ -20,7 +27,13 @@ export type TenantContext = {
   readonly [tenantContextBrand]: true;
 };
 
+export type OperatorContext = {
+  readonly userId: string;
+  readonly [operatorContextBrand]: true;
+};
+
 // Busca o tenant do usuário (D1: no máximo um). Nulo para quem não é membro.
+// Não confere o papel: use getTenantContext() ou requireTenantContext().
 export async function loadTenantContext(userId: string): Promise<TenantContext | null> {
   const [row] = await db
     .select({ tenantId: tenantMember.tenantId, memberRole: tenantMember.role, tenantStatus: tenant.status })
@@ -32,12 +45,23 @@ export async function loadTenantContext(userId: string): Promise<TenantContext |
   return { userId, ...row } as TenantContext;
 }
 
-export async function requireTenantContext(): Promise<TenantContext> {
+// Contexto do tenant de quem está na sessão, ou nulo para quem ainda não tem
+// projeto. Sem sessão vai para o login; operador recebe 404 (D2: operador não
+// é membro de tenant).
+export async function getTenantContext(): Promise<TenantContext | null> {
   const session = await requireSession();
-  // D2: operador não é membro de tenant. 404 para não revelar a área.
   if (session.user.role === "operator") notFound();
-  const ctx = await loadTenantContext(session.user.id);
-  // Usuário sem projeto: a #17 troca isto pelo redirecionamento à criação de projeto.
+  return loadTenantContext(session.user.id);
+}
+
+export async function requireTenantContext(): Promise<TenantContext> {
+  const ctx = await getTenantContext();
   if (!ctx) notFound();
   return ctx;
+}
+
+export async function requireOperatorContext(): Promise<OperatorContext> {
+  const session = await requireSession();
+  if (session.user.role !== "operator") notFound();
+  return { userId: session.user.id } as OperatorContext;
 }

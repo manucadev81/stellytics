@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
-import { requireOperator } from "@/lib/session";
+import { requireOperatorContext } from "@/lib/access";
 
 export const metadata: Metadata = { title: "SCF overview" };
 
-// Área do operador SCF: visão global e comparativa (E4 e E6). Só para o papel operator.
+// Área do operador SCF: visão global e comparativa (E4 e E6). Quem não é
+// operador recebe 404. As únicas rotas que aceitam um tenantId na URL ficam
+// sob /operator.
 export default async function OperatorPage() {
-  await requireOperator();
+  await requireOperatorContext();
 
   return (
     <section>
