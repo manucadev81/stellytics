@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getTenantContext } from "@/lib/access";
+import { requireTenantContext } from "@/lib/access";
+import { listApiServices } from "@/lib/data/api-services";
 import { listSites } from "@/lib/data/sites";
+import { getProject } from "@/lib/data/tenants";
 import { requireSession } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Project" };
@@ -13,37 +16,47 @@ export default async function DashboardPage() {
   // /dashboard é o destino padrão depois do login; o operador não tem projeto (D2).
   if (user.role === "operator") redirect("/operator");
 
-  const ctx = await getTenantContext();
-  if (!ctx) {
-    // A #17 troca isto pelo redirecionamento à criação de projeto.
-    return (
-      <section>
-        <h1 className="text-2xl font-semibold">Project</h1>
-        <p className="mt-2 text-zinc-500">You don&apos;t have a project yet.</p>
-      </section>
-    );
-  }
+  // Sem projeto, vai para a criação do projeto (#17).
+  const ctx = await requireTenantContext();
+  const project = await getProject(ctx);
 
-  if (ctx.tenantStatus === "removed") {
+  if (project.status === "removed") {
     return (
       <section>
-        <h1 className="text-2xl font-semibold">Project</h1>
+        <h1 className="text-2xl font-semibold">{project.name}</h1>
         <p className="mt-2 text-zinc-500">This project was removed by the SCF operators.</p>
+        {project.statusReason && <p className="mt-2 text-sm text-zinc-500">Reason: {project.statusReason}</p>}
       </section>
     );
   }
 
-  const sites = await listSites(ctx);
+  const [sites, services] = await Promise.all([listSites(ctx), listApiServices(ctx)]);
 
   return (
     <section>
-      <h1 className="text-2xl font-semibold">Project</h1>
-      <p className="mt-2 text-zinc-500">
-        Signed in as {user.name}. Your web and API analytics will appear here.
-      </p>
-      <p className="mt-4 text-sm text-zinc-500">
-        {sites.length === 0 ? "No websites yet." : `${sites.length} website(s) registered.`}
-      </p>
+      <h1 className="text-2xl font-semibold">{project.name}</h1>
+      <p className="mt-2 text-zinc-500">Your web and API analytics will appear here.</p>
+
+      <div className="mt-8 grid gap-4 sm:grid-cols-2">
+        <Link
+          href="/sites"
+          className="rounded-lg border border-zinc-200 p-4 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+        >
+          <p className="font-medium">Websites</p>
+          <p className="mt-1 text-sm text-zinc-500">
+            {sites.length === 0 ? "Add your first website." : `${sites.length} registered`}
+          </p>
+        </Link>
+        <Link
+          href="/services"
+          className="rounded-lg border border-zinc-200 p-4 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+        >
+          <p className="font-medium">API services</p>
+          <p className="mt-1 text-sm text-zinc-500">
+            {services.length === 0 ? "Add a service to get an ingest key." : `${services.length} registered`}
+          </p>
+        </Link>
+      </div>
     </section>
   );
 }

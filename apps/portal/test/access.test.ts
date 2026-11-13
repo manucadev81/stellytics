@@ -87,10 +87,12 @@ describe("contexto do tenant", () => {
     await expect(requireTenantContext()).rejects.toMatchObject(NOT_FOUND);
   });
 
-  it("usuário sem projeto: nulo em getTenantContext e 404 em requireTenantContext", async () => {
+  it("usuário sem projeto: nulo em getTenantContext e vai criar o projeto em requireTenantContext", async () => {
     sessionUser = { id: await createUser(), role: "tenant" };
     expect(await getTenantContext()).toBeNull();
-    await expect(requireTenantContext()).rejects.toMatchObject(NOT_FOUND);
+    await expect(requireTenantContext()).rejects.toMatchObject({
+      digest: expect.stringContaining("/onboarding"),
+    });
   });
 });
 

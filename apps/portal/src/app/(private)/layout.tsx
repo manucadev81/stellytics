@@ -22,6 +22,9 @@ export default async function PrivateLayout({ children }: { children: React.Reac
                 <Link href="/dashboard" className="hover:underline">
                   Project
                 </Link>
+                <Link href="/sites" className="hover:underline">
+                  Websites
+                </Link>
                 <Link href="/services" className="hover:underline">
                   API services
                 </Link>
