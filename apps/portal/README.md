@@ -56,9 +56,17 @@ Use `--role operator` para um operador SCF. O comando de administração definit
 ## Banco e migrações
 
 - Esquema em `src/lib/db/schema.ts`; migrações versionadas em `drizzle/`.
+- O modelo de tenants (`tenant`, `tenant_member`, `site`, `api_service`, `ingest_key` e `audit_log`) segue a seção 3 do [spec do E2](../../docs/specs/e2-tenants-e-controle-de-acesso.md). O `audit_log` só aceita inserções (um gatilho recusa `UPDATE`, `DELETE` e `TRUNCATE`).
+- As visões `ingest_site` (gateway web) e `ingest_key_active` (coletor) e as permissões dos usuários `notify_ingest` e `notify_collector` estão em `drizzle/0002_ingest_views.sql`, escrito à mão. Para SQL que o Drizzle não gera: `pnpm db:generate --custom --name <descricao>`.
+- **As migrações exigem os usuários `notify_ingest` e `notify_collector`**, que só um superusuário cria. No Compose, `infra/compose/postgres/init/02-ingest-roles.sh` roda com o volume vazio. Para um volume que já existe, sem apagar os dados:
+
+  ```bash
+  docker compose exec -T postgres sh < infra/compose/postgres/init/02-ingest-roles.sh
+  ```
+
 - Depois de mudar o esquema: `pnpm db:generate --name <descricao>` e commite o SQL gerado.
 - `pnpm db:migrate` aplica as migrações no banco de `DATABASE_URL`.
 
 ## Testes
 
-`pnpm test` roda os testes com Vitest. Os de integração (`test/auth.test.ts`) usam o Postgres de `DATABASE_URL` (padrão: o do Compose local) e aplicam as migrações antes de rodar.
+`pnpm test` roda os testes com Vitest. Os de integração (`test/auth.test.ts` e `test/tenant-model.test.ts`) usam o Postgres de `DATABASE_URL` (padrão: o do Compose local) e aplicam as migrações antes de rodar. Os testes de permissão assumem os papéis de ingestão com `SET ROLE`, por isso o script acima também dá ao usuário `notify` o direito de assumi-los (sem herdar nada deles).

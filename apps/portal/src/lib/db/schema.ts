@@ -1,6 +1,27 @@
-// Tabelas do Better Auth (usuários, sessões, contas e verificações) no banco `notify`.
-// Tenants, sites e serviços de API entram na #16.
-import { boolean, index, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+// Esquema do banco `notify`: tabelas do Better Auth (usuários, sessões, contas e
+// verificações) e o modelo de tenants do spec do E2, seção 3
+// (docs/specs/e2-tenants-e-controle-de-acesso.md).
+// As visões lidas pelo gateway e pelo coletor e as permissões dos usuários
+// notify_ingest e notify_collector estão em SQL escrito à mão, em
+// drizzle/0002_ingest_views.sql.
+import { sql } from "drizzle-orm";
+import {
+  boolean,
+  check,
+  customType,
+  date,
+  foreignKey,
+  index,
+  jsonb,
+  pgEnum,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 export const userRole = pgEnum("user_role", ["tenant", "operator"]);
 
@@ -71,4 +92,139 @@ export const verification = pgTable(
     ...timestamps,
   },
   (t) => [index("verification_identifier_idx").on(t.identifier)],
+);
+
+// ---------------------------------------------------------------------------
+// Tenants (#16)
+// ---------------------------------------------------------------------------
+
+// `pending` fica reservado para o cadastro com aprovação (#49); o MVP usa só
+// `active` e `removed`.
+export const tenantStatus = pgEnum("tenant_status", ["active", "removed", "pending"]);
+export const memberRole = pgEnum("member_role", ["owner", "member"]);
+
+// O Drizzle 0.45 não tem coluna `bytea` pronta.
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => "bytea",
+});
+
+export const tenant = pgTable("tenant", {
+  // É o `tenant.id` gravado nas métricas de API.
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  status: tenantStatus("status").notNull().default("active"),
+  statusChangedAt: timestamp("status_changed_at", { withTimezone: true }).notNull().defaultNow(),
+  // Operador que mudou o status; nulo na criação.
+  statusChangedBy: text("status_changed_by").references(() => user.id, { onDelete: "set null" }),
+  statusReason: text("status_reason"),
+  ...timestamps,
+});
+
+export const tenantMember = pgTable(
+  "tenant_member",
+  {
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    role: memberRole("role").notNull().default("member"),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.userId] }),
+    // D1: cada usuário pertence a um único tenant. Retirar este índice libera
+    // vários tenants por usuário sem mudar o resto do modelo.
+    uniqueIndex("tenant_member_user_id_key").on(t.userId),
+  ],
+);
+
+export const site = pgTable(
+  "site",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    name: text("name").notNull(),
+    domain: text("domain").notNull(),
+    // ID do site no Umami; é o que o script de rastreamento envia.
+    umamiWebsiteId: uuid("umami_website_id").notNull().unique(),
+    createdAt: timestamps.createdAt,
+    // Site arquivado para de receber eventos e some dos painéis.
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+  },
+  (t) => [unique("site_tenant_id_domain_key").on(t.tenantId, t.domain)],
+);
+
+export const apiService = pgTable(
+  "api_service",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    // Nome mostrado nos painéis. D5: o `service.name` enviado pelo cliente é ignorado.
+    name: text("name").notNull(),
+    createdAt: timestamps.createdAt,
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+  },
+  (t) => [
+    unique("api_service_tenant_id_name_key").on(t.tenantId, t.name),
+    // Alvo da chave estrangeira composta de `ingest_key`.
+    unique("api_service_id_tenant_id_key").on(t.id, t.tenantId),
+  ],
+);
+
+export const ingestKey = pgTable(
+  "ingest_key",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    apiServiceId: uuid("api_service_id").notNull(),
+    // Repetido para o coletor resolver o tenant sem junção. A chave estrangeira
+    // composta garante que é o mesmo tenant do serviço.
+    tenantId: uuid("tenant_id").notNull(),
+    // Parte pública da chave `ntf_<prefixo>_<segredo>` (spec, seção 5).
+    prefix: text("prefix").notNull().unique(),
+    // SHA-256 da chave completa. A chave em si nunca é gravada.
+    keyHash: bytea("key_hash").notNull(),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id),
+    createdAt: timestamps.createdAt,
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    // Atualizado no máximo uma vez por dia.
+    lastUsedOn: date("last_used_on"),
+  },
+  (t) => [
+    foreignKey({
+      name: "ingest_key_api_service_fk",
+      columns: [t.apiServiceId, t.tenantId],
+      foreignColumns: [apiService.id, apiService.tenantId],
+    }),
+    index("ingest_key_api_service_id_idx").on(t.apiServiceId),
+    check("ingest_key_prefix_format", sql`${t.prefix} ~ '^[a-z2-7]{8}$'`),
+    check("ingest_key_hash_length", sql`octet_length(${t.keyHash}) = 32`),
+  ],
+);
+
+// Só recebe inserções: um gatilho recusa UPDATE e DELETE (0002_ingest_views.sql).
+// Sem chave estrangeira, para o registro sobreviver à exclusão do usuário ou do tenant.
+export const auditLog = pgTable(
+  "audit_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    // Nulo quando a ação vem do script de administração.
+    actorUserId: text("actor_user_id"),
+    // Ex.: tenant.removed, tenant.reactivated, operator.created, ingest_key.revoked.
+    action: text("action").notNull(),
+    // Nulo em ações globais.
+    tenantId: uuid("tenant_id"),
+    // Nunca contém chave, senha nem IP.
+    details: jsonb("details").notNull().default({}),
+  },
+  (t) => [index("audit_log_tenant_id_at_idx").on(t.tenantId, t.at)],
 );
