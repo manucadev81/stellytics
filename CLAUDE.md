@@ -8,9 +8,9 @@ Plataforma open source e multi-tenant de **analytics web e de API** para projeto
 
 ## Estado atual
 
-O monorepo tem a estrutura do ADR 0002 (issue #11). O único código de aplicação até agora é o **esqueleto do portal** (`apps/portal`, issue #57): login com Better Auth, rotas privadas e layout. As outras pastas têm só um `README.md` dizendo o que vai nela e qual issue a cria.
+O monorepo tem a estrutura do ADR 0002 (issue #11). O código de aplicação até agora é o **esqueleto do portal** (`apps/portal`, issue #57), com login, rotas privadas e layout, e o **script de rastreamento** (`packages/tracker`, issue #22). As outras pastas têm só um `README.md` dizendo o que vai nela e qual issue a cria.
 
-- **TypeScript:** pnpm workspaces (`apps/*`, `packages/*`, `examples/*`) + Turborepo. Comandos na raiz: `pnpm install`, `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test` (todos via `turbo run`). Hoje só o portal tem tarefas.
+- **TypeScript:** pnpm workspaces (`apps/*`, `packages/*`, `examples/*`) + Turborepo. Comandos na raiz: `pnpm install`, `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test` (todos via `turbo run`).
 - **Go:** um módulo só em `services/` (`github.com/romulospl/notify/services`, Go 1.26). Rodar `go` de dentro de `services/`.
 - **Versões novas:** o `pnpm-workspace.yaml` tem `minimumReleaseAge: 20160` (14 dias), então o pnpm recusa releases mais novas que isso. Fixe versões exatas no `package.json`.
 
@@ -28,6 +28,13 @@ O monorepo tem a estrutura do ADR 0002 (issue #11). O único código de aplicaç
 - O cadastro pela API está desligado (`disableSignUp`) até a #17/#60. Usuários de teste: `pnpm user:create` (senha em `PORTAL_USER_PASSWORD`).
 - A sessão não guarda IP (`databaseHooks` em `src/lib/auth.ts`); a telemetria do Better Auth e do Next fica desligada.
 - TypeScript fixado em 6.0 e ESLint em 9, porque os plugins do `eslint-config-next` ainda não aceitam TypeScript 7 nem ESLint 10.
+
+## Script de rastreamento (`packages/tracker`)
+
+- TypeScript empacotado com esbuild em `n.js` (IIFE). A lógica fica em `src/tracker.ts` e a entrada em `src/index.ts`; os scripts de `scripts/` rodam direto no Node (`.ts`, sem build).
+- **Versão publicada é imutável:** `published/vX.Y.Z/n.js` mais o hash em `published/sri.json`, tudo commitado. Mudou o código? Suba a `version` do `package.json` e rode `pnpm --filter @notify/tracker release`; ele se recusa a sobrescrever uma versão existente. O teste `test/published.test.ts` falha se um arquivo publicado mudar ou se o código atual não bater com a versão do `package.json`. Isso inclui atualização do esbuild que mude o resultado, então ela também exige versão nova.
+- O gateway (#61) serve `published/` em `/s/`. O script manda `POST /e` para a origem de onde foi carregado, com `Content-Type: text/plain` (para evitar o preflight de CORS; o corpo é JSON) e `credentials: "omit"`.
+- Da query string saem só os `utm_*`, e o referenciador vai sem query nem fragmento.
 
 ## Onde está o planejamento
 
