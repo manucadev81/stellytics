@@ -8,7 +8,13 @@ Plataforma open source e multi-tenant de **analytics web e de API** para projeto
 
 ## Estado atual
 
-O repositório ainda **não tem código**: só as decisões de arquitetura em `docs/adr/`. Ainda não existem comandos de build, lint ou teste. Quando a estrutura do monorepo for criada (issues #11, #12 e #13), atualize este arquivo com os comandos reais.
+O monorepo tem a estrutura do ADR 0002 (issue #11), mas **ainda não há código de aplicação**: cada pasta tem só um `README.md` dizendo o que vai nela e qual issue a cria.
+
+- **TypeScript:** pnpm workspaces (`apps/*`, `packages/*`, `examples/*`) + Turborepo. Comandos na raiz: `pnpm install`, `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test` (todos via `turbo run`). Hoje não executam tarefa nenhuma.
+- **Go:** um módulo só em `services/` (`github.com/romulospl/notify/services`, Go 1.26). Rodar `go` de dentro de `services/`.
+- **Versões novas:** o `pnpm-workspace.yaml` tem `minimumReleaseAge: 20160` (14 dias), então o pnpm recusa releases mais novas que isso. Fixe versões exatas no `package.json`.
+
+Quando a #12 (Compose) e a #13 (CI) entrarem, atualize esta seção com os comandos reais.
 
 ## Onde está o planejamento
 
@@ -55,9 +61,9 @@ Duas linguagens: **TypeScript** para interface e script do navegador; **Go** só
   - O escopo é um substantivo entre parênteses com a parte do código afetada, por exemplo `feat(collector):`, `fix(tracker):`, `docs(adr):`.
   - O corpo começa depois de uma linha em branco. O rodapé também, com uma informação por linha (ex.: `closes #32`).
   - Quebra de compatibilidade: `BREAKING CHANGE: <descrição>` no início do corpo ou de uma linha do rodapé; opcionalmente `!` antes dos dois-pontos (`feat(portal)!: ...`).
-- Mensagens em português do Brasil, com a descrição no imperativo e curta (ex.: `feat(collector): adiciona normalização de endereços Stellar`).
+- **Mensagens de commit sempre em inglês** (descrição, corpo e rodapé), mesmo com a documentação e as issues em português. A descrição fica no imperativo, curta e em minúsculas (ex.: `feat(collector): add Stellar address normalization`). Títulos e descrições de PR também em inglês.
 
 ## Convenções
 
-- Documentação, ADRs e issues em português do Brasil.
+- Documentação, ADRs e issues em português do Brasil (commits e PRs em inglês, ver acima).
 - Decisão de arquitetura nova vira ADR novo, a partir de `docs/adr/template.md`. ADR aceito não é reescrito: crie outro e marque o antigo como substituído.

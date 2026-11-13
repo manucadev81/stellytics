@@ -1,0 +1,7 @@
+packages:
+  - apps/*
+  - packages/*
+  - examples/*
+
+# Só instala versões publicadas há pelo menos 14 dias (em minutos), conforme o ADR 0002.
+minimumReleaseAge: 20160

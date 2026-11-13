@@ -1,0 +1,25 @@
+# Node
+node_modules/
+.pnpm-store/
+.turbo/
+dist/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+
+# Go
+services/bin/
+*.test
+*.out
+
+# Ambiente e segredos
+.env
+.env.*
+!.env.example
+
+# Sistema e editores
+.DS_Store
+.idea/
+.vscode/
+*.log

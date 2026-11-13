@@ -11,7 +11,7 @@ Registro do que já foi feito, das decisões tomadas e dos próximos passos. Atu
 | Quadro do projeto | 45 itens em Ready, 19 em Backlog e 1 em Done |
 | Ferramenta base | **Umami v3.4.1** ([ADR 0001](adr/0001-ferramenta-base.md)) |
 | Arquitetura e stack | Definidas ([ADR 0002](adr/0002-arquitetura-e-stack.md)) |
-| Repositório | `CLAUDE.md`, `README.md` e `docs/adr/`, já no GitHub (2 commits na `main`) |
+| Repositório | Estrutura do monorepo criada (#11): `LICENSE`, pnpm workspaces, Turborepo e `services/go.mod` |
 | Código | Nenhum ainda |
 
 ## 1. MVP definido a partir do RFP
@@ -148,7 +148,8 @@ Dados conferidos no GitHub em 13/11/2026:
 | [`CLAUDE.md`](../CLAUDE.md) | Contexto para o Claude Code: arquitetura, restrições não óbvias, padrão de commits (Conventional Commits 1.0.0-beta.4, sem `Co-Authored-By`) |
 | [`README.md`](../README.md) | Visão do projeto, métricas, arquitetura, privacidade, roadmap e contribuição |
 | [`docs/adr/`](adr/README.md) | Índice, template e ADRs 0001 e 0002 |
-| `docs/andamento.md` | Este registro (ainda não commitado) |
+| `docs/andamento.md` | Este registro |
+| `LICENSE`, `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `services/go.mod` | Estrutura do monorepo (#11) |
 
 ### Commits na `main` (já no GitHub)
 
@@ -156,13 +157,12 @@ Dados conferidos no GitHub em 13/11/2026:
 |---|---|
 | `847dcad` | `docs(adr): registra a escolha do Umami e a arquitetura do produto` (fechou a #10) |
 | `f3a1a60` | `docs: adiciona o README do projeto` (refs #11) |
+| `4d56cc2` | `docs: registra o andamento e a revisão do backlog` |
 
 ## 6. Pendências e próximos passos
 
-1. **Fazer a [#11 (1.2)](https://github.com/romulospl/notify/issues/11).** É o próximo passo e já está desbloqueada.
-   - **Falta:** o arquivo `LICENSE` (MIT) e o esqueleto de pastas do ADR 0002: `apps/portal`, `packages/tracker`, `services/`, `infra/` e `examples/`, mais `pnpm-workspace.yaml`, `turbo.json` e `go.mod`.
-   - **Já feito:** o README.
-2. **Depois da #11:** as issues [#12](https://github.com/romulospl/notify/issues/12) (Docker Compose) e [#13](https://github.com/romulospl/notify/issues/13) (CI) podem andar em paralelo.
+1. **Concluída:** a [#11 (1.2)](https://github.com/romulospl/notify/issues/11), com `LICENSE` (MIT), esqueleto de pastas, pnpm workspaces, Turborepo e `services/go.mod`. Cada pasta tem um `README.md` com o papel dela e a issue que a cria.
+2. **Próximo passo:** as issues [#12](https://github.com/romulospl/notify/issues/12) (Docker Compose) e [#13](https://github.com/romulospl/notify/issues/13) (CI) podem andar em paralelo.
 3. **Depois da #12:** o portal ([#57](https://github.com/romulospl/notify/issues/57)) e o gateway ([#61](https://github.com/romulospl/notify/issues/61)) destravam o E2, o E3, o E4 e o E6.
 4. **Pode ser feita a qualquer momento:** a [#32 (5.3)](https://github.com/romulospl/notify/issues/32), normalização de rotas, que não depende de nada.
 5. **Fora do código, sem dependência:**

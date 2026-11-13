@@ -2,7 +2,7 @@
 
 Plataforma open source e multi-tenant de **analytics web e de API** para projetos do ecossistema [Stellar](https://stellar.org), proposta para o RFP *Web and API Analytics for Stellar Ecosystem Projects* do [Stellar Community Fund](https://communityfund.stellar.org) (SCF).
 
-> **Estado:** em planejamento. O repositório tem só as decisões de arquitetura; o código começa pelo épico [E1](https://github.com/romulospl/notify/issues/1).
+> **Estado:** em desenvolvimento inicial. O monorepo já tem a estrutura de pastas e as decisões de arquitetura; os componentes entram pelas issues do épico [E1](https://github.com/romulospl/notify/issues/1) em diante.
 
 ## O problema
 
@@ -72,6 +72,40 @@ Os detalhes e as alternativas descartadas estão nos ADRs:
 - [0001 — Umami como ferramenta base](docs/adr/0001-ferramenta-base.md)
 - [0002 — Arquitetura e stack](docs/adr/0002-arquitetura-e-stack.md)
 
+## Estrutura do repositório
+
+```
+apps/
+  portal/            Portal Next.js: cadastro, painéis do tenant e do SCF
+packages/
+  tracker/           Script de rastreamento (TypeScript, esbuild)
+services/            Módulo Go único (go.mod)
+  ingest-web/        Gateway de ingestão web
+  collector/         Coletor OpenTelemetry (manifesto do OCB)
+    components/      Autenticação por chave, normalização de rotas, exporter Postgres
+infra/               Terraform, Ansible, Docker Compose, Caddy e monitoramento
+examples/            Integrações de referência (HTML, SPA, SSR, backend com OTel)
+docs/                ADRs e registro de andamento
+```
+
+Cada pasta tem um `README.md` com o papel dela e a issue que a cria.
+
+- **TypeScript:** pnpm workspaces (`apps/*`, `packages/*`, `examples/*`) e Turborepo. O pnpm só instala versões publicadas há pelo menos 14 dias (`minimumReleaseAge` no `pnpm-workspace.yaml`).
+- **Go:** um módulo só, em `services/`.
+
+### Requisitos e comandos
+
+Node.js 24 ou mais novo, pnpm 10 (ative com `corepack enable`) e Go 1.26.
+
+```bash
+pnpm install
+pnpm build      # turbo run build
+pnpm lint
+pnpm test
+```
+
+Os comandos ainda não executam tarefas: elas aparecem conforme os pacotes forem criados.
+
 ## Privacidade
 
 A meta é conformidade com a GDPR **sem banner de consentimento**:
@@ -99,9 +133,9 @@ O backlog está nas [issues](https://github.com/romulospl/notify/issues), organi
 
 ## Contribuindo
 
-- Commits seguem o [Conventional Commits 1.0.0-beta.4](https://www.conventionalcommits.org/pt-br/v1.0.0-beta.4/), por exemplo `feat(collector): adiciona normalização de endereços Stellar`.
+- Commits seguem o [Conventional Commits 1.0.0-beta.4](https://www.conventionalcommits.org/pt-br/v1.0.0-beta.4/), por exemplo `feat(collector): add Stellar address normalization`.
 - Decisões de arquitetura novas viram um ADR em [`docs/adr/`](docs/adr/README.md), a partir do [template](docs/adr/template.md).
 
 ## Licença
 
-MIT. O arquivo `LICENSE` entra com a estrutura do monorepo ([#11](https://github.com/romulospl/notify/issues/11)).
+[MIT](LICENSE).
