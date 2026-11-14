@@ -92,13 +92,13 @@ Limites superiores em segundos, iguais à recomendação das convenções do Ope
 
 ### Percentis
 
-A função `api_metric_quantile(buckets bigint[], q double precision)` devolve o percentil `q` (0 a 1), interpolando linearmente dentro do bucket onde ele cai. Quando ele cai no último bucket (acima de 10 s), devolve 10. Para um período, os painéis somam os arrays por posição e aplicam a função sobre a soma. O erro é de no máximo a largura do bucket, o que basta para p50 e p95 de API.
+O agregado `api_metric_sum_buckets(duration_buckets)` soma os arrays por posição (a função `api_metric_add_buckets(a, b)` faz o mesmo para dois arrays, no `ON CONFLICT` do coletor), e `api_metric_bounds()` devolve os limites. A função `api_metric_quantile(buckets bigint[], q double precision)` devolve o percentil `q` (0 a 1), interpolando linearmente dentro do bucket onde ele cai. Quando ele cai no último bucket (acima de 10 s), devolve 10. Para um período, os painéis somam os arrays por posição e aplicam a função sobre a soma. O erro é de no máximo a largura do bucket, o que basta para p50 e p95 de API.
 
 ### Permissões
 
 | Usuário | Permissão |
 |---|---|
-| `notify_collector` | `SELECT` em `ingest_key_active` (E2); `INSERT` e `UPDATE` em `api_metric_1m` (o `UPDATE` serve ao `ON CONFLICT`) |
+| `notify_collector` | `SELECT` em `ingest_key_active` (E2); `SELECT`, `INSERT` e `UPDATE` em `api_metric_1m`, porque o `INSERT ... ON CONFLICT DO UPDATE` precisa ler a linha existente. Nada nos consolidados nem na manutenção de partições |
 | `notify` (portal e job da #34) | Dono das tabelas |
 | `notify_ingest` | Nenhuma |
 

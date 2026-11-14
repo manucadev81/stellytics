@@ -58,6 +58,13 @@ O monorepo tem a estrutura do ADR 0002 (issue #11). O código de aplicação at�
 - **Privacidade (#24):** nenhum log leva IP, `X-Forwarded-For` ou `User-Agent`; nenhuma resposta grava cookie. O e2e `services/ingest-web/e2e/privacy_test.go` varre as colunas de texto dos bancos `umami` e `notify` atrás do IP completo e confere que a geolocalização usa o IP truncado. Ele exige que o gateway confie no `X-Forwarded-For` do teste (`INGEST_TRUSTED_PROXIES`, definido no job `compose` do CI).
 - A imagem é `scratch` (sem shell); o healthcheck é `ingest-web -healthcheck`. Ela copia `packages/tracker/published` para `/scripts` quando a pasta existe.
 
+## Métricas de API (banco `notify`)
+
+- Contrato no `docs/specs/e5-pipeline-de-api.md`, seção 4. Migração escrita à mão `apps/portal/drizzle/0004_api_metrics.sql` (#33), testada em `apps/portal/test/api-metrics.test.ts`.
+- `api_metric_1m` (gravada pelo coletor), `api_metric_1h` e `api_metric_1d` (job da #34): mesmas colunas, chave `(tenant_id, api_service_id, route, method, status_code, bucket_start)`, particionadas por mês em UTC (`<tabela>_pYYYYMM`) com partição `<tabela>_default`. `api_metric_ensure_partitions(meses)` cria as partições que faltam e move para elas as linhas da default.
+- `duration_buckets` tem 15 posições, com os limites de `api_metric_bounds()` (buckets do OTel para `http.server.request.duration`, em segundos, mais um acima de 10 s). Percentil: `api_metric_quantile(api_metric_sum_buckets(duration_buckets), 0.95)`; no `ON CONFLICT`, some com `api_metric_add_buckets`.
+- `notify_collector` tem `SELECT`, `INSERT` e `UPDATE` só em `api_metric_1m`.
+
 ## Exemplos (`examples/`)
 
 - `static-html`, `spa` e `nextjs-ssr` instalam o script como um tenant faria; `examples/README.md` tem os trechos de instalação usados no guia de onboarding (#43). HTML e SPA sobem com `examples/serve.mjs`, que troca `<!-- notify:script -->` pela tag (site em `NOTIFY_WEBSITE_ID`).
