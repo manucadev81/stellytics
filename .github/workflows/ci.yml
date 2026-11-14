@@ -157,7 +157,9 @@ jobs:
               code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X POST \
                 -H 'content-type: application/json' -d "$body" "http://127.0.0.1:$port$path" || true)
               echo "127.0.0.1:$port$path -> $code"
-              case "$code" in 000 | 404 | 405) ;; *) echo "o Umami respondeu fora da rede interna"; exit 1 ;; esac
+              # O Umami 3.4.1 responde 400 nas duas rotas. 401 é o coletor (#30),
+              # que recusa qualquer pedido sem chave de ingestão antes da rota.
+              case "$code" in 000 | 401 | 404 | 405) ;; *) echo "o Umami respondeu fora da rede interna"; exit 1 ;; esac
             done
           done
       # Daqui em diante os testes usam a API de administração do Umami, que só
