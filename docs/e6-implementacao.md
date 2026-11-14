@@ -6,8 +6,8 @@ Registro da implementação do épico [E6 (#6)](https://github.com/romulospl/not
 
 | Issue | O que é | PR | Commit |
 |---|---|---|---|
-| [#37 (6.1)](https://github.com/romulospl/notify/issues/37) | Painel de API do tenant | — | Em revisão |
-| [#38 (6.2)](https://github.com/romulospl/notify/issues/38) | Painel de API global do SCF | — | A fazer |
+| [#37 (6.1)](https://github.com/romulospl/notify/issues/37) | Painel de API do tenant | [#103](https://github.com/romulospl/notify/pull/103) | `55857e0`, `5497c27` |
+| [#38 (6.2)](https://github.com/romulospl/notify/issues/38) | Painel de API global do SCF | — | Em revisão |
 
 ## 2. #37: painel de API do tenant
 
@@ -65,8 +65,41 @@ Uma consulta só, com `GROUPING SETS`, devolve a série, os endpoints, os status
 
 **Conferido no navegador** com cerca de 6 mil linhas de teste (30 dias): claro e escuro, desktop e 390px de largura, períodos de 24 horas, 7 e 30 dias, tooltip do gráfico de latência.
 
-## 3. Limites e pendências
+## 3. #38: painel de API global do SCF
+
+**Onde:** `/operator/api` (`apps/portal/src/app/(private)/operator/api/`), com links no cabeçalho do operador ("API analytics") e em `/operator`. Quem não é operador recebe 404.
+
+**O que mostra:** uma linha por projeto **ativo**, com o número de serviços, as requisições (com uma barra proporcional), a fração de 5xx e de 4xx e a latência p50 e p95 de todas as requisições do projeto. Filtro por nome ou slug, ordenação clicando no cabeçalho e o mesmo seletor de período. Tudo por GET, como o painel web do SCF (#29). Um resumo acima da tabela diz quantos projetos mandaram dados no período.
+
+**Para achar serviços pouco usados:** projeto sem serviço aparece como "No API services", e projeto com serviço mas sem requisição, como "No requests in this period". A ordem crescente por requisições põe esses primeiro. Nas colunas de erro e latência, quem não tem requisição fica sempre no fim, nos dois sentidos.
+
+**Leitura:** `getApiOverview` em `src/lib/data/operator/api.ts`.
+
+- Uma consulta traz os projetos ativos, o número de serviços não arquivados e a última hora consolidada de cada um.
+- Cada projeto ganha os próprios trechos pela **mesma** `metricSources` do painel do tenant, e eles vão ao banco num JSON (`json_to_recordset`; o driver não serializa arrays de texto nessa consulta).
+- Uma segunda consulta soma 1d, 1h e 1m por projeto, só dos serviços não arquivados, e calcula os percentis sobre os histogramas somados.
+
+**Escolhas:**
+
+- **Por projeto, não por serviço**, como a #38 pede. O número de serviços fica na tabela; o detalhe por serviço está no painel do próprio tenant.
+- **Serviço arquivado não conta**, como no painel do tenant, em que ele responde 404.
+- **Sem variação sobre o período anterior**, pelo mesmo motivo da #37.
+- **Projeto removido ou pendente não aparece** (spec do E2, seção 6).
+
+**Testes:** `test/operator-api.test.ts`:
+
+- soma dos serviços, com armadilhas de dupla contagem, dia parcial, hora consolidada dentro da folga, período, serviço arquivado e projeto removido;
+- job atrasado num dos projetos;
+- **o painel global mostra os mesmos números que a soma dos painéis de cada serviço** (requisições, 4xx e 5xx) em 24 horas, 7 e 30 dias e 12 meses, e os mesmos percentis com um serviço só;
+- página: ordem padrão, crescente, por 5xx com os vazios no fim, filtro, valores desconhecidos na URL e 404 para membro de projeto.
+
+A suíte de isolamento (`isolation.test.ts`) confere o 404 do painel para membro de projeto.
+
+**Conferido que os testes pegam falhas:** contar serviço arquivado, ignorar a última hora consolidada, incluir projeto removido e deixar o trecho de horas invadir o de minutos fazem testes falharem. O último só passou a falhar depois de uma linha de armadilha nova (hora consolidada dentro da folga); antes, a mutação sobrevivia.
+
+**Conferido no navegador** com um operador local: desktop e 390px no modo escuro, 7 e 30 dias, ordem crescente. Os números do projeto de teste batem com os do painel dele.
+
+## 4. Limites e pendências
 
 - **Se o job da #34 ficar parado mais de 35 dias** (a retenção do `api_metric_1m`), as horas não consolidadas se perdem. Até lá, o painel lê do `api_metric_1m`. O monitoramento do job entra com as métricas internas da produção (ADR 0005).
 - **A tabela de endpoints** traz todos os pares rota e método do período antes de cortar em 100. Com o teto de 500 rotas por serviço e dia, cabe; se crescer, vira uma consulta com `LIMIT`. O monitoramento do job entra com as métricas internas da produção (ADR 0005).
-- **#38:** o painel global do SCF ainda não existe.

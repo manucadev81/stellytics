@@ -12,7 +12,7 @@ Registro do que já foi feito, das decisões tomadas e dos próximos passos. Atu
 | Ferramenta base | **Umami v3.4.1** ([ADR 0001](adr/0001-ferramenta-base.md)) |
 | Arquitetura e stack | Definidas ([ADR 0002](adr/0002-arquitetura-e-stack.md)) |
 | Repositório | Estrutura do monorepo (#11), ambiente local com Docker Compose (#12), CI (#13), Renovate e releases assinadas (#55), IaC da produção na Hetzner (#14, [ADR 0004](adr/0004-hospedagem-e-backup.md)) |
-| Código | Portal com o E2 completo. No E4, painéis web do tenant (#28) e do SCF (#29), detalhados em [`e4-implementacao.md`](e4-implementacao.md), detalhado em [`e2-implementacao.md`](e2-implementacao.md). No E6, painel de API do tenant (#37), em [`e6-implementacao.md`](e6-implementacao.md). No E3, script de rastreamento (#22) e gateway de ingestão (#61) |
+| Código | Portal com o E2 completo. No E4, painéis web do tenant (#28) e do SCF (#29), detalhados em [`e4-implementacao.md`](e4-implementacao.md), detalhado em [`e2-implementacao.md`](e2-implementacao.md). No E6, painéis de API do tenant (#37) e do SCF (#38), em [`e6-implementacao.md`](e6-implementacao.md). No E3, script de rastreamento (#22) e gateway de ingestão (#61) |
 
 ## 1. MVP definido a partir do RFP
 
@@ -232,7 +232,7 @@ O portal lê o Umami com uma conta de serviço que enxerga tudo, então o isolam
    **E5, [#35](https://github.com/romulospl/notify/issues/35) (14/11/2026):** backend de exemplo `examples/api-backend` (Node com OTel, histograma `http.server.request.duration` em delta) e guia de dual-export pelo SDK e pelo OTel Collector no README dele. Roda no Compose pelo override `infra/compose/api-example.yaml` (app mais o Collector do tenant, com o exporter `debug` no lugar do APM próprio); o `compose-check.sh` confere as linhas em `api_metric_1m` no job `compose` do CI. 
 
    **E5, [#36](https://github.com/romulospl/notify/issues/36) (14/11/2026):** ponta a ponta do pipeline de API no `compose-check.sh` (job `compose`): rota normalizada, status, latência (buckets somam a contagem) e tenant em `api_metric_1m`; trace e log mandados direto ao coletor alegando outro tenant ficam no tenant da chave, e o marcador não aparece em nenhuma coluna de texto do banco `notify`.
-   **E6, [#37](https://github.com/romulospl/notify/issues/37) (14/11/2026):** painel de API do tenant em `/services/[serviceId]`: requisições, erros 5xx, latência p50 e p95, gráficos por balde e tabela por endpoint, lendo 1d, 1h e 1m sem sobreposição. Detalhes em [`e6-implementacao.md`](e6-implementacao.md). **Próximo:** o painel global do SCF ([#38](https://github.com/romulospl/notify/issues/38)).
+   **E6, [#37](https://github.com/romulospl/notify/issues/37) (14/11/2026):** painel de API do tenant em `/services/[serviceId]`: requisições, erros 5xx, latência p50 e p95, gráficos por balde e tabela por endpoint, lendo 1d, 1h e 1m sem sobreposição. **E6, [#38](https://github.com/romulospl/notify/issues/38) (14/11/2026):** painel de API global do SCF em `/operator/api`, uma linha por projeto ativo com requisições, 5xx, 4xx, p50 e p95, filtro, ordenação e período, com os mesmos números do painel de cada serviço. **Com isso, o E6 está completo.** Detalhes em [`e6-implementacao.md`](e6-implementacao.md).
 4. **Pode ser feita a qualquer momento:** a [#32 (5.3)](https://github.com/romulospl/notify/issues/32), normalização de rotas, que não depende de nada.
 5. **Fora do código, sem dependência:**
    - buscar o código de indicação e enviar o Interest form ([#64](https://github.com/romulospl/notify/issues/64));
