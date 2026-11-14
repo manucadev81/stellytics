@@ -31,7 +31,7 @@ O spec do E2 e o ADR 0003 entraram junto, no commit `75658a7`.
 2. O link confirma o e-mail, abre a sessão e leva a `/onboarding`.
 3. `/onboarding`: dá nome ao projeto e vira dono dele.
 4. `/sites`: cadastra os sites web. Cada um é criado no Umami, e a tela mostra o ID do site.
-5. `/services`: cadastra os serviços de API. Cada um sai com a primeira chave de ingestão, mostrada uma vez só. Em `/services/[serviceId]`, cria e revoga chaves.
+5. `/services`: cadastra os serviços de API. Cada um sai com a primeira chave de ingestão, mostrada uma vez só. Em `/services/[serviceId]/keys` (aba "Ingest keys"), cria e revoga chaves; `/services/[serviceId]` é o painel de API (#37).
 6. `/forgot-password`: recupera a senha por um link de 30 minutos.
 
 **Para o operador SCF:**

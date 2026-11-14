@@ -67,7 +67,7 @@ export function CreateServiceForm() {
       </form>
       <KeyReveal state={state} />
       {state.status === "created" && (
-        <Link href={`/services/${state.serviceId}`} className="mt-2 inline-block text-sm underline">
+        <Link href={`/services/${state.serviceId}/keys`} className="mt-2 inline-block text-sm underline">
           Manage this service&apos;s keys
         </Link>
       )}

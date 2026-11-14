@@ -10,7 +10,7 @@
 // tenant removido recusada (e2e_test.go) e chave revogada ou tenant removido
 // DEPOIS de aceitos recusados em até o cache, com reativação, e chave de A
 // mandando dados que dizem ser de B, gravados como A (isolation_test.go). Cada painel novo
-// (#28, #29 e #37) acrescenta os próprios casos a esta suíte.
+// (#28, #29, #37 e #38) acrescenta os próprios casos a esta suíte.
 import { randomUUID } from "node:crypto";
 import { hashPassword } from "better-auth/crypto";
 import { and, count, eq, inArray, isNull, like } from "drizzle-orm";
@@ -34,6 +34,9 @@ import {
 import OperatorTenantPage from "@/app/(private)/operator/tenants/[tenantId]/page";
 import OperatorWebPage from "@/app/(private)/operator/web/page";
 import ServicePage from "@/app/(private)/services/[serviceId]/page";
+import KeysPage from "@/app/(private)/services/[serviceId]/keys/page";
+import { getServiceDashboard } from "@/lib/data/api-metrics";
+import { resolvePeriod } from "@/lib/period";
 import SitePage from "@/app/(private)/sites/[siteId]/page";
 import { createKeyAction, createServiceAction, revokeKeyAction } from "@/app/(private)/services/actions";
 import { createSiteAction } from "@/app/(private)/sites/actions";
@@ -171,6 +174,9 @@ async function cleanup() {
     (t) => t.id,
   );
   if (ids.length > 0) {
+    for (const t of ["api_metric_1m", "api_metric_1h", "api_metric_1d"]) {
+      await sql`DELETE FROM ${sql(t)} WHERE tenant_id IN ${sql(ids)}`;
+    }
     await db.delete(ingestKey).where(inArray(ingestKey.tenantId, ids));
     await db.delete(apiService).where(inArray(apiService.tenantId, ids));
     await db.delete(site).where(inArray(site.tenantId, ids));
@@ -211,6 +217,8 @@ describe("membro de A diante dos recursos de B", () => {
     await expect(ServicePage({ params: Promise.resolve({ serviceId: B.serviceId }) })).rejects.toMatchObject(
       NOT_FOUND,
     );
+    await expect(KeysPage({ params: Promise.resolve({ serviceId: A.serviceId }) })).resolves.toBeTruthy();
+    await expect(KeysPage({ params: Promise.resolve({ serviceId: B.serviceId }) })).rejects.toMatchObject(NOT_FOUND);
 
     // Site e chave ainda não têm página própria; a camada que as páginas vão
     // usar já devolve nulo (a página chama notFound()).
@@ -450,6 +458,44 @@ describe("painel web do site (#28)", () => {
     asOperator();
     await expect(sitePage(A.siteId)).rejects.toMatchObject(NOT_FOUND);
     expect(umami.requests).toEqual([]);
+  });
+});
+
+describe("painel de API do serviço (#37)", () => {
+  const servicePage = (serviceId: string) =>
+    ServicePage({ params: Promise.resolve({ serviceId }), searchParams: Promise.resolve({}) });
+
+  // Uma linha por minuto recente, gravada direto como faria o coletor.
+  async function metric(tenantId: string, serviceId: string, count: number) {
+    const at = new Date(Date.now() - 60_000);
+    at.setUTCSeconds(0, 0);
+    await sql`
+      INSERT INTO api_metric_1m (bucket_start, tenant_id, api_service_id, route, method, status_code,
+                                 request_count, duration_sum, duration_buckets)
+      VALUES (${at.toISOString()}::timestamptz, ${tenantId}, ${serviceId}, '/isolation', 'GET', 200, ${count}, 0,
+              ${Array.from({ length: 15 }, (_, i) => (i === 2 ? count : 0))}::bigint[])`;
+  }
+
+  it("A vê só as métricas do próprio serviço; o de B é 404 e nulo na camada de dados", async () => {
+    await metric(A.tenantId, A.serviceId, 3);
+    await metric(B.tenantId, B.serviceId, 1000);
+    // Linha impossível pelo coletor (serviço de A com o tenant de B): o painel
+    // filtra pelos dois, então ela também não aparece para A.
+    await metric(B.tenantId, A.serviceId, 500);
+
+    const period = resolvePeriod("24h");
+    const own = await getServiceDashboard(A.ctx, A.serviceId, period);
+    expect(own!.totals.requests).toBe(3);
+    expect(await getServiceDashboard(A.ctx, B.serviceId, period)).toBeNull();
+
+    asMember(A);
+    await expect(servicePage(A.serviceId)).resolves.toBeTruthy();
+    await expect(servicePage(B.serviceId)).rejects.toMatchObject(NOT_FOUND);
+  });
+
+  it("operador abre o painel de um serviço: 404 (D2)", async () => {
+    asOperator();
+    await expect(servicePage(A.serviceId)).rejects.toMatchObject(NOT_FOUND);
   });
 });
 
