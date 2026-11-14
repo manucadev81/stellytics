@@ -46,10 +46,14 @@ test("SPA: conta cada mudança de rota sem recarregar", async ({ page }) => {
   await expectPageviews(website, ["/"]);
   await mark(page);
 
+  // O script junta navegações a menos de 300 ms uma da outra num page view só,
+  // o da rota final. Como uma pessoa, o teste espera cada rota ser contada.
   await page.getByRole("link", { name: "Preços" }).click();
   await expect(page).toHaveTitle("SPA: preços");
+  await expectPageviews(website, ["/", "/precos"]);
   await page.getByRole("link", { name: "Contato" }).click();
   await expect(page).toHaveTitle("SPA: contato");
+  await expectPageviews(website, ["/", "/precos", "/contato"]);
   await page.goBack();
   await expect(page).toHaveURL(/\/precos$/);
 
