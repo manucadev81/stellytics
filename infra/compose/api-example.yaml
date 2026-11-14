@@ -1,0 +1,45 @@
+# Backend de exemplo com dual-export OTLP (#35). Exige o compose.yaml da raiz
+# (coletor no ar) e uma chave de ingestão criada em /services no portal:
+#
+#   NOTIFY_INGEST_KEY=ntf_... docker compose -f compose.yaml \
+#     -f infra/compose/api-example.yaml up -d --wait
+#
+# O app (porta 4010) exporta para o OTel Collector do tenant (tenant-otelcol),
+# que manda o mesmo dado para o "APM próprio" (exporter debug, ver os logs) e
+# para o coletor do notify. Guia em examples/api-backend/README.md.
+# Caminhos relativos à raiz do repositório (diretório do compose.yaml).
+services:
+  example-api:
+    build:
+      context: .
+      dockerfile: examples/api-backend/Dockerfile
+    image: notify-example-api:dev
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tenant-otelcol:4318
+      OTEL_SERVICE_NAME: example-api-backend
+      EXPORT_INTERVAL_MS: ${EXAMPLE_API_EXPORT_INTERVAL_MS:-5000}
+    depends_on:
+      tenant-otelcol:
+        condition: service_started
+    ports:
+      - "127.0.0.1:${EXAMPLE_API_PORT:-4010}:4010"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4010/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  tenant-otelcol:
+    # OpenTelemetry Collector core, a mesma versão do coletor do notify.
+    image: otel/opentelemetry-collector:0.164.0@sha256:28b6d41ac51bff6b41ba5e8fe503569ffb9d6a1ea90f7a78419e86f34e44f750
+    command: ["--config=/etc/otelcol/config.yaml"]
+    environment:
+      NOTIFY_OTLP_ENDPOINT: ${NOTIFY_OTLP_ENDPOINT:-http://collector:4318}
+      NOTIFY_INGEST_KEY: ${NOTIFY_INGEST_KEY:?crie uma chave em /services no portal}
+    volumes:
+      - ./examples/api-backend/otelcol.yaml:/etc/otelcol/config.yaml:ro
+    depends_on:
+      collector:
+        condition: service_healthy
+    restart: unless-stopped

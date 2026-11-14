@@ -82,6 +82,7 @@ O monorepo tem a estrutura do ADR 0002 (issue #11). O código de aplicação at�
 
 - `static-html`, `spa` e `nextjs-ssr` instalam o script como um tenant faria; `examples/README.md` tem os trechos de instalação usados no guia de onboarding (#43). HTML e SPA sobem com `examples/serve.mjs`, que troca `<!-- notify:script -->` pela tag (site em `NOTIFY_WEBSITE_ID`).
 - `examples/e2e` (Playwright): `pnpm --filter @notify/examples-e2e e2e` cria os sites no Umami e no banco `notify`, abre os três exemplos num Chromium e confere os page views no banco do Umami. Roda no job `compose` do CI. O script se chama `e2e`, não `test`, para o turbo não rodá-lo no job `typescript`.
+- `examples/api-backend` (#35): backend Node com OTel e guia de dual-export (SDK e OTel Collector) no `README.md` dele. No Compose pelo override `infra/compose/api-example.yaml` (exige `NOTIFY_INGEST_KEY`); `examples/api-backend/compose-check.sh` cria a chave no banco e confere `api_metric_1m`, no job `compose` do CI. Base para o e2e da #36.
 
 ## Onde está o planejamento
 
