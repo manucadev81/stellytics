@@ -24,6 +24,7 @@ import (
 
 	"github.com/romulospl/notify/services/ingest-web/internal/clientip"
 	"github.com/romulospl/notify/services/ingest-web/internal/config"
+	"github.com/romulospl/notify/services/ingest-web/internal/fingerprint"
 	"github.com/romulospl/notify/services/ingest-web/internal/limit"
 	"github.com/romulospl/notify/services/ingest-web/internal/proof"
 	"github.com/romulospl/notify/services/ingest-web/internal/relay"
@@ -76,6 +77,8 @@ func run(log *slog.Logger) error {
 
 	limits := limit.New(cfg.RateLimit, cfg.RateBurst, 10*time.Minute)
 	go limits.Run(ctx, time.Minute)
+	fps := fingerprint.New(cfg.FingerprintLimit, cfg.FingerprintWindow)
+	go fps.Run(ctx, time.Minute)
 
 	g := &gateway{
 		sites:   site.NewCached(site.PG{Pool: pool}, cfg.SiteCacheTTL),
@@ -83,6 +86,7 @@ func run(log *slog.Logger) error {
 		limits:  limits,
 		ips:     clientip.Resolver{Trusted: cfg.TrustedProxies},
 		proofs:  proof.New(secret, cfg.ProofTTL, cfg.ProofBits),
+		fps:     fps,
 		scripts: scripts,
 		log:     log,
 	}

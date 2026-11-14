@@ -124,6 +124,9 @@ services:
       # Chave dos desafios da prova de execução de JS (#25), com 32+ caracteres.
       PROOF_SECRET: ${INGEST_PROOF_SECRET:-dev-only-ingest-proof-secret-change-me}
       PROOF_BITS: ${INGEST_PROOF_BITS:-12}
+      # Máximo de fingerprints distintas por IP truncado na janela (#26).
+      FINGERPRINT_LIMIT: ${INGEST_FINGERPRINT_LIMIT:-50}
+      FINGERPRINT_WINDOW: ${INGEST_FINGERPRINT_WINDOW:-10m}
     depends_on:
       postgres:
         condition: service_healthy

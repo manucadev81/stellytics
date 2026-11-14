@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/romulospl/notify/services/ingest-web/internal/clientip"
+	"github.com/romulospl/notify/services/ingest-web/internal/fingerprint"
 	"github.com/romulospl/notify/services/ingest-web/internal/proof"
 	"github.com/romulospl/notify/services/ingest-web/internal/relay"
 	"github.com/romulospl/notify/services/ingest-web/internal/site"
@@ -28,6 +29,11 @@ type sender interface {
 	Send(ctx context.Context, ev relay.Event, userAgent string, truncatedIP netip.Addr) error
 }
 
+// fingerprints é a parte do fingerprint.Counter que o handler usa.
+type fingerprints interface {
+	Allow(ip netip.Addr, fp uint64) bool
+}
+
 // limiter é a parte do limit.Limiter que o handler usa.
 type limiter interface {
 	Allow(key netip.Addr) bool
@@ -39,6 +45,7 @@ type gateway struct {
 	limits  limiter
 	ips     clientip.Resolver
 	proofs  *proof.Issuer
+	fps     fingerprints
 	scripts *os.Root // nil desliga /s/
 	log     *slog.Logger
 }
@@ -143,6 +150,15 @@ func (g *gateway) event(w http.ResponseWriter, r *http.Request) {
 	// mesma resposta do sucesso, para não dar pista a quem testa IDs, e o evento
 	// é descartado.
 	if !active {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	// Muitos navegadores diferentes no mesmo IP truncado (#26): as fingerprints
+	// além do limite são descartadas, com a mesma resposta do sucesso.
+	fp := fingerprint.Of(r.UserAgent(), r.Header.Get("Accept-Language"), ev.Payload.Language, ev.Payload.Screen)
+	if !g.fps.Allow(truncated, fp) {
+		g.log.Debug("evento descartado", "reason", "fingerprints demais no IP")
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}

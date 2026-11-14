@@ -20,7 +20,8 @@ func TestLoadDefaults(t *testing.T) {
 	if c.ListenAddr != ":8080" || c.ClientIPHeader != "x-notify-client-ip" ||
 		c.RateLimit != 20 || c.RateBurst != 40 || c.SiteCacheTTL != time.Minute ||
 		c.ScriptDir != "" || len(c.TrustedProxies) != 0 || c.UmamiURL.Host != "umami:3000" ||
-		c.ProofSecret != nil || c.ProofBits != 12 || c.ProofTTL != 10*time.Minute {
+		c.ProofSecret != nil || c.ProofBits != 12 || c.ProofTTL != 10*time.Minute ||
+		c.FingerprintLimit != 50 || c.FingerprintWindow != 10*time.Minute {
 		t.Errorf("padrões inesperados: %+v", c)
 	}
 }
@@ -58,6 +59,8 @@ func TestLoadErrors(t *testing.T) {
 		"segredo curto":    {"DATABASE_URL": "x", "UMAMI_URL": "http://u", "PROOF_SECRET": "curto"},
 		"bits demais":      {"DATABASE_URL": "x", "UMAMI_URL": "http://u", "PROOF_BITS": "25"},
 		"prova longa":      {"DATABASE_URL": "x", "UMAMI_URL": "http://u", "PROOF_TTL": "2h"},
+		"limite negativo":  {"DATABASE_URL": "x", "UMAMI_URL": "http://u", "FINGERPRINT_LIMIT": "-1"},
+		"janela curta":     {"DATABASE_URL": "x", "UMAMI_URL": "http://u", "FINGERPRINT_WINDOW": "30s"},
 	}
 	for name, m := range cases {
 		if _, err := Load(env(m)); err == nil {
