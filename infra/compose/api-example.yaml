@@ -7,10 +7,11 @@
 # O app (porta 4010) exporta para o OTel Collector do tenant (tenant-otelcol),
 # que manda o mesmo dado para o "APM próprio" (exporter debug, ver os logs) e
 # para o coletor do notify. Guia em examples/api-backend/README.md.
+# Caminhos relativos à raiz do repositório (diretório do compose.yaml).
 services:
   example-api:
     build:
-      context: ../..
+      context: .
       dockerfile: examples/api-backend/Dockerfile
     image: notify-example-api:dev
     environment:
@@ -37,7 +38,7 @@ services:
       NOTIFY_OTLP_ENDPOINT: ${NOTIFY_OTLP_ENDPOINT:-http://collector:4318}
       NOTIFY_INGEST_KEY: ${NOTIFY_INGEST_KEY:?crie uma chave em /services no portal}
     volumes:
-      - ../../examples/api-backend/otelcol.yaml:/etc/otelcol/config.yaml:ro
+      - ./examples/api-backend/otelcol.yaml:/etc/otelcol/config.yaml:ro
     depends_on:
       collector:
         condition: service_healthy

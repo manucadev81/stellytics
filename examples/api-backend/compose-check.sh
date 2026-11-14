@@ -7,9 +7,9 @@ set -eu
 
 psql() { docker compose exec -T postgres psql -U postgres -d notify -v ON_ERROR_STOP=1 -Atq "$@"; }
 
-suffix=$(tr -dc 'a-z0-9' </dev/urandom | head -c 10)
-prefix=$(tr -dc 'a-z2-7' </dev/urandom | head -c 8)
-secret=$(tr -dc 'A-Za-z0-9_-' </dev/urandom | head -c 43)
+suffix=$({ tr -dc 'a-z0-9' </dev/urandom 2>/dev/null; } | head -c 10)
+prefix=$({ tr -dc 'a-z2-7' </dev/urandom 2>/dev/null; } | head -c 8)
+secret=$({ tr -dc 'A-Za-z0-9_-' </dev/urandom 2>/dev/null; } | head -c 43)
 key="ntf_${prefix}_${secret}"
 
 tenant=$(psql -c "
