@@ -23,8 +23,12 @@ const lists: Record<string, string> = {
   "Peter Lowe": "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=adblockplus&showintro=0&mimetype=plaintext",
 };
 
-// Hosts que não podem ser bloqueados: o exemplo neutro da documentação e os passados na linha de comando.
-const requiredHosts = ["gw.example.com", ...process.argv.slice(2)];
+// Hosts que não podem ser bloqueados: o exemplo neutro da documentação e os passados na linha de
+// comando (aceita "e.foo.org" ou "https://e.foo.org/").
+const requiredHosts = [
+  "gw.example.com",
+  ...process.argv.slice(2).map((arg) => (arg.includes("://") ? new URL(arg).host : arg.replace(/\/.*$/, ""))),
+];
 
 // Subdomínios que alguém poderia escolher em produção. Só informativo: mostra quais nomes evitar.
 const candidateHosts = [
@@ -107,18 +111,21 @@ const texts = Object.fromEntries(
   ),
 );
 
-console.log(`Listas baixadas em ${new Date().toISOString()}:`);
-for (const [name, text] of Object.entries(texts)) {
-  const rules = text.split("\n").filter((line) => line.trim() && !line.startsWith("!")).length;
-  const version = /^! (?:Version|Last modified):\s*(.+)$/m.exec(text)?.[1]?.trim() ?? "sem versão";
-  console.log(`  ${name}: ${rules} linhas de regra (${version})`);
-  // Lista vazia ou truncada faria o teste passar sem testar nada.
-  if (rules < 50) throw new Error(`a lista ${name} veio com só ${rules} regras`);
-}
-
 // O veredito vem das listas juntas, como no navegador (uma exceção de uma lista vale para as outras).
 const combined = engineFor(Object.values(texts).join("\n"));
 const perList = Object.entries(texts).map(([name, text]) => [name, engineFor(text)] as const);
+
+// Cada lista precisa virar regras de rede de verdade: uma página de erro, captcha ou limite de taxa
+// devolvida com 200 tem linhas de texto, mas nenhuma regra, e faria o teste passar sem testar nada.
+const MIN_NETWORK_FILTERS = 20;
+console.log(`Listas baixadas em ${new Date().toISOString()}:`);
+for (const [name, engine] of perList) {
+  const text = texts[name]!;
+  const filters = engine.getFilters().networkFilters.length;
+  const version = /^! (?:Version|Last modified):\s*(.+)$/m.exec(text)?.[1]?.trim() ?? "sem versão";
+  console.log(`  ${name}: ${filters} regras de rede (${version})`);
+  if (filters < MIN_NETWORK_FILTERS) throw new Error(`a lista ${name} virou só ${filters} regras de rede`);
+}
 
 // Devolve as regras que bloqueiam a requisição, com a lista de origem, ou [] se ela passa.
 function blockedBy(host: string, probe: Probe, sourceUrl: string): string[] {
@@ -162,6 +169,12 @@ for (const host of requiredHosts) {
   console.log(`  ${blocks.length === 0 ? "ok       " : "BLOQUEADO"} ${host}`);
   for (const block of blocks) console.log(`    ${block}`);
 }
+
+// sendBeacon vira uma requisição do tipo ping, que a EasyPrivacy bloqueia de terceiros ($ping,3p).
+// Informativo: mostra por que o script usa fetch com keepalive e nunca sendBeacon.
+const beacon = blockedBy(requiredHosts[0]!, { label: "POST /e (sendBeacon)", path: "/e", type: "ping" }, sources[0]!);
+console.log("\nPOST /e como sendBeacon (informativo; o script usa fetch):");
+console.log(`  ${beacon.length === 0 ? "ok       " : "bloqueado"} ${beacon[0] ?? ""}`);
 
 console.log("\nSubdomínios candidatos (informativo):");
 for (const host of candidateHosts) {

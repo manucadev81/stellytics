@@ -36,7 +36,9 @@ O script (`scripts/check-adblock.ts`) usa o matcher de regras de rede do [`@ghos
 
 O veredito vem de todas as listas juntas, como no navegador (uma exceção de uma lista vale para as outras); quando algo é bloqueado, a saída mostra a regra e a lista de origem. Antes de valer, o resultado passa por controles que precisam ser bloqueados (`/umami.js` e `/api/collect` no host do gateway e o `analytics.js` do Google). Se algum controle passar, o matcher ou as listas quebraram e o check falha. Ele também falha se uma lista vier vazia ou não baixar.
 
-O job `adblock` do CI roda o check em todo PR e push na `main`. Como as listas mudam todo dia, uma falha nesse job sem mudança no código quer dizer que uma regra nova pegou o script ou um endpoint: veja a regra na saída e decida entre pedir a correção na lista ou trocar o nome.
+O workflow `.github/workflows/adblock.yml` roda o check nos PRs que mexem no script ou nas rotas do gateway, em todo push na `main` que mexa nisso e uma vez por dia. Ele fica fora do agregador `ci` de propósito: as listas mudam todo dia, e uma regra nova não pode deixar vermelho um PR que não tem nada com isso. Uma falha sem mudança no código quer dizer que uma regra nova pegou o script ou um endpoint: veja a regra na saída e decida entre pedir a correção na lista ou trocar o nome.
+
+Cada lista precisa virar pelo menos 20 regras de rede depois de interpretada; uma página de erro ou captcha devolvida com `200` falha o check em vez de passar em branco. O check carrega as regras de todos os ramos `!#if` (Firefox, mobile etc.), então é um pouco mais rígido que o uBlock Origin num navegador só: pode dar um falso vermelho, nunca um falso verde.
 
 ## Resultado
 
@@ -67,3 +69,8 @@ Para conferir no navegador, com o ambiente local (`docker compose up -d --wait`)
 6. Confira que o pageview aparece no painel do site no portal.
 
 Anote a data, o navegador e a versão do uBlock Origin ao registrar o resultado aqui.
+
+## Não use `sendBeacon`
+
+O navegador classifica o `navigator.sendBeacon` como requisição do tipo `ping`, e a EasyPrivacy bloqueia todo `ping` de terceiro (regra `$ping,3p`). Por isso o script manda os eventos com `fetch` e `keepalive: true`, que é do tipo `xmlhttprequest` e passa. O check mostra esse caso na parte informativa da saída. Se alguém trocar o envio para `sendBeacon`, os eventos de quem usa uBlock Origin somem.
+
