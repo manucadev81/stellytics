@@ -2,7 +2,12 @@
 # Confere o backend de exemplo no Compose (#35): cria um tenant com uma chave
 # de ingestão, sobe infra/compose/api-example.yaml, faz requisições e espera as
 # linhas em api_metric_1m. Rodar na raiz do repositório, com o compose.yaml no
-# ar. Apaga o tenant no fim. O e2e da #36 vai além disso.
+# ar. Apaga o tenant no fim.
+#
+# Ponta a ponta do pipeline de API (#36): confere também status, latência
+# (buckets somando a contagem) e serviço; manda direto ao coletor um trace e um
+# log alegando ser de outro tenant e falha se a métrica cair no tenant errado
+# ou se o marcador do trace/log aparecer em coluna de texto do banco notify.
 set -eu
 
 psql() { docker compose exec -T postgres psql -U postgres -d notify -v ON_ERROR_STOP=1 -Atq "$@"; }
@@ -20,13 +25,23 @@ service=$(psql -c "INSERT INTO api_service (tenant_id, name) VALUES ('$tenant', 
 psql -c "INSERT INTO ingest_key (api_service_id, tenant_id, prefix, key_hash, created_by)
   VALUES ('$service', '$tenant', '$prefix', sha256(convert_to('$key', 'UTF8')), 'api-example-$suffix')"
 
+# Segundo serviço do mesmo tenant, só com spans (a D9 ignora spans de serviço
+# que já manda a métrica).
+prefix2=$({ tr -dc 'a-z2-7' </dev/urandom 2>/dev/null; } | head -c 8)
+key2="ntf_${prefix2}_${secret}"
+service2=$(psql -c "INSERT INTO api_service (tenant_id, name) VALUES ('$tenant', 'spans') RETURNING id")
+psql -c "INSERT INTO ingest_key (api_service_id, tenant_id, prefix, key_hash, created_by)
+  VALUES ('$service2', '$tenant', '$prefix2', sha256(convert_to('$key2', 'UTF8')), 'api-example-$suffix')"
+decoy=$(psql -c "INSERT INTO tenant (name, slug, status) VALUES ('decoy-$suffix', 'decoy-$suffix', 'active') RETURNING id")
+
 cleanup() {
   NOTIFY_INGEST_KEY=x docker compose -f compose.yaml -f infra/compose/api-example.yaml \
     rm -sf example-api tenant-otelcol >/dev/null 2>&1 || true
   psql -c "DELETE FROM api_metric_1m WHERE tenant_id = '$tenant';
     DELETE FROM ingest_key WHERE tenant_id = '$tenant';
     DELETE FROM api_service WHERE tenant_id = '$tenant';
-    DELETE FROM tenant WHERE id = '$tenant';
+    DELETE FROM api_metric_1m WHERE tenant_id = '$decoy';
+    DELETE FROM tenant WHERE id IN ('$tenant', '$decoy');
     DELETE FROM \"user\" WHERE id = 'api-example-$suffix';" || true
 }
 trap cleanup EXIT
@@ -55,4 +70,48 @@ if [ "$total" -lt 9 ]; then
 fi
 # A rota sem padrão conhecido foi normalizada pelo coletor do notify.
 psql -c "SELECT count(*) FROM api_metric_1m WHERE tenant_id = '$tenant' AND route = '/x/{id}' AND status_code = 404" | grep -qx 1
-echo "ok: $total requisições"
+# Status certo e latência: os buckets de cada linha somam a contagem.
+psql -c "SELECT count(*) FROM api_metric_1m WHERE tenant_id = '$tenant' AND route = '/ledgers/{sequence}' AND status_code = 200 AND request_count = 3" | grep -qx 1
+psql -c "SELECT count(*) FROM api_metric_1m WHERE tenant_id = '$tenant' AND api_service_id = '$service'
+  AND ( duration_sum <= 0
+       OR (SELECT sum(b) FROM unnest(duration_buckets) b) <> request_count)" | grep -qx 0
+
+# Trace e log enviados direto ao coletor alegando ser do tenant decoy.
+marker="e2emarker$suffix"
+trace=5b8efff798038103d269b633813fc60c
+now=$(date +%s)000000000
+claim='{"key":"notify.tenant.id","value":{"stringValue":"'$decoy'"}},{"key":"service.name","value":{"stringValue":"'$marker'"}}'
+otlp=http://127.0.0.1:${COLLECTOR_HTTP_PORT:-4318}
+curl -fsS -H "Authorization: Bearer $key2" -H 'Content-Type: application/json' "$otlp/v1/traces" -d '{"resourceSpans":[{"resource":{"attributes":['"$claim"']},"scopeSpans":[{"spans":[{"traceId":"'$trace'","spanId":"eee19b7ec3c1b174","name":"'$marker'","kind":2,"startTimeUnixNano":"'$now'","endTimeUnixNano":"'$now'","attributes":[{"key":"http.request.method","value":{"stringValue":"GET"}},{"key":"http.route","value":{"stringValue":"/'$marker'/{id}"}},{"key":"http.response.status_code","value":{"intValue":"201"}},{"key":"notify.tenant.id","value":{"stringValue":"'$decoy'"}}]}]}]}]}' >/dev/null
+curl -fsS -H "Authorization: Bearer $key2" -H 'Content-Type: application/json' "$otlp/v1/logs" -d '{"resourceLogs":[{"resource":{"attributes":['"$claim"']},"scopeLogs":[{"logRecords":[{"timeUnixNano":"'$now'","body":{"stringValue":"'$marker'-log"}}]}]}]}' >/dev/null
+
+for _ in $(seq 1 30); do
+  n=$(psql -c "SELECT count(*) FROM api_metric_1m WHERE route = '/$marker/{id}'")
+  [ "$n" -ge 1 ] && break
+  sleep 2
+done
+# A métrica do span existe e ficou no tenant da chave, nunca no decoy.
+psql -c "SELECT count(*) FROM api_metric_1m WHERE route = '/$marker/{id}' AND tenant_id = '$tenant' AND api_service_id = '$service2' AND status_code = 201" | grep -qx 1 \
+  || { echo "métrica do span não está no tenant da chave"; exit 1; }
+psql -c "SELECT count(*) FROM api_metric_1m WHERE tenant_id = '$decoy'" | grep -qx 0 \
+  || { echo "métrica atribuída ao tenant alegado pelo cliente"; exit 1; }
+
+# Nenhum trace, span ou log persistido: o marcador (nome do span, service.name,
+# corpo do log) e o trace ID não aparecem em coluna de texto nenhuma fora das
+# tabelas api_metric_* (onde só a rota agregada pode conter o marcador).
+psql -c "CREATE TEMP TABLE IF NOT EXISTS e2e_found (n bigint);
+DO \$\$
+DECLARE r record; n bigint; total bigint := 0;
+BEGIN
+  FOR r IN SELECT table_schema, table_name, column_name FROM information_schema.columns
+    WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+      AND data_type IN ('text', 'character varying', 'jsonb', 'json')
+      AND table_name NOT LIKE 'api_metric%'
+  LOOP
+    EXECUTE format('SELECT count(*) FROM %I.%I WHERE %I::text LIKE %L OR %I::text LIKE %L',
+      r.table_schema, r.table_name, r.column_name, '%$marker%', r.column_name, '%$trace%') INTO n;
+    IF n > 0 THEN RAISE WARNING 'achado em %.%.%', r.table_schema, r.table_name, r.column_name; total := total + n; END IF;
+  END LOOP;
+  IF total > 0 THEN RAISE EXCEPTION 'trace/span/log persistido (% linhas)', total; END IF;
+END \$\$;"
+echo "ok: $total requisições, tenant certo, nada de trace/log persistido"
