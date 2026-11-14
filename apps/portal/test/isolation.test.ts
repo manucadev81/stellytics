@@ -35,6 +35,7 @@ import OperatorTenantPage from "@/app/(private)/operator/tenants/[tenantId]/page
 import OperatorWebPage from "@/app/(private)/operator/web/page";
 import ServicePage from "@/app/(private)/services/[serviceId]/page";
 import KeysPage from "@/app/(private)/services/[serviceId]/keys/page";
+import OperatorApiPage from "@/app/(private)/operator/api/page";
 import { getServiceDashboard } from "@/lib/data/api-metrics";
 import { resolvePeriod } from "@/lib/period";
 import SitePage from "@/app/(private)/sites/[siteId]/page";
@@ -246,13 +247,14 @@ describe("membro de A diante dos recursos de B", () => {
     expect(await tenantStatus(B.tenantId)).toBe("active");
   });
 
-  it("abre /operator, o painel web global e o detalhe de um tenant: 404", async () => {
+  it("abre /operator, os painéis globais (web e API) e o detalhe de um tenant: 404", async () => {
     asMember(A);
     await expect(OperatorPage()).rejects.toMatchObject(NOT_FOUND);
     await expect(OperatorWebPage({ searchParams: Promise.resolve({ compare: [A.tenantId, B.tenantId] }) })).rejects.toMatchObject(
       NOT_FOUND,
     );
     expect(umami.requests).toEqual([]);
+    await expect(OperatorApiPage({ searchParams: Promise.resolve({ q: "tenant-b" }) })).rejects.toMatchObject(NOT_FOUND);
     await expect(
       OperatorTenantPage({ params: Promise.resolve({ tenantId: B.tenantId }) }),
     ).rejects.toMatchObject(NOT_FOUND);
