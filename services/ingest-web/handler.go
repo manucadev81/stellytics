@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -14,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/romulospl/notify/services/ingest-web/internal/clientip"
+	"github.com/romulospl/notify/services/ingest-web/internal/proof"
 	"github.com/romulospl/notify/services/ingest-web/internal/relay"
 	"github.com/romulospl/notify/services/ingest-web/internal/site"
 )
@@ -36,6 +38,7 @@ type gateway struct {
 	relay   sender
 	limits  limiter
 	ips     clientip.Resolver
+	proofs  *proof.Issuer
 	scripts *os.Root // nil desliga /s/
 	log     *slog.Logger
 }
@@ -44,6 +47,7 @@ func (g *gateway) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /e", g.event)
 	mux.HandleFunc("OPTIONS /e", g.preflight)
+	mux.HandleFunc("GET /c", g.challenge)
 	mux.HandleFunc("GET /healthz", healthz)
 	if g.scripts != nil {
 		mux.HandleFunc("GET /s/", g.script)
@@ -121,6 +125,14 @@ func (g *gateway) event(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sem prova de execução de JS válida (#25), o evento é descartado com a
+	// mesma resposta do sucesso.
+	if err := g.proofs.Verify(ev.Payload.Website, ev.Proof.Token, ev.Proof.Nonce); err != nil {
+		g.log.Debug("evento descartado", "reason", err.Error())
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	active, err := g.sites.Active(r.Context(), ev.Payload.Website)
 	if err != nil {
 		g.log.Error("consulta à ingest_site falhou", "err", err)
@@ -141,6 +153,29 @@ func (g *gateway) event(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// challenge entrega o desafio da prova de execução de JS (#25) para o site
+// em ?s=. Não consulta a ingest_site: o desafio não diz se o site existe.
+func (g *gateway) challenge(w http.ResponseWriter, r *http.Request) {
+	cors(w)
+	ip, err := g.ips.FromRequest(r)
+	if err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if !g.limits.Allow(clientip.Truncate(ip)) {
+		http.Error(w, "too many requests", http.StatusTooManyRequests)
+		return
+	}
+	website := r.URL.Query().Get("s")
+	if !relay.IsUUID(website) {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(g.proofs.Challenge(strings.ToLower(website)))
 }
 
 // script serve os arquivos de SCRIPT_DIR. Cada versão fica em /s/vX.Y.Z/ e

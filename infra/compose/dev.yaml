@@ -121,6 +121,9 @@ services:
       RATE_BURST: ${INGEST_RATE_BURST:-40}
       # Curto no ambiente local, para um site novo valer logo.
       SITE_CACHE_TTL: ${INGEST_SITE_CACHE_TTL:-5s}
+      # Chave dos desafios da prova de execução de JS (#25), com 32+ caracteres.
+      PROOF_SECRET: ${INGEST_PROOF_SECRET:-dev-only-ingest-proof-secret-change-me}
+      PROOF_BITS: ${INGEST_PROOF_BITS:-12}
     depends_on:
       postgres:
         condition: service_healthy

@@ -31,6 +31,14 @@ type Config struct {
 	// SiteCacheTTL é quanto tempo uma resposta da ingest_site fica em memória.
 	// No máximo 1 minuto (spec do E2, seção 6).
 	SiteCacheTTL time.Duration
+	// ProofSecret assina os desafios da prova de execução de JS (#25). Vazio,
+	// o gateway sorteia uma chave ao subir, e os tokens emitidos antes de um
+	// reinício (ou por outra réplica) deixam de valer.
+	ProofSecret []byte
+	// ProofBits é a dificuldade da prova: bits zero no começo do SHA-256.
+	ProofBits int
+	// ProofTTL é a validade de um desafio.
+	ProofTTL time.Duration
 }
 
 // Load monta a Config a partir de getenv (normalmente os.Getenv).
@@ -78,6 +86,19 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	if c.SiteCacheTTL, err = parseDuration(getenv("SITE_CACHE_TTL"), time.Minute); err != nil || c.SiteCacheTTL < 0 || c.SiteCacheTTL > time.Minute {
 		errs = append(errs, fmt.Errorf("SITE_CACHE_TTL inválido: %q", getenv("SITE_CACHE_TTL")))
+	}
+
+	if s := getenv("PROOF_SECRET"); s != "" {
+		if len(s) < 32 {
+			errs = append(errs, errors.New("PROOF_SECRET precisa de pelo menos 32 caracteres"))
+		}
+		c.ProofSecret = []byte(s)
+	}
+	if c.ProofBits, err = parseInt(getenv("PROOF_BITS"), 12); err != nil || c.ProofBits < 0 || c.ProofBits > 24 {
+		errs = append(errs, fmt.Errorf("PROOF_BITS inválido (0 a 24): %q", getenv("PROOF_BITS")))
+	}
+	if c.ProofTTL, err = parseDuration(getenv("PROOF_TTL"), 10*time.Minute); err != nil || c.ProofTTL < time.Minute || c.ProofTTL > time.Hour {
+		errs = append(errs, fmt.Errorf("PROOF_TTL inválido (1m a 1h): %q", getenv("PROOF_TTL")))
 	}
 
 	return c, errors.Join(errs...)

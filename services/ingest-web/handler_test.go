@@ -18,6 +18,7 @@ import (
 
 	"github.com/romulospl/notify/services/ingest-web/internal/clientip"
 	"github.com/romulospl/notify/services/ingest-web/internal/limit"
+	"github.com/romulospl/notify/services/ingest-web/internal/proof"
 	"github.com/romulospl/notify/services/ingest-web/internal/relay"
 )
 
@@ -79,6 +80,7 @@ func newSetup(t *testing.T, opts ...func(*gateway)) setup {
 		relay:  relay.NewClient(base, "x-notify-client-ip", us.Client()),
 		limits: limit.New(1000, 1000, time.Minute),
 		ips:    clientip.Resolver{},
+		proofs: testProofs,
 		log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	for _, o := range opts {
@@ -89,8 +91,18 @@ func newSetup(t *testing.T, opts ...func(*gateway)) setup {
 	return setup{gw: gw, umami: umami, server: srv}
 }
 
+// testProofs emite os desafios nos testes, com dificuldade baixa.
+var testProofs = proof.New([]byte("chave-de-teste-com-pelo-menos-32-bytes"), 10*time.Minute, 4)
+
+// proofField é o campo "p" com uma prova válida para website, como o script
+// manda depois de resolver o desafio de GET /c.
+func proofField(website string) string {
+	c := testProofs.Challenge(strings.ToLower(website))
+	return `"p":{"t":"` + c.Token + `","n":"` + proof.Solve(c.Token, c.Bits) + `"}`
+}
+
 func eventBody(website string) string {
-	return `{"type":"event","payload":{"website":"` + website + `","hostname":"example.org",` +
+	return `{"type":"event",` + proofField(website) + `,"payload":{"website":"` + website + `","hostname":"example.org",` +
 		`"url":"/docs?x=1","referrer":"https://ref.example/","title":"Docs","language":"pt-BR","screen":"1920x1080"}}`
 }
 
@@ -147,7 +159,7 @@ func TestEventRelayedToUmami(t *testing.T) {
 
 func TestEventDropsFieldsOutsideAllowlist(t *testing.T) {
 	s := newSetup(t)
-	body := `{"type":"event","extra":1,"payload":{"website":"` + activeSite + `","url":"/",` +
+	body := `{"type":"event","extra":1,` + proofField(activeSite) + `,"payload":{"website":"` + activeSite + `","url":"/",` +
 		`"id":"user-42","ip":"203.0.113.77","userAgent":"curl","timestamp":1,"data":{"a":1},` +
 		`"browser":"x","os":"y","device":"z","name":"signup","tag":"t"}}`
 	if resp := post(t, s, "text/plain", body); resp.StatusCode != http.StatusNoContent {

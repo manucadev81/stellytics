@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanReferrer, NAVIGATION_DELAY_MS, pageUrl, start, type EventPayload } from "../src/tracker.ts";
+import { createHash } from "node:crypto";
+import {
+  cleanReferrer,
+  leadingZeroBits,
+  NAVIGATION_DELAY_MS,
+  pageUrl,
+  solve,
+  start,
+  type EventPayload,
+} from "../src/tracker.ts";
 
 const SITE = "6f1c2b9e-4a3d-4c1e-9b7a-2d5e8f0a1b3c";
 
@@ -9,8 +18,27 @@ function script(attrs: Record<string, string>): HTMLScriptElement {
   return el;
 }
 
-function sent(fetchMock: ReturnType<typeof vi.fn>): EventPayload[] {
-  return fetchMock.mock.calls.map(([, init]) => JSON.parse((init as RequestInit).body as string));
+const TOKEN = "dGVzdGUtZGUtdG9rZW4tY29tLTMyLWJ5dGVzLWV4YXRvcw";
+const BITS = 6;
+
+// Gateway falso: GET /c devolve o desafio; POST /e aceita o evento.
+function gateway(challenge: Response | (() => Response) = () => Response.json({ t: TOKEN, d: BITS })) {
+  return vi.fn(async (url: string, init?: RequestInit) => {
+    if (init?.method === "POST") return new Response(null, { status: 204 });
+    return typeof challenge === "function" ? challenge() : challenge;
+  });
+}
+
+function posts(fetchMock: ReturnType<typeof gateway>): [string, RequestInit][] {
+  return fetchMock.mock.calls.filter(([, init]) => init?.method === "POST") as [string, RequestInit][];
+}
+
+function sent(fetchMock: ReturnType<typeof gateway>): EventPayload[] {
+  return posts(fetchMock).map(([, init]) => JSON.parse(init.body as string));
+}
+
+function sha256(text: string): Uint8Array {
+  return new Uint8Array(createHash("sha256").update(text).digest());
 }
 
 describe("pageUrl", () => {
@@ -34,13 +62,29 @@ describe("cleanReferrer", () => {
   });
 });
 
+describe("prova de execução de JS", () => {
+  it("conta os bits zero do começo", () => {
+    expect(leadingZeroBits(new Uint8Array([0x80]))).toBe(0);
+    expect(leadingZeroBits(new Uint8Array([0x01]))).toBe(7);
+    expect(leadingZeroBits(new Uint8Array([0x00, 0x10]))).toBe(11);
+    expect(leadingZeroBits(new Uint8Array([0x00, 0x00]))).toBe(16);
+  });
+
+  it("acha um nonce com a dificuldade pedida", async () => {
+    const nonce = await solve(TOKEN, 10);
+    expect(nonce).toMatch(/^\d+$/);
+    expect(leadingZeroBits(sha256(`${TOKEN}:${nonce}`))).toBeGreaterThanOrEqual(10);
+  });
+});
+
 describe("start", () => {
-  let fetchMock: ReturnType<typeof vi.fn>;
+  const SRC = "https://in.example/s/v1.1.0/n.js";
+  let fetchMock: ReturnType<typeof gateway>;
   let stop = () => {};
 
   beforeEach(() => {
-    vi.useFakeTimers();
-    fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    fetchMock = gateway();
     vi.stubGlobal("fetch", fetchMock);
     history.replaceState(null, "", "/inicio?utm_campaign=lancamento&email=x@y.z");
     document.title = "Início";
@@ -52,36 +96,75 @@ describe("start", () => {
     vi.unstubAllGlobals();
   });
 
-  it("envia o page view ao gateway de onde o script veio", () => {
-    stop = start(script({ src: "https://in.example/s/v1.0.0/n.js", "data-site": SITE }));
+  it("resolve o desafio e envia o page view ao gateway de onde o script veio", async () => {
+    stop = start(script({ src: SRC, "data-site": SITE }));
+    await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
 
-    expect(fetchMock).toHaveBeenCalledOnce();
-    const [url, init] = fetchMock.mock.calls[0]!;
+    const [challengeUrl, challengeInit] = fetchMock.mock.calls[0]!;
+    expect(challengeUrl).toBe(`https://in.example/c?s=${SITE}`);
+    expect(challengeInit).toMatchObject({ credentials: "omit" });
+
+    const [url, init] = posts(fetchMock)[0]!;
     expect(url).toBe("https://in.example/e");
     expect(init).toMatchObject({ method: "POST", credentials: "omit", keepalive: true });
-    expect(sent(fetchMock)[0]).toEqual({
-      type: "event",
-      payload: {
-        website: SITE,
-        hostname: location.hostname,
-        url: "/inicio?utm_campaign=lancamento",
-        referrer: "",
-        title: "Início",
-        language: navigator.language,
-        screen: `${screen.width}x${screen.height}`,
-      },
+    const event = sent(fetchMock)[0]!;
+    expect(event.payload).toEqual({
+      website: SITE,
+      hostname: location.hostname,
+      url: "/inicio?utm_campaign=lancamento",
+      referrer: "",
+      title: "Início",
+      language: navigator.language,
+      screen: `${screen.width}x${screen.height}`,
     });
+    expect(event.p.t).toBe(TOKEN);
+    expect(leadingZeroBits(sha256(`${TOKEN}:${event.p.n}`))).toBeGreaterThanOrEqual(BITS);
   });
 
-  it("não faz nada sem data-site válido", () => {
-    start(script({ src: "https://in.example/s/v1.0.0/n.js" }));
-    start(script({ src: "https://in.example/s/v1.0.0/n.js", "data-site": "abc" }));
+  it("não faz nada sem data-site válido", async () => {
+    start(script({ src: SRC }));
+    start(script({ src: SRC, "data-site": "abc" }));
     start(null);
+    await Promise.resolve();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("conta mudanças de rota em SPA, uma vez por rota", () => {
-    stop = start(script({ src: "https://in.example/s/v1.0.0/n.js", "data-site": SITE }));
+  it("sem desafio, não envia evento e tenta de novo no próximo", async () => {
+    let fail = true;
+    fetchMock = gateway(() => (fail ? new Response(null, { status: 503 }) : Response.json({ t: TOKEN, d: BITS })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    stop = start(script({ src: SRC, "data-site": SITE }));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await new Promise((r) => queueMicrotask(() => r(null)));
+    expect(posts(fetchMock)).toHaveLength(0);
+
+    fail = false;
+    history.pushState(null, "", "/docs");
+    vi.advanceTimersByTime(NAVIGATION_DELAY_MS);
+    await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(sent(fetchMock)[0]!.payload.url).toBe("/docs");
+  });
+
+  it("usa um desafio por página e renova depois de 5 minutos", async () => {
+    stop = start(script({ src: SRC, "data-site": SITE }));
+    await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+
+    history.pushState(null, "", "/a");
+    vi.advanceTimersByTime(NAVIGATION_DELAY_MS);
+    await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(2));
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method !== "POST")).toHaveLength(1);
+
+    vi.advanceTimersByTime(5 * 60_000 + 1);
+    history.pushState(null, "", "/b");
+    vi.advanceTimersByTime(NAVIGATION_DELAY_MS);
+    await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(3));
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method !== "POST")).toHaveLength(2);
+  });
+
+  it("conta mudanças de rota em SPA, uma vez por rota", async () => {
+    stop = start(script({ src: SRC, "data-site": SITE }));
+    await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
 
     history.pushState(null, "", "/docs");
     document.title = "Docs";
@@ -94,21 +177,22 @@ describe("start", () => {
     dispatchEvent(new PopStateEvent("popstate"));
     vi.advanceTimersByTime(NAVIGATION_DELAY_MS);
 
+    await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(3));
     const events = sent(fetchMock).map((e) => e.payload);
     expect(events.map((e) => e.url)).toEqual(["/inicio?utm_campaign=lancamento", "/docs", "/inicio"]);
     expect(events[1]).toMatchObject({ title: "Docs", referrer: `${location.origin}/inicio` });
     expect(events[2]).toMatchObject({ referrer: `${location.origin}/docs` });
   });
 
-  it("não grava cookie nem storage", () => {
+  it("não grava cookie nem storage", async () => {
     const cookie = vi.spyOn(document, "cookie", "set");
     const setItem = vi.spyOn(Storage.prototype, "setItem");
 
-    stop = start(script({ src: "https://in.example/s/v1.0.0/n.js", "data-site": SITE }));
+    stop = start(script({ src: SRC, "data-site": SITE }));
     history.pushState(null, "", "/outra");
     vi.advanceTimersByTime(NAVIGATION_DELAY_MS);
+    await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(2));
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(cookie).not.toHaveBeenCalled();
     expect(setItem).not.toHaveBeenCalled();
     expect(document.cookie).toBe("");
