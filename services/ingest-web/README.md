@@ -17,6 +17,7 @@ Ainda vem: prova de execução de JS (#25), limite de fingerprints por IP (#26),
 | Rota | O que faz |
 |---|---|
 | `POST /e` | Recebe o evento. Aceita JSON com `Content-Type` `text/plain` (o que o script usa, para evitar o preflight de CORS) ou `application/json`. Responde `204` quando o evento foi repassado. |
+| `GET /c?s=<website>` | Desafio da prova de execução de JS (#25): `{"t":"<token>","d":<bits>}`, com `Cache-Control: no-store`. Não consulta a `ingest_site`, então não revela se o site existe. `400` sem UUID em `s`. |
 | `OPTIONS /e` | Preflight de CORS, para clientes que mandem `application/json`. |
 | `GET /s/<caminho>` | Arquivos de `SCRIPT_DIR`, com `Cache-Control: public, max-age=31536000, immutable` e `Access-Control-Allow-Origin: *` (o SRI exige `crossorigin`). Pastas e caminhos fora de `SCRIPT_DIR` dão `404`. |
 | `GET /healthz` | `200 ok`. Não consulta o banco. |
@@ -26,8 +27,10 @@ Nenhuma resposta grava cookie.
 ### Evento aceito
 
 ```json
-{"type":"event","payload":{"website":"<uuid>","hostname":"...","url":"/caminho","referrer":"...","title":"...","language":"pt-BR","screen":"1920x1080"}}
+{"type":"event","p":{"t":"<token>","n":"<nonce>"},"payload":{"website":"<uuid>","hostname":"...","url":"/caminho","referrer":"...","title":"...","language":"pt-BR","screen":"1920x1080"}}
 ```
+
+- `p` é a prova de execução de JS (ver abaixo) e nunca chega ao Umami. Evento sem prova válida recebe `204` e é descartado.
 
 - `type` precisa ser `event`, `website` um UUID e `url` não pode faltar.
 - Tamanhos máximos: `url` e `referrer` 2048 bytes, `title` 500, `hostname` 253, `language` 35, `screen` 16.
@@ -44,6 +47,17 @@ Nenhuma resposta grava cookie.
 | `429` | Taxa acima do limite para o IP truncado |
 | `502` | O Umami recusou o evento ou não respondeu |
 | `503` | Falha ao consultar a `ingest_site` |
+
+## Prova de execução de JS (#25)
+
+1. O script pede `GET /c?s=<website>` uma vez por carregamento de página, e de novo a cada 5 minutos em páginas abertas por muito tempo.
+2. O token tem 32 bytes em base64url: o horário de emissão, 8 bytes aleatórios e um HMAC-SHA256 truncado sobre os dois e o `website`, com a chave `PROOF_SECRET`.
+3. O script procura um `nonce` decimal tal que `SHA-256(token + ":" + nonce)` comece com `d` bits zero (12 por padrão, cerca de 4 mil tentativas com `crypto.subtle`, poucas dezenas de milissegundos).
+4. Cada evento leva `{"t": token, "n": nonce}`. O gateway confere o HMAC, o site, a validade (`PROOF_TTL`, com 1 minuto de tolerância para relógio adiantado) e o trabalho.
+
+Um `curl` que só repete o `POST /e` não tem token válido, e o evento é descartado. Quem reimplementar o fluxo fora do navegador consegue a prova: o objetivo é tirar o tráfego barato e encarecer o resto. A detecção de bots do Umami continua valendo, porque o `User-Agent` é repassado. A #26 completa com o limite de fingerprints por IP.
+
+O `crypto.subtle` só existe em contexto seguro (HTTPS ou `localhost`). Numa página servida por HTTP comum, o script não consegue a prova e não envia eventos.
 
 ## Contrato com o banco: `ingest_site`
 
@@ -78,6 +92,9 @@ Vem do `RemoteAddr`. O `X-Forwarded-For` só é lido quando a conexão chega de 
 | `RATE_LIMIT` | `20` | Eventos por segundo por IP truncado |
 | `RATE_BURST` | `40` | Rajada do token bucket |
 | `SITE_CACHE_TTL` | `1m` (`5s` no Compose) | Cache das respostas da `ingest_site` |
+| `PROOF_SECRET` | sorteada ao subir | Chave dos desafios, com 32+ caracteres. Defina em produção: a chave sorteada não vale entre reinícios nem entre réplicas |
+| `PROOF_BITS` | `12` | Dificuldade da prova (0 a 24) |
+| `PROOF_TTL` | `10m` | Validade de um desafio (1m a 1h) |
 
 ## Desenvolvimento
 

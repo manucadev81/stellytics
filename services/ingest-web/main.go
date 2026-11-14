@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"flag"
 	"fmt"
@@ -24,6 +25,7 @@ import (
 	"github.com/romulospl/notify/services/ingest-web/internal/clientip"
 	"github.com/romulospl/notify/services/ingest-web/internal/config"
 	"github.com/romulospl/notify/services/ingest-web/internal/limit"
+	"github.com/romulospl/notify/services/ingest-web/internal/proof"
 	"github.com/romulospl/notify/services/ingest-web/internal/relay"
 	"github.com/romulospl/notify/services/ingest-web/internal/site"
 )
@@ -65,6 +67,13 @@ func run(log *slog.Logger) error {
 		defer scripts.Close()
 	}
 
+	secret := cfg.ProofSecret
+	if secret == nil {
+		secret = make([]byte, 32)
+		_, _ = rand.Read(secret)
+		log.Warn("PROOF_SECRET vazio: chave sorteada, tokens não valem entre reinícios nem entre réplicas")
+	}
+
 	limits := limit.New(cfg.RateLimit, cfg.RateBurst, 10*time.Minute)
 	go limits.Run(ctx, time.Minute)
 
@@ -73,6 +82,7 @@ func run(log *slog.Logger) error {
 		relay:   relay.NewClient(cfg.UmamiURL, cfg.ClientIPHeader, &http.Client{Timeout: 10 * time.Second}),
 		limits:  limits,
 		ips:     clientip.Resolver{Trusted: cfg.TrustedProxies},
+		proofs:  proof.New(secret, cfg.ProofTTL, cfg.ProofBits),
 		scripts: scripts,
 		log:     log,
 	}

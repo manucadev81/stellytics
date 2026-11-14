@@ -37,13 +37,15 @@ O monorepo tem a estrutura do ADR 0002 (issue #11). O código de aplicação at�
 
 - TypeScript empacotado com esbuild em `n.js` (IIFE). A lógica fica em `src/tracker.ts` e a entrada em `src/index.ts`; os scripts de `scripts/` rodam direto no Node (`.ts`, sem build).
 - **Versão publicada é imutável:** `published/vX.Y.Z/n.js` mais o hash em `published/sri.json`, tudo commitado. Mudou o código? Suba a `version` do `package.json` e rode `pnpm --filter @notify/tracker release`; ele se recusa a sobrescrever uma versão existente. O teste `test/published.test.ts` falha se um arquivo publicado mudar ou se o código atual não bater com a versão do `package.json`. Isso inclui atualização do esbuild que mude o resultado, então ela também exige versão nova.
+- Desde a v1.1.0 o script pede o desafio em `GET /c` e resolve a prova com `crypto.subtle` antes de enviar (só em HTTPS ou `localhost`); a v1.0.0 não tem prova e o gateway descarta os eventos dela.
 - O gateway (#61) serve `published/` em `/s/`. O script manda `POST /e` para a origem de onde foi carregado, com `Content-Type: text/plain` (para evitar o preflight de CORS; o corpo é JSON) e `credentials: "omit"`.
 - Da query string saem só os `utm_*`, e o referenciador vai sem query nem fragmento.
 
 ## Gateway web (`services/ingest-web`)
 
 - `main.go` só monta a configuração e o servidor; rotas em `handler.go`; pacotes em `internal/` (`config`, `clientip`, `limit`, `site`, `relay`). Detalhes de rotas, respostas e variáveis no `README.md` da pasta.
-- Rotas: `POST /e` (JSON com `Content-Type` `text/plain` ou `application/json`, CORS aberto e sem cookie), `GET /s/` (arquivos de `SCRIPT_DIR`, cache imutável de um ano) e `GET /healthz`.
+- Rotas: `POST /e` (JSON com `Content-Type` `text/plain` ou `application/json`, CORS aberto e sem cookie), `GET /c` (desafio da prova de JS), `GET /s/` (arquivos de `SCRIPT_DIR`, cache imutável de um ano) e `GET /healthz`.
+- **Prova de execução de JS (#25):** pacote `internal/proof`. `GET /c?s=<website>` devolve um token assinado com HMAC (`PROOF_SECRET`); o script acha um nonce com `PROOF_BITS` bits zero no SHA-256 e manda `p:{t,n}` em cada evento. Sem prova válida, `204` e descarte. A prova nunca é repassada ao Umami. Nos testes Go, `proof.Solve` faz o papel do script.
 - O payload repassado ao `UMAMI_URL/api/send` é montado de novo só com `website`, `hostname`, `url`, `referrer`, `title`, `language` e `screen`. Nunca repasse `ip`, `userAgent`, `id` ou `timestamp` do cliente: o Umami aceitaria e o cliente poderia trocar IP ou sessão.
 - Ao Umami só chegam `Content-Type`, o `User-Agent` original e o IP **já truncado** (`clientip.Truncate`) no header de `CLIENT_IP_HEADER`. O `X-Forwarded-For` só vale vindo de `TRUSTED_PROXIES`.
 - **Contrato `ingest_site`** (spec do E2, seções 4 e 6): o gateway conecta como `notify_ingest` e só lê `ingest_site(umami_website_id, accepts_ingest)`, criada pela migração `apps/portal/drizzle/0002_ingest_views.sql`. Site recusado recebe a mesma resposta do sucesso (`204`) e o evento é descartado; o cache é de no máximo 1 minuto.
