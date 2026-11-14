@@ -120,16 +120,16 @@ go test -race ./ingest-web/...
 
 O teste de integração do pacote `site` roda quando `DATABASE_URL` aponta para o banco `notify`. Ele precisa dos usuários de `infra/compose/postgres/init/02-ingest-roles.sh` e aplica as migrações do portal quando a visão `ingest_site` não existe. Depois conecta como `notify_ingest`, com a senha `notify_ingest` ou pela URL de `INGEST_DATABASE_URL`.
 
-O teste ponta a ponta precisa do ambiente do Compose no ar:
+O teste ponta a ponta precisa do ambiente do Compose no ar, com o Umami publicado pelo override de desenvolvimento (ele usa a API de administração do Umami):
 
 ```bash
-docker compose up -d --build --wait
+docker compose -f compose.yaml -f infra/compose/umami-port.yaml up -d --build --wait
 ```
 
 ```bash
 go test -tags e2e -count=1 ./ingest-web/e2e/...
 ```
 
-Ele cria um website no Umami pela API (`admin`/`umami`) e um tenant ativo com esse site no banco `notify`. Depois manda page views ao gateway (porta 3002) e confere o que chega ao Umami. O teste de privacidade precisa que o gateway confie no `X-Forwarded-For` do teste: suba o Compose com `INGEST_TRUSTED_PROXIES=172.16.0.0/12,192.168.0.0/16,10.0.0.0/8`, como no CI. As URLs podem ser trocadas por `GATEWAY_URL`, `UMAMI_URL`, `NOTIFY_DATABASE_URL` e `UMAMI_DATABASE_URL`.
+Ele cria um website no Umami pela API (`admin`/`umami`) e um tenant ativo com esse site no banco `notify`. Depois manda page views ao gateway (porta 3002) e confere o que chega ao Umami. O `TestRecorderRecordsNothing` confere que gravação de sessão e heatmaps não gravam nada ([docs/umami.md](../../docs/umami.md)). O teste de privacidade precisa que o gateway confie no `X-Forwarded-For` do teste: suba o Compose com `INGEST_TRUSTED_PROXIES=172.16.0.0/12,192.168.0.0/16,10.0.0.0/8`, como no CI. As URLs podem ser trocadas por `GATEWAY_URL`, `UMAMI_URL`, `NOTIFY_DATABASE_URL` e `UMAMI_DATABASE_URL`.
 
 A imagem (`Dockerfile`, contexto na raiz) é `scratch` com o binário e as versões publicadas do script, copiadas de `packages/tracker/published` quando a pasta existe. O healthcheck do contêiner é `ingest-web -healthcheck`.
