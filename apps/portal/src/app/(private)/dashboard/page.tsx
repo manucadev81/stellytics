@@ -9,7 +9,7 @@ import { requireSession } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Project" };
 
-// Área do tenant. Os painéis web (E4) e de API (E6) entram aqui. As rotas do
+// Área do tenant, com links para os painéis web (E4) e de API (E6). As rotas do
 // tenant não levam o ID do tenant na URL: ele vem da sessão (spec do E2, seção 4).
 export default async function DashboardPage() {
   const { user } = await requireSession();
@@ -35,7 +35,7 @@ export default async function DashboardPage() {
   return (
     <section>
       <h1 className="text-2xl font-semibold">{project.name}</h1>
-      <p className="mt-2 text-zinc-500">Open a website to see its analytics. API analytics will appear here.</p>
+      <p className="mt-2 text-zinc-500">Open a website or an API service to see its analytics.</p>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
         <Link
@@ -68,6 +68,21 @@ export default async function DashboardPage() {
                   {s.name}
                 </Link>
                 <span className="text-zinc-500">{s.domain}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {services.length > 0 && (
+        <>
+          <h2 className="mt-8 text-lg font-semibold">API analytics</h2>
+          <ul className="mt-2 divide-y divide-zinc-200 border-y border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+            {services.map((s) => (
+              <li key={s.id} className="py-2 text-sm">
+                <Link href={`/services/${s.id}`} className="font-medium hover:underline">
+                  {s.name}
+                </Link>
               </li>
             ))}
           </ul>

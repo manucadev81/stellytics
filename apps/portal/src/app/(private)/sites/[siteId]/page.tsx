@@ -93,7 +93,6 @@ export default async function SitePage({
     pageviews: p.pageviews,
     visitors: p.visitors,
   }));
-  const last = points.length - 1;
   const empty = totals.pageviews === 0;
 
   return (
@@ -136,7 +135,7 @@ export default async function SitePage({
         </p>
         {empty && <p className="mt-2 text-sm text-zinc-500">No page views in this period yet.</p>}
         <div className="mt-4">
-          <PageviewsChart points={points} axisLabels={last > 1 ? [0, Math.floor(last / 2), last] : [0, last]} />
+          <PageviewsChart points={points} />
         </div>
         <details className="mt-4 text-sm">
           <summary className="cursor-pointer text-zinc-500">Show as table</summary>

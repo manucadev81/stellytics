@@ -119,3 +119,52 @@ export function pointsDelta(current: number, before: number, visits: number, pre
   if (pts === 0) return { direction: "flat", text: "No change" };
   return { direction: pts > 0 ? "up" : "down", text: `${Math.abs(pts)} pts` };
 }
+
+// Painel de API (#37). Latência em segundos -> "8.2 ms", "340 ms", "1.25 s".
+// O percentil para em 10 s, o último limite do histograma (spec do E5, D2):
+// acima disso o valor real é desconhecido, então aparece "≥ 10 s".
+export function formatLatency(seconds: number | null): string {
+  if (seconds === null) return "—";
+  if (seconds >= 10) return "≥ 10 s";
+  if (seconds >= 1) return `${seconds.toFixed(2)} s`;
+  const ms = seconds * 1000;
+  return ms < 10 ? `${ms.toFixed(1)} ms` : `${Math.round(ms)} ms`;
+}
+
+// Fração de requisições com erro, com uma casa decimal abaixo de 10%: 0.4% de
+// erros de servidor é bem diferente de 0%.
+export function formatShare(part: number, total: number): string {
+  if (total <= 0) return "—";
+  const pct = (part / total) * 100;
+  if (part > 0 && pct < 0.1) return "< 0.1%";
+  return pct < 10 ? `${pct.toFixed(1)}%` : `${Math.round(pct)}%`;
+}
+
+const STATUS_TEXT: Record<number, string> = {
+  200: "OK",
+  201: "Created",
+  202: "Accepted",
+  204: "No Content",
+  301: "Moved Permanently",
+  302: "Found",
+  304: "Not Modified",
+  400: "Bad Request",
+  401: "Unauthorized",
+  403: "Forbidden",
+  404: "Not Found",
+  405: "Method Not Allowed",
+  409: "Conflict",
+  422: "Unprocessable Content",
+  429: "Too Many Requests",
+  500: "Internal Server Error",
+  502: "Bad Gateway",
+  503: "Service Unavailable",
+  504: "Gateway Timeout",
+};
+
+// O coletor grava 0 quando o status não veio.
+export function statusLabel(code: number): string {
+  if (code === 0) return "Unknown";
+  const text = STATUS_TEXT[code];
+  return text ? `${code} ${text}` : String(code);
+}
