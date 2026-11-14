@@ -24,8 +24,12 @@ export default async function OperatorPage() {
         projects in{" "}
         <Link href="/operator/web" className="underline">
           web analytics
+        </Link>{" "}
+        and{" "}
+        <Link href="/operator/api" className="underline">
+          API analytics
         </Link>
-        ; API metrics will appear here.
+        .
       </p>
 
       <div className="mt-8 overflow-x-auto">
