@@ -8,8 +8,8 @@
 //
 // A parte do coletor fica no e2e dele (services/collector/e2e/): chave de
 // tenant removido recusada (e2e_test.go) e chave revogada ou tenant removido
-// DEPOIS de aceitos recusados em até o cache, com reativação (isolation_test.go).
-// O caso que depende do exporter (#31) segue como `it.todo`. Cada painel novo
+// DEPOIS de aceitos recusados em até o cache, com reativação, e chave de A
+// mandando dados que dizem ser de B, gravados como A (isolation_test.go). Cada painel novo
 // (#28, #29 e #37) acrescenta os próprios casos a esta suíte.
 import { randomUUID } from "node:crypto";
 import { hashPassword } from "better-auth/crypto";
@@ -344,7 +344,8 @@ describe("ingestão de API (contrato com o coletor)", () => {
     // O coletor só lê tenant e serviço desta visão (spec do E2, seção 5, D5).
     expect(await collectorKey(A.keyPrefix)).toEqual({ tenant_id: A.tenantId, api_service_id: A.serviceId });
   });
-  it.todo("métrica enviada com a chave de A e atributos dizendo ser de B é gravada como A (exporter do coletor, #31)");
+  // "Chave de A envia métricas dizendo ser do tenant B: gravadas como A" fica
+  // no e2e do coletor (TestKeyOfAClaimingBIsStoredAsA), que passa pelo exporter.
 
   it("chave revogada de A sai da visão do coletor na hora", async () => {
     asMember(A);
