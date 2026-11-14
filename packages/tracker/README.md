@@ -8,7 +8,7 @@ Script de rastreamento em TypeScript, empacotado com esbuild. Criado na [#22](ht
 - Da query string só saem os parâmetros `utm_*`; o referenciador vai sem query string nem fragmento.
 - Em SPA, conta cada mudança de rota (`pushState`, `replaceState` e `popstate`).
 - Antes de enviar, pede um desafio em `GET /c` e resolve a prova de execução de JS com `crypto.subtle` (#25). Por isso só funciona em página HTTPS (ou `localhost`).
-- Nomes de arquivo e de endpoint não podem conter termos bloqueados por ad blockers (`umami`, `analytics`, `track`, `collect`).
+- Nomes de arquivo e de endpoint não podem conter termos bloqueados por ad blockers (`umami`, `analytics`, `track`, `collect`). O check `check:adblock` confere isso contra EasyList, EasyPrivacy e as listas padrão do uBlock Origin; resultado, recomendação de host e roteiro manual em [`docs/ad-blockers.md`](docs/ad-blockers.md).
 
 ## Instalação no site do tenant
 
@@ -30,6 +30,7 @@ O hash de cada versão está em [`published/sri.json`](published/sri.json). O sc
 pnpm --filter @notify/tracker test       # vitest (happy-dom)
 pnpm --filter @notify/tracker build      # gera dist/n.js
 pnpm --filter @notify/tracker release    # publica a versão do package.json em published/
+pnpm --filter @notify/tracker check:adblock  # testa script e endpoints contra as listas de ad blockers
 ```
 
 Para publicar uma versão nova:
