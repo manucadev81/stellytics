@@ -1,0 +1,36 @@
+# OTel Collector do tenant fazendo dual-export (#35): recebe o OTLP do app e
+# manda o mesmo dado para o backend próprio e para o coletor do notify.
+#
+# Variáveis: NOTIFY_OTLP_ENDPOINT (ex.: https://otlp.<dominio-do-notify>) e
+# NOTIFY_INGEST_KEY (ntf_..., criada em /services no portal).
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+
+exporters:
+  # Fica no lugar do APM do tenant (Jaeger, Tempo, Prometheus, um SaaS...).
+  debug:
+    verbosity: basic
+  # Coletor do notify.
+  otlp_http/notify:
+    endpoint: ${env:NOTIFY_OTLP_ENDPOINT}
+    headers:
+      Authorization: Bearer ${env:NOTIFY_INGEST_KEY}
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug, otlp_http/notify]
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug, otlp_http/notify]

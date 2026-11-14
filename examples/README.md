@@ -7,9 +7,8 @@ Integrações de referência, usadas também nos testes de ponta a ponta. Cada e
 | [`static-html/`](static-html/) | Site estático: cada página carregada é um page view |
 | [`spa/`](spa/) | SPA sem framework, com `history.pushState`: cada mudança de rota é um page view, sem recarregar |
 | [`nextjs-ssr/`](nextjs-ssr/) | Next.js 16 (App Router) com SSR: a tag sai no HTML do servidor, e a navegação pelo `<Link>` conta como page view |
+| [`api-backend/`](api-backend/) | Backend HTTP com OpenTelemetry e guia de dual-export (SDK e OTel Collector) para o coletor do notify (#35) |
 | [`e2e/`](e2e/) | Playwright: abre os três num Chromium e confere os page views no banco do Umami (#27) |
-
-O backend com OpenTelemetry fazendo dual-export para o coletor entra no E5.
 
 ## Instalação do script (trechos para o guia de onboarding)
 
