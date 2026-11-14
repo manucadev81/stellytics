@@ -58,6 +58,11 @@ O monorepo tem a estrutura do ADR 0002 (issue #11). O código de aplicação at�
 - **Privacidade (#24):** nenhum log leva IP, `X-Forwarded-For` ou `User-Agent`; nenhuma resposta grava cookie. O e2e `services/ingest-web/e2e/privacy_test.go` varre as colunas de texto dos bancos `umami` e `notify` atrás do IP completo e confere que a geolocalização usa o IP truncado. Ele exige que o gateway confie no `X-Forwarded-For` do teste (`INGEST_TRUSTED_PROXIES`, definido no job `compose` do CI).
 - A imagem é `scratch` (sem shell); o healthcheck é `ingest-web -healthcheck`. Ela copia `packages/tracker/published` para `/scripts` quando a pasta existe.
 
+## Coletor de API (`services/collector`)
+
+- Contrato no `docs/specs/e5-pipeline-de-api.md`. Componentes Go em `services/collector/components/`, um pacote por componente.
+- **Normalização de rotas (#32):** `components/routenorm`, `Route(httpRoute, path)`. O `http.route` do cliente vale como veio; sem ele, segmentos viram `{uuid}`, `{address}` (StrKey G/C de 56 ou M de 69 caracteres, sem conferir checksum), `{hash}` (16+ hex, com ou sem `0x`) ou `{id}` (só dígitos), nessa ordem. Tira query, fragmento, barras repetidas e a final; corta em 256 bytes no fim de um segmento. Tem fuzz (`go test -fuzz FuzzPath ./collector/components/routenorm`), com os casos achados em `testdata/fuzz`.
+
 ## Métricas de API (banco `notify`)
 
 - Contrato no `docs/specs/e5-pipeline-de-api.md`, seção 4. Migração escrita à mão `apps/portal/drizzle/0004_api_metrics.sql` (#33), testada em `apps/portal/test/api-metrics.test.ts`.

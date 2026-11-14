@@ -52,7 +52,7 @@ O objetivo é que `/accounts/GABC.../payments/` e `/accounts/GXYZ.../payments` c
 | `{hash}` | Hexadecimal com 16 caracteres ou mais, com ou sem `0x` (hash de transação, de ledger ou de bloco) | `a1b2c3...` |
 | `{id}` | Só dígitos | `42`, `1700000000` |
 
-4. A barra final é removida (exceto na raiz `/`), barras repetidas viram uma só, e o caminho vazio vira `/`. Rota com mais de 256 bytes é cortada em 256.
+4. A barra final é removida (exceto na raiz `/`), barras repetidas viram uma só, e o caminho vazio vira `/`. Rota com mais de 256 bytes é cortada no fim do último segmento inteiro que cabe nos 256 (um segmento único maior que isso é cortado em 256, sem partir caractere UTF-8).
 5. Os marcadores ficam fixos no código, como pede o RFP. Não há regra configurável por tenant no MVP.
 
 A regra do `{address}` confere só o formato (prefixo, tamanho e alfabeto), não o checksum da StrKey: um segmento de 56 letras maiúsculas desse alfabeto começando com `G` é, na prática, sempre um endereço.
