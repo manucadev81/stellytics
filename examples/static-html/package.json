@@ -1,0 +1,8 @@
+{
+  "name": "@notify/example-static-html",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node ../serve.mjs ."
+  }
+}

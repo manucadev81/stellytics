@@ -8,7 +8,7 @@ Plataforma open source e multi-tenant de **analytics web e de API** para projeto
 
 ## Estado atual
 
-O monorepo tem a estrutura do ADR 0002 (issue #11). O código de aplicação até agora é o **portal** (`apps/portal`), com o E2 quase completo (login, tenants, cadastro self-service, chaves de ingestão, operador SCF; faltam #20 e #21, ver `docs/e2-implementacao.md`), o **script de rastreamento** (`packages/tracker`, issue #22) e o **gateway de ingestão web** (`services/ingest-web`, issue #61). As outras pastas têm só um `README.md` dizendo o que vai nela e qual issue a cria.
+O monorepo tem a estrutura do ADR 0002 (issue #11). O código de aplicação até agora é o **portal** (`apps/portal`), com o E2 quase completo (login, tenants, cadastro self-service, chaves de ingestão, operador SCF; faltam #20 e #21, ver `docs/e2-implementacao.md`), o **script de rastreamento** (`packages/tracker`, issue #22), o **gateway de ingestão web** (`services/ingest-web`, issue #61) e os **exemplos de integração** (`examples/`, issue #27). As outras pastas têm só um `README.md` dizendo o que vai nela e qual issue a cria.
 
 - **TypeScript:** pnpm workspaces (`apps/*`, `packages/*`, `examples/*`) + Turborepo. Comandos na raiz: `pnpm install`, `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test` (todos via `turbo run`).
 - **Go:** um módulo só em `services/` (`github.com/romulospl/notify/services`, Go 1.26). Rodar `go` de dentro de `services/`: `gofmt -l .`, `go mod tidy -diff`, `go vet -tags e2e ./...` e `go test -race ./...` (o CI roda os quatro). Testes ponta a ponta levam a tag `e2e` e rodam no job `compose`.
@@ -55,6 +55,11 @@ O monorepo tem a estrutura do ADR 0002 (issue #11). O código de aplicação at�
 - **Contrato `ingest_site`** (spec do E2, seções 4 e 6): o gateway conecta como `notify_ingest` e só lê `ingest_site(umami_website_id, accepts_ingest)`, criada pela migração `apps/portal/drizzle/0002_ingest_views.sql`. Site recusado recebe a mesma resposta do sucesso (`204`) e o evento é descartado; o cache é de no máximo 1 minuto.
 - **Privacidade (#24):** nenhum log leva IP, `X-Forwarded-For` ou `User-Agent`; nenhuma resposta grava cookie. O e2e `services/ingest-web/e2e/privacy_test.go` varre as colunas de texto dos bancos `umami` e `notify` atrás do IP completo e confere que a geolocalização usa o IP truncado. Ele exige que o gateway confie no `X-Forwarded-For` do teste (`INGEST_TRUSTED_PROXIES`, definido no job `compose` do CI).
 - A imagem é `scratch` (sem shell); o healthcheck é `ingest-web -healthcheck`. Ela copia `packages/tracker/published` para `/scripts` quando a pasta existe.
+
+## Exemplos (`examples/`)
+
+- `static-html`, `spa` e `nextjs-ssr` instalam o script como um tenant faria; `examples/README.md` tem os trechos de instalação usados no guia de onboarding (#43). HTML e SPA sobem com `examples/serve.mjs`, que troca `<!-- notify:script -->` pela tag (site em `NOTIFY_WEBSITE_ID`).
+- `examples/e2e` (Playwright): `pnpm --filter @notify/examples-e2e e2e` cria os sites no Umami e no banco `notify`, abre os três exemplos num Chromium e confere os page views no banco do Umami. Roda no job `compose` do CI. O script se chama `e2e`, não `test`, para o turbo não rodá-lo no job `typescript`.
 
 ## Onde está o planejamento
 
