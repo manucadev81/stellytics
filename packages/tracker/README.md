@@ -7,6 +7,7 @@ Script de rastreamento em TypeScript, empacotado com esbuild. Criado na [#22](ht
 - Sem cookies, `localStorage`, `sessionStorage` ou identificador persistente.
 - Da query string só saem os parâmetros `utm_*`; o referenciador vai sem query string nem fragmento.
 - Em SPA, conta cada mudança de rota (`pushState`, `replaceState` e `popstate`).
+- Antes de enviar, pede um desafio em `GET /c` e resolve a prova de execução de JS com `crypto.subtle` (#25). Por isso só funciona em página HTTPS (ou `localhost`).
 - Nomes de arquivo e de endpoint não podem conter termos bloqueados por ad blockers (`umami`, `analytics`, `track`, `collect`).
 
 ## Instalação no site do tenant
@@ -14,8 +15,8 @@ Script de rastreamento em TypeScript, empacotado com esbuild. Criado na [#22](ht
 ```html
 <script
   defer
-  src="https://<gateway>/s/v1.0.0/n.js"
-  integrity="sha384-rDheakAwCux4hWanUJ6JyJpdkBlz8lGOufF+s1QHaJZ1UOfk7+m81X6oFWw/I568"
+  src="https://<gateway>/s/v1.1.0/n.js"
+  integrity="sha384-oJV5jTaVFhvi5Y8R/QGZrzfVps1szxTK74tBPsk7LIsuUoUzzFetJ//8xd0NUqs0"
   crossorigin="anonymous"
   data-site="<website-id>"
 ></script>
@@ -37,4 +38,4 @@ Para publicar uma versão nova:
 2. Suba a `version` no `package.json` (semver).
 3. Rode o `release` e commite `published/vX.Y.Z/n.js` e `published/sri.json`.
 
-Versões antigas nunca são apagadas nem alteradas. O teste `test/published.test.ts` confere os hashes e falha se o código atual não for o da versão do `package.json`.
+Versões antigas nunca são apagadas nem alteradas. A v1.0.0 não manda a prova de execução de JS, então o gateway descarta os eventos dela desde a #25: use a v1.1.0 ou mais nova. O teste `test/published.test.ts` confere os hashes e falha se o código atual não for o da versão do `package.json`.

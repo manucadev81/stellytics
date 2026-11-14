@@ -40,10 +40,18 @@ type Payload struct {
 	Screen   string `json:"screen,omitempty"`
 }
 
-// Event é o envelope que o script envia e que o Umami recebe.
+// Proof é a prova de execução de JS que vem com o evento (#25). Nunca é
+// repassada ao Umami.
+type Proof struct {
+	Token string `json:"t"`
+	Nonce string `json:"n"`
+}
+
+// Event é o envelope que o script envia. O Umami recebe só Type e Payload.
 type Event struct {
 	Type    string  `json:"type"`
 	Payload Payload `json:"payload"`
+	Proof   Proof   `json:"p"`
 }
 
 // ErrInvalid indica um evento fora do formato aceito.
@@ -143,7 +151,10 @@ func (e *UpstreamError) Error() string {
 // Send repassa ev com o User-Agent original e o IP já truncado.
 // Nenhum outro header do cliente é repassado.
 func (c *Client) Send(ctx context.Context, ev Event, userAgent string, truncatedIP netip.Addr) error {
-	body, err := json.Marshal(ev)
+	body, err := json.Marshal(struct {
+		Type    string  `json:"type"`
+		Payload Payload `json:"payload"`
+	}{ev.Type, ev.Payload})
 	if err != nil {
 		return err
 	}

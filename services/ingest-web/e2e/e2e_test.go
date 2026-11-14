@@ -26,6 +26,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/romulospl/notify/services/ingest-web/internal/proof"
 )
 
 const browserUA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
@@ -126,8 +128,9 @@ func registerSite(t *testing.T, db *pgx.Conn, websiteID string) {
 // sendEvent manda um page view ao gateway; hdr são pares de cabeçalho extras.
 func sendEvent(t *testing.T, websiteID, path string, hdr ...string) int {
 	t.Helper()
-	body := fmt.Sprintf(`{"type":"event","payload":{"website":%q,"hostname":"e2e.example","url":%q,`+
-		`"title":"e2e","language":"pt-BR","screen":"1920x1080"}}`, websiteID, path)
+	token, nonce := solveChallenge(t, websiteID)
+	body := fmt.Sprintf(`{"type":"event","p":{"t":%q,"n":%q},"payload":{"website":%q,"hostname":"e2e.example","url":%q,`+
+		`"title":"e2e","language":"pt-BR","screen":"1920x1080"}}`, token, nonce, websiteID, path)
 	req, _ := http.NewRequest(http.MethodPost, gatewayURL+"/e", strings.NewReader(body))
 	req.Header.Set("Content-Type", "text/plain;charset=UTF-8")
 	req.Header.Set("User-Agent", browserUA)
@@ -140,6 +143,21 @@ func sendEvent(t *testing.T, websiteID, path string, hdr ...string) int {
 	}
 	resp.Body.Close()
 	return resp.StatusCode
+}
+
+// solveChallenge pede o desafio em GET /c e o resolve, como o script faz (#25).
+func solveChallenge(t *testing.T, websiteID string) (token, nonce string) {
+	t.Helper()
+	resp, err := http.Get(gatewayURL + "/c?s=" + websiteID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var c proof.Challenge
+	if resp.StatusCode != http.StatusOK || json.NewDecoder(resp.Body).Decode(&c) != nil {
+		t.Fatalf("GET /c: status %d", resp.StatusCode)
+	}
+	return c.Token, proof.Solve(c.Token, c.Bits)
 }
 
 func umamiLogin(t *testing.T) string {
