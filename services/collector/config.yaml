@@ -1,0 +1,53 @@
+# Configuração do coletor (spec do E5). Os valores vêm do ambiente.
+#
+# Toda requisição OTLP, em gRPC (4317) ou HTTP (4318), passa pela extensão
+# ingestkeyauth: sem chave de ingestão válida, 401 / Unauthenticated. O
+# processor tenantattr carimba o tenant e o serviço da chave em cada recurso e
+# precisa vir antes do batch, que perde o contexto do pedido. Até a #31, nada
+# sai do coletor (exporter nop): traces, métricas e logs são descartados.
+extensions:
+  ingestkeyauth:
+    database_url: ${env:DATABASE_URL}
+    cache_ttl: ${env:INGEST_KEY_CACHE_TTL:-60s}
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        auth:
+          authenticator: ingestkeyauth
+      http:
+        endpoint: 0.0.0.0:4318
+        auth:
+          authenticator: ingestkeyauth
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 20
+  tenantattr: {}
+  batch: {}
+
+exporters:
+  nop: {}
+
+service:
+  extensions: [ingestkeyauth]
+  telemetry:
+    metrics:
+      level: none
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, tenantattr, batch]
+      exporters: [nop]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, tenantattr, batch]
+      exporters: [nop]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, tenantattr, batch]
+      exporters: [nop]

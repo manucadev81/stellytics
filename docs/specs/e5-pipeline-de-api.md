@@ -20,7 +20,7 @@ flowchart LR
 ```
 
 1. O tenant manda o mesmo OTLP que já manda para o próprio APM (dual-export, #35).
-2. O coletor valida a chave (spec do E2, seção 5). A chave define o **tenant e o serviço**; nenhum atributo do cliente muda isso.
+2. O coletor valida a chave (spec do E2, seção 5). A chave define o **tenant e o serviço**; nenhum atributo do cliente muda isso. O processor `tenantattr` grava os dois nos atributos de recurso `notify.tenant.id` e `notify.api_service.id`, que são os únicos que os componentes seguintes leem.
 3. O coletor transforma spans de servidor HTTP e a métrica `http.server.request.duration` em contagem e histograma (#31), normaliza a rota (#32) e descarta todo o resto.
 4. A cada lote, grava baldes de 1 minuto em `api_metric_1m` (#33).
 5. Um job consolida 1 minuto em 1 hora e 1 dia e aplica a retenção (#34).

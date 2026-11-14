@@ -1,0 +1,33 @@
+# Manifesto do OCB (OpenTelemetry Collector Builder) da distribuição do coletor.
+# Gera collector/cmd/notify-collector dentro do módulo services/ (um módulo Go
+# só, ADR 0002). Para regenerar, de dentro de services/:
+#   collector/generate.sh
+# Versões do core do Collector com pelo menos 14 dias, como as outras dependências.
+dist:
+  name: notify-collector
+  description: Coletor de métricas de API do notify
+  output_path: ./collector/cmd/notify-collector
+  version: 0.1.0
+
+extensions:
+  - gomod: github.com/romulospl/notify/services v0.0.0
+    import: github.com/romulospl/notify/services/collector/components/ingestkeyauth
+    name: ingestkeyauth
+
+receivers:
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.164.0
+
+processors:
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.164.0
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.164.0
+  - gomod: github.com/romulospl/notify/services v0.0.0
+    import: github.com/romulospl/notify/services/collector/components/tenantattr
+    name: tenantattr
+
+exporters:
+  # Até a #31 (exporter para o Postgres), nada sai do coletor.
+  - gomod: go.opentelemetry.io/collector/exporter/nopexporter v0.164.0
+
+providers:
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.70.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.70.0
