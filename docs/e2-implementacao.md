@@ -4,7 +4,7 @@ Registro da implementação do épico [E2 (#2)](https://github.com/romulospl/not
 
 ## 1. Situação
 
-7 das 9 issues de código do E2 estão na `main` (a #57, esqueleto do portal, já existia antes). Cada PR foi mergeado por rebase com o CI verde, então cada issue tem o próprio commit.
+As 9 issues de código do E2 estão na `main` (a #57, esqueleto do portal, já existia antes). Sete estão fechadas; a #20 e a #21 continuam abertas só pela parte que depende do coletor (#30, E5). Cada PR foi mergeado por rebase com o CI verde, então cada issue tem o próprio commit.
 
 | Issue | O que é | PR | Commit |
 |---|---|---|---|
@@ -16,8 +16,9 @@ Registro da implementação do épico [E2 (#2)](https://github.com/romulospl/not
 | — | Correção da #59: nome de serviço repetido em pedidos simultâneos | [#76](https://github.com/romulospl/notify/pull/76) | `a6534fa` |
 | [#17 (2.2)](https://github.com/romulospl/notify/issues/17) | Cadastro self-service do projeto | [#77](https://github.com/romulospl/notify/pull/77) | `6f0a1cf` |
 | [#19 (2.4)](https://github.com/romulospl/notify/issues/19) | Operador SCF, comando de administração e seed | [#78](https://github.com/romulospl/notify/pull/78) | `b262905` |
-| [#21 (2.6)](https://github.com/romulospl/notify/issues/21) | Testes automatizados de isolamento | — | Pendente |
-| [#20 (2.5)](https://github.com/romulospl/notify/issues/20) | Remoção de projeto pelo operador | — | Pendente (depende do coletor, #30) |
+| [#20 (2.5)](https://github.com/romulospl/notify/issues/20) | Remoção e reativação de projeto (parte do portal; falta o coletor, #30) | [#88](https://github.com/romulospl/notify/pull/88) | `f83dc69` |
+| — | Correção da #59: ações de chave com ID de outro tenant respondem 404 | [#88](https://github.com/romulospl/notify/pull/88) | `de177f7` |
+| [#21 (2.6)](https://github.com/romulospl/notify/issues/21) | Suíte de isolamento (falta a parte do coletor, #30) | [#88](https://github.com/romulospl/notify/pull/88) | `f867a3d` |
 
 O spec do E2 e o ADR 0003 entraram junto, no commit `75658a7`.
 

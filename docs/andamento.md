@@ -203,6 +203,10 @@ O portal lê o Umami com uma conta de serviço que enxerga tudo, então o isolam
 | `e037b11` | `feat(portal): add email verification and password reset` (PR #76, fechou a #60) |
 | `6f0a1cf` | `feat(portal): add self-service project onboarding` (PR #77, fechou a #17) |
 | `b262905` | `feat(portal): add scf operator overview and admin commands` (PR #78, fechou a #19) |
+| `f83dc69` | `feat(portal): let scf operators remove and reactivate projects` (PR #88, refs #20) |
+| `de177f7` | `fix(portal): answer 404 to key actions with another tenant's ids` (PR #88) |
+| `f867a3d` | `test: add tenant isolation suite` (PR #88, refs #21) |
+| `de8f308` | `docs: record project removal and the isolation suite` (PR #88) |
 
 ## 6. Pendências e próximos passos
 
