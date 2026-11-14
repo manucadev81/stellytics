@@ -4,7 +4,7 @@ Registro da implementação do épico [E2 (#2)](https://github.com/romulospl/not
 
 ## 1. Situação
 
-As 9 issues de código do E2 estão na `main` (a #57, esqueleto do portal, já existia antes). Oito estão fechadas; a #21 continua aberta só pelo caso que depende do exporter do coletor (#31, E5). Cada PR foi mergeado por rebase com o CI verde, então cada issue tem o próprio commit.
+As 9 issues de código do E2 estão na `main` e fechadas (a #57, esqueleto do portal, já existia antes). A #21 foi a última: o caso que dependia do exporter do coletor (#31, E5) entrou depois dele. Cada PR foi mergeado por rebase com o CI verde, então cada issue tem o próprio commit.
 
 | Issue | O que é | PR | Commit |
 |---|---|---|---|
@@ -18,7 +18,8 @@ As 9 issues de código do E2 estão na `main` (a #57, esqueleto do portal, já e
 | [#19 (2.4)](https://github.com/romulospl/notify/issues/19) | Operador SCF, comando de administração e seed | [#78](https://github.com/romulospl/notify/pull/78) | `b262905` |
 | [#20 (2.5)](https://github.com/romulospl/notify/issues/20) | Remoção e reativação de projeto (o coletor, #30, recusa a chave do projeto removido; teste da transição na branch `test/e2-collector-isolation`) | [#88](https://github.com/romulospl/notify/pull/88) | `f83dc69` |
 | — | Correção da #59: ações de chave com ID de outro tenant respondem 404 | [#88](https://github.com/romulospl/notify/pull/88) | `de177f7` |
-| [#21 (2.6)](https://github.com/romulospl/notify/issues/21) | Suíte de isolamento (falta o caso do exporter, #31) | [#88](https://github.com/romulospl/notify/pull/88) | `f867a3d` |
+| [#21 (2.6)](https://github.com/romulospl/notify/issues/21) | Suíte de isolamento | [#88](https://github.com/romulospl/notify/pull/88) | `f867a3d` |
+| [#21 (2.6)](https://github.com/romulospl/notify/issues/21) | Último caso: chave de A dizendo ser de B, gravada como A (e2e do coletor) | ver `git log -- services/collector/e2e/isolation_test.go` | — |
 
 O spec do E2 e o ADR 0003 entraram junto, no commit `75658a7`.
 
@@ -139,7 +140,8 @@ O spec do E2 e o ADR 0003 entraram junto, no commit `75658a7`.
 - **Suíte única** em `apps/portal/test/isolation.test.ts`, com os casos da seção 8 do spec: dois tenants (A e B) com site, serviço e chave, um operador e um usuário sem projeto.
 - Os casos passam pelo que o navegador alcança (páginas e server actions, com a sessão simulada, inclusive o `update-user` do Better Auth) e pelo que a ingestão lê (as visões, consultadas como `notify_ingest` e `notify_collector`).
 - **A parte do coletor** fica no e2e dele: chave de tenant removido recusada (`services/collector/e2e/e2e_test.go`, da #30) e chave revogada ou tenant removido **depois** de aceitos, recusados em até o cache, com reativação (`isolation_test.go`).
-- **Falta um caso**, que segue como `it.todo`: métrica com a chave de A dizendo ser de B é gravada como A. Ele depende do exporter que grava as métricas (#31, PR #97).
+- **Chave de A dizendo ser de B** (`TestKeyOfAClaimingBIsStoredAsA`, no e2e do coletor, porque precisa do exporter da #31): a alegação vai com os IDs reais de B nos atributos de recurso, de escopo e de ponto ou span, em dois recursos no mesmo pedido, por HTTP (métricas) e por gRPC (spans). Tudo é gravado como o dono da chave, e B fica sem nenhuma linha em `api_metric_1m`.
+- **Conferido que o caso pega falhas:** com o `tenantattr` respeitando o tenant que o cliente manda, ou carimbando só o primeiro recurso do pedido, o teste falha.
 - **Conferido que a suíte pega falhas:** tirar o filtro de tenant de `getApiService` faz o caso de URL falhar, e manter o tenant ativo no e2e faz o page view a mais aparecer no Umami.
 - Cada painel novo (#28 e #37) acrescenta os próprios casos a esta suíte.
 - O helper `test/helpers/as-role.ts` (consulta como outro papel do banco) saiu de `tenant-model.test.ts` para ser usado pelas duas suítes.
@@ -211,10 +213,6 @@ O job `compose` do CI, além de subir o ambiente, confere as permissões dos usu
 | `MAILPIT_PORT`, `MAILPIT_SMTP_PORT` | Portas locais do Mailpit |
 
 ## 7. Limites e pendências
-
-**O que falta no E2 depende do exporter do coletor (#31, E5):**
-
-- **#21:** o caso "métrica com a chave de A dizendo ser de B é gravada como A", hoje um `it.todo`. Quando o exporter gravar as métricas, o teste vai para o e2e do coletor.
 
 **Ficou para outros épicos:**
 
