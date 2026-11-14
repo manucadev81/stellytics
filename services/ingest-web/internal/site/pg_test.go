@@ -2,19 +2,13 @@ package site
 
 import (
 	"context"
-	"crypto/rand"
-	"errors"
-	"fmt"
-	"net/url"
 	"os"
-	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/romulospl/notify/services/internal/pgtest"
 )
 
 // Teste de integração: precisa de DATABASE_URL (o banco notify, com o dono das
@@ -34,17 +28,18 @@ func TestPGIntegration(t *testing.T) {
 		t.Skip("DATABASE_URL não definida")
 	}
 	ctx := context.Background()
-	adminURL = testDatabase(t, adminURL)
+	adminURL = pgtest.Database(t, adminURL)
 
 	admin, err := pgx.Connect(ctx, adminURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer admin.Close(ctx)
+	// Fecha a conexão só depois das limpezas (t.Cleanup roda depois dos defer).
+	t.Cleanup(func() { admin.Close(context.Background()) })
 
 	active := createTenant(t, admin, "active")
 	removed := createTenant(t, admin, "removed")
-	ids := map[string]string{"live": newUUID(t), "archived": newUUID(t), "ofRemoved": newUUID(t)}
+	ids := map[string]string{"live": pgtest.NewUUID(t), "archived": pgtest.NewUUID(t), "ofRemoved": pgtest.NewUUID(t)}
 	for _, s := range []struct {
 		tenant, id, archived string
 	}{
@@ -66,7 +61,7 @@ func TestPGIntegration(t *testing.T) {
 		_, _ = admin.Exec(ctx, `DELETE FROM tenant WHERE id = ANY($1)`, []string{active, removed})
 	})
 
-	pool, err := pgxpool.New(ctx, ingestURL(t, adminURL))
+	pool, err := pgxpool.New(ctx, pgtest.RoleURL(t, adminURL, "notify_ingest", "INGEST_DATABASE_URL"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,103 +91,17 @@ func TestPGIntegration(t *testing.T) {
 		t.Fatalf("SELECT na ingest_site: %v", err)
 	}
 	_, err = pool.Exec(ctx, `SELECT 1 FROM site`)
-	assertDenied(t, "SELECT na site", err)
+	pgtest.AssertDenied(t, "SELECT na site", err)
 	_, err = pool.Exec(ctx, `SELECT 1 FROM "user"`)
-	assertDenied(t, "SELECT na user", err)
+	pgtest.AssertDenied(t, "SELECT na user", err)
 	_, err = pool.Exec(ctx, `CREATE TABLE ingest_probe (x int)`)
-	assertDenied(t, "CREATE TABLE", err)
-}
-
-// testDatabase devolve a URL do banco onde o teste roda: um banco temporário
-// com as migrações do portal, quando o usuário pode criar bancos, ou o próprio
-// banco de adminURL, quando o portal já o migrou.
-func testDatabase(t *testing.T, adminURL string) string {
-	t.Helper()
-	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, adminURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Close(ctx)
-
-	var canCreate, migrated bool
-	err = conn.QueryRow(ctx, `SELECT rolcreatedb OR rolsuper, to_regclass('ingest_site') IS NOT NULL
-		FROM pg_roles WHERE rolname = current_user`).Scan(&canCreate, &migrated)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !canCreate {
-		if !migrated {
-			t.Skip("o banco de DATABASE_URL não tem a visão ingest_site e o usuário não pode criar um banco " +
-				"temporário: suba o portal (que aplica as migrações) ou use um usuário com CREATEDB")
-		}
-		return adminURL
-	}
-
-	b := make([]byte, 6)
-	if _, err := rand.Read(b); err != nil {
-		t.Fatal(err)
-	}
-	name := fmt.Sprintf("ingest_site_test_%x", b)
-	if _, err := conn.Exec(ctx, "CREATE DATABASE "+pgx.Identifier{name}.Sanitize()); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		ctx := context.Background()
-		conn, err := pgx.Connect(ctx, adminURL)
-		if err != nil {
-			t.Errorf("apagando %s: %v", name, err)
-			return
-		}
-		defer conn.Close(ctx)
-		if _, err := conn.Exec(ctx, "DROP DATABASE "+pgx.Identifier{name}.Sanitize()+" WITH (FORCE)"); err != nil {
-			t.Errorf("apagando %s: %v", name, err)
-		}
-	})
-
-	u, err := url.Parse(adminURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	u.Path = "/" + name
-	tmp, err := pgx.Connect(ctx, u.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tmp.Close(ctx)
-	applyMigrations(t, tmp)
-	return u.String()
-}
-
-// applyMigrations aplica as migrações do portal, em ordem, num banco vazio.
-func applyMigrations(t *testing.T, db *pgx.Conn) {
-	t.Helper()
-	ctx := context.Background()
-	files, err := filepath.Glob("../../../../apps/portal/drizzle/*.sql")
-	if err != nil || len(files) == 0 {
-		t.Fatalf("migrações do portal não encontradas: %v", err)
-	}
-	sort.Strings(files)
-	for _, f := range files {
-		sql, err := os.ReadFile(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, stmt := range strings.Split(string(sql), "--> statement-breakpoint") {
-			if strings.TrimSpace(stmt) == "" {
-				continue
-			}
-			if _, err := db.Exec(ctx, stmt); err != nil {
-				t.Fatalf("%s: %v (rodou infra/compose/postgres/init/02-ingest-roles.sh?)", filepath.Base(f), err)
-			}
-		}
-	}
+	pgtest.AssertDenied(t, "CREATE TABLE", err)
 }
 
 func createTenant(t *testing.T, admin *pgx.Conn, status string) string {
 	t.Helper()
 	var id string
-	slug := "go-" + newUUID(t)
+	slug := "go-" + pgtest.NewUUID(t)
 	err := admin.QueryRow(context.Background(),
 		`INSERT INTO tenant (name, slug, status) VALUES ($1, $1, $2) RETURNING id`, slug, status,
 	).Scan(&id)
@@ -200,36 +109,4 @@ func createTenant(t *testing.T, admin *pgx.Conn, status string) string {
 		t.Fatal(err)
 	}
 	return id
-}
-
-func ingestURL(t *testing.T, adminURL string) string {
-	t.Helper()
-	if s := os.Getenv("INGEST_DATABASE_URL"); s != "" {
-		return s
-	}
-	u, err := url.Parse(adminURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	u.User = url.UserPassword("notify_ingest", "notify_ingest")
-	return u.String()
-}
-
-func assertDenied(t *testing.T, what string, err error) {
-	t.Helper()
-	pgErr, ok := errors.AsType[*pgconn.PgError](err)
-	if !ok || pgErr.Code != "42501" {
-		t.Errorf("%s: quero permission denied (42501), veio %v", what, err)
-	}
-}
-
-func newUUID(t *testing.T) string {
-	t.Helper()
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		t.Fatal(err)
-	}
-	b[6] = b[6]&0x0f | 0x40
-	b[8] = b[8]&0x3f | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }

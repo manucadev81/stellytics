@@ -96,6 +96,11 @@ jobs:
       - name: go mod tidy
         run: |
           go mod tidy -diff
+      # O código da distribuição do coletor é gerado pelo OCB (#30) e commitado.
+      - name: Código gerado do coletor em dia
+        run: |
+          collector/generate.sh
+          git diff --exit-code -- collector/cmd/notify-collector
       - name: go vet e go test
         run: |
           # go vet/test falham quando o módulo ainda não tem pacotes.
@@ -178,9 +183,9 @@ jobs:
         with:
           go-version-file: services/go.mod
           cache-dependency-path: services/go.*
-      - name: Ponta a ponta do gateway web
+      - name: Ponta a ponta do gateway web e do coletor
         working-directory: services
-        run: go test -tags e2e -count=1 ./ingest-web/e2e/...
+        run: go test -tags e2e -count=1 ./ingest-web/e2e/... ./collector/e2e/...
       # #27: os três exemplos (HTML estático, SPA e Next.js com SSR) num
       # navegador de verdade, passando pelo gateway com a prova de JS.
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0

@@ -1,5 +1,5 @@
-# Ambiente local: PostgreSQL (bancos umami e notify), Umami v3.4.1, Mailpit, o portal
-# e o gateway de ingestão web. O coletor entra aqui na issue que o cria.
+# Ambiente local: PostgreSQL (bancos umami e notify), Umami v3.4.1, Mailpit, o portal,
+# o gateway de ingestão web e o coletor de métricas de API.
 # Valores padrão são só para desenvolvimento; sobrescreva em um .env na raiz.
 
 services:
@@ -143,6 +143,33 @@ services:
       - "127.0.0.1:${INGEST_WEB_PORT:-3002}:8080"
     healthcheck:
       test: ["CMD", "/ingest-web", "-healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  collector:
+    build:
+      context: ../..
+      dockerfile: services/collector/Dockerfile
+    image: notify-collector:dev
+    environment:
+      # Usuário que só lê a ingest_key_active e grava em api_metric_1m.
+      DATABASE_URL: postgresql://notify_collector:${NOTIFY_COLLECTOR_DB_PASSWORD:-notify_collector}@postgres:5432/notify
+      # Curto no ambiente local, para uma chave nova ou revogada valer logo.
+      INGEST_KEY_CACHE_TTL: ${COLLECTOR_KEY_CACHE_TTL:-5s}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # A visão ingest_key_active vem das migrações que o portal aplica ao subir.
+      portal:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${COLLECTOR_GRPC_PORT:-4317}:4317"
+      - "127.0.0.1:${COLLECTOR_HTTP_PORT:-4318}:4318"
+    healthcheck:
+      test: ["CMD", "/healthcheck"]
       interval: 5s
       timeout: 5s
       retries: 10
