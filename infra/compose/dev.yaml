@@ -1,5 +1,5 @@
 # Ambiente local: PostgreSQL (bancos umami e notify), Umami v3.4.1, Mailpit, o portal,
-# o gateway de ingestão web e o coletor de métricas de API.
+# o gateway de ingestão web, o coletor de métricas de API e o job de consolidação.
 # Valores padrão são só para desenvolvimento; sobrescreva em um .env na raiz.
 
 services:
@@ -170,6 +170,31 @@ services:
       - "127.0.0.1:${COLLECTOR_HTTP_PORT:-4318}:4318"
     healthcheck:
       test: ["CMD", "/healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  # Consolidação 1m -> 1h -> 1d e retenção das métricas de API (#34).
+  rollup:
+    build:
+      context: ../..
+      dockerfile: services/rollup/Dockerfile
+    image: notify-rollup:dev
+    environment:
+      # Dono das tabelas de métricas: cria e apaga partições.
+      DATABASE_URL: postgresql://notify:${NOTIFY_DB_PASSWORD:-notify}@postgres:5432/notify
+      ROLLUP_INTERVAL: ${ROLLUP_INTERVAL:-15m}
+      ROLLUP_LOOKBACK: ${ROLLUP_LOOKBACK:-48h}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # As funções api_metric_* vêm das migrações que o portal aplica ao subir.
+      portal:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/rollup", "-healthcheck"]
       interval: 5s
       timeout: 5s
       retries: 10
