@@ -111,7 +111,20 @@ O agregado `api_metric_sum_buckets(duration_buckets)` soma os arrays por posiç�
 - O job lê `api_metric_1m` e grava `api_metric_1h` e `api_metric_1d` com `INSERT ... ON CONFLICT DO UPDATE` que **substitui** os valores pela soma recalculada. Rodar o job duas vezes sobre o mesmo período dá o mesmo resultado.
 - Ele só consolida baldes fechados: horas que terminaram há pelo menos 5 minutos, por causa de lotes atrasados.
 - **Retenção (D3):** `api_metric_1m` por 35 dias; `api_metric_1h` e `api_metric_1d` por 25 meses (pelo menos 24 meses, como pede o RFP). A retenção apaga partições inteiras (`DROP TABLE` da partição), nunca linha a linha.
-- A estimativa de volume para 1 milhão de requisições por dia fica no documento da #34.
+- **Onde roda:** funções SQL da migração `0005_api_metric_rollup.sql` (`api_metric_rollup(since, until)`, `api_metric_drop_partitions(at)` e `api_metric_maintain(lookback)`, só para o dono `notify`), chamadas pelo serviço Go `services/rollup` a cada 15 minutos (`ROLLUP_INTERVAL`), reconsolidando as últimas 48 horas (`ROLLUP_LOOKBACK`). Cada execução cria as partições futuras, consolida e aplica a retenção.
+- `api_metric_1h` sai de `api_metric_1m`; `api_metric_1d` sai de `api_metric_1h`, só das horas já fechadas. O dia corrente fica parcial e é refeito a cada execução.
+- A partição mensal some quando o **fim** do mês fica mais antigo que o prazo: o granular fica entre 35 e 66 dias, os consolidados entre 25 e 26 meses. A partição `default` nunca é apagada.
+
+### Estimativa de volume para 1 milhão de requisições por dia
+
+O número de linhas depende das séries ativas (rota × método × status por serviço), não das requisições: cada série gera no máximo uma linha por balde. 1 milhão de requisições por dia são cerca de 700 por minuto. Conta com cerca de 400 bytes por linha, somando dados (15 posições de `bigint` nos buckets), chave primária e índice `(tenant_id, bucket_start)`.
+
+| Cenário | `api_metric_1m` (até 66 dias) | `api_metric_1h` (até 26 meses) | `api_metric_1d` (até 26 meses) |
+|---|---|---|---|
+| Típico: 100 séries ativas em todo minuto | 144 mil linhas/dia, ~58 MB/dia, até ~3,8 GB | 2.400 linhas/dia, ~1 MB/dia, até ~0,8 GB | 100 linhas/dia, até ~32 MB |
+| Pior caso: cada requisição numa série distinta (~700/min, limitado pelo teto de 500 rotas/dia da D4) | ~1 milhão de linhas/dia, ~400 MB/dia, até ~26 GB | até ~48 mil linhas/dia (2.000 séries), ~19 MB/dia, até ~15 GB | ~2.000 linhas/dia, até ~0,6 GB |
+
+O caso típico cabe com folga no disco da VM da produção; o pior caso pede acompanhar o tamanho de `api_metric_1m` e, se preciso, encurtar a retenção do granular.
 
 ## 6. Isolamento
 
