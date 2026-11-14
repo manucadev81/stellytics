@@ -1,0 +1,8 @@
+{
+  "name": "@notify/example-spa",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node ../serve.mjs . spa"
+  }
+}
