@@ -1,0 +1,40 @@
+# #23: confere o script e os endpoints do gateway contra as listas de bloqueio
+# (EasyList, EasyPrivacy, as listas padrão do uBlock Origin e a de Peter Lowe).
+# Fica fora do workflow ci: as listas mudam todo dia, e uma regra nova não pode
+# deixar vermelho um PR que não mexe no script nem nas rotas. Roda nos PRs que
+# mexem neles, na main e uma vez por dia, para pegar mudança nas listas.
+name: adblock
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - packages/tracker/**
+      - services/ingest-web/handler.go
+      - .github/workflows/adblock.yml
+  pull_request:
+    paths:
+      - packages/tracker/**
+      - services/ingest-web/handler.go
+      - .github/workflows/adblock.yml
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adblock:
+    name: adblock
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @notify/tracker
+      - run: pnpm --filter @notify/tracker check:adblock

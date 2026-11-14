@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/romulospl/notify/services/ingest-web/internal/clientip"
+	"github.com/romulospl/notify/services/ingest-web/internal/fingerprint"
 	"github.com/romulospl/notify/services/ingest-web/internal/limit"
 	"github.com/romulospl/notify/services/ingest-web/internal/proof"
 	"github.com/romulospl/notify/services/ingest-web/internal/relay"
@@ -81,6 +82,7 @@ func newSetup(t *testing.T, opts ...func(*gateway)) setup {
 		limits: limit.New(1000, 1000, time.Minute),
 		ips:    clientip.Resolver{},
 		proofs: testProofs,
+		fps:    fingerprint.New(1000, 10*time.Minute),
 		log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	for _, o := range opts {
