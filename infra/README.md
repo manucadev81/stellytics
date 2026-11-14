@@ -17,5 +17,5 @@ As pastas são criadas pelas issues que as usam.
 O Umami não pode ser alcançável de fora ([#62](https://github.com/romulospl/notify/issues/62), [docs/umami.md](../docs/umami.md)): quem chegasse ao `/api/send` dele contornaria o anti-bot e o truncamento de IP do gateway.
 
 - O serviço `umami` não publica porta em nenhum arquivo do Compose usado em deploy. O `compose/umami-port.yaml` publica em `127.0.0.1` e é só para desenvolvimento e CI.
-- **O Caddy não tem rota para o Umami**, nem para a interface nem para a API. Publica só o gateway `ingest-web` (`/e` e `/s/`) e o portal.
+- **O Caddy não tem rota para o Umami**, nem para a interface nem para a API. Publica só o gateway `ingest-web` (`/e`, `/c` e `/s/`) e o portal.
 - O firewall da VM (Terraform) não abre a porta do Umami.
