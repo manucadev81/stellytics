@@ -139,6 +139,8 @@ Chave da conta de serviço do Umami (vai em `UMAMI_API_KEY` no `.env` da raiz; d
 ```bash
 cd apps/portal
 read -rs UMAMI_ADMIN_PASSWORD && export UMAMI_ADMIN_PASSWORD
+# O Umami só publica a porta com o override de desenvolvimento (#62):
+#   docker compose -f compose.yaml -f infra/compose/umami-port.yaml up -d
 UMAMI_URL=http://127.0.0.1:3001 pnpm umami:service-account
 ```
 
@@ -176,7 +178,7 @@ O job `compose` do CI, além de subir o ambiente, confere as permissões dos usu
 
 | Variável | Uso |
 |---|---|
-| `UMAMI_URL` | Endereço interno do Umami (padrão `http://127.0.0.1:3001`; no Compose, `http://umami:3000`) |
+| `UMAMI_URL` | Endereço interno do Umami (padrão `http://127.0.0.1:3001`, que só existe com o override `infra/compose/umami-port.yaml`; no Compose, `http://umami:3000`) |
 | `UMAMI_API_KEY` | Chave da conta de serviço. Sem ela, o portal sobe, mas não cria sites |
 | `SMTP_URL` | Servidor SMTP. Sem ele, o portal sobe, mas os e-mails falham (o erro vai para o log) |
 | `MAIL_FROM` | Remetente dos e-mails |

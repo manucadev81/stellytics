@@ -9,12 +9,15 @@ export type FakeUmami = {
   apiKey: string;
   websites: Map<string, { id: string; name: string; domain: string }>;
   requests: { method: string; path: string }[];
+  // Corpos recebidos em POST /api/websites, para conferir o que o portal envia.
+  createBodies: unknown[];
   close: () => Promise<void>;
 };
 
 export async function startFakeUmami(apiKey: string): Promise<FakeUmami> {
   const websites: FakeUmami["websites"] = new Map();
   const requests: FakeUmami["requests"] = [];
+  const createBodies: unknown[] = [];
 
   const server: Server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://fake");
@@ -33,6 +36,7 @@ export async function startFakeUmami(apiKey: string): Promise<FakeUmami> {
     const body = raw ? JSON.parse(raw) : {};
 
     if (method === "POST" && url.pathname === "/api/websites") {
+      createBodies.push(body);
       const website = { id: randomUUID(), name: body.name, domain: body.domain };
       websites.set(website.id, website);
       return send(200, website);
@@ -65,6 +69,7 @@ export async function startFakeUmami(apiKey: string): Promise<FakeUmami> {
     apiKey,
     websites,
     requests,
+    createBodies,
     close: () => new Promise((resolve) => server.close(() => resolve())),
   };
 }

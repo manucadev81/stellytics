@@ -33,6 +33,8 @@ const PROJECTS = [
 ];
 const OPERATOR = `operator@${DOMAIN}`;
 
+// 127.0.0.1:3001 só responde com o override de desenvolvimento do Umami (#62):
+// docker compose -f compose.yaml -f infra/compose/umami-port.yaml up -d
 const umamiUrl = (process.env.UMAMI_URL ?? "http://127.0.0.1:3001").replace(/\/$/, "");
 const umamiKey = process.env.UMAMI_API_KEY;
 

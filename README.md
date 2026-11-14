@@ -119,10 +119,11 @@ A primeira subida cria os bancos `umami` e `notify`, aplica as migrações do Um
 | Serviço | Endereço | Acesso |
 |---|---|---|
 | Portal | http://localhost:3000 | crie um usuário com `pnpm user:create` (ver [`apps/portal`](apps/portal/README.md#criar-um-usuário)) |
-| Umami v3.4.1 | http://localhost:3001 | usuário `admin`, senha `umami` (padrão do Umami; só local) |
+| Umami v3.4.1 | só na rede interna (`http://umami:3000`); http://127.0.0.1:3001 com o override abaixo | usuário `admin`, senha `umami` (padrão do Umami; só local) |
 | PostgreSQL 17 | `localhost:5432` | `postgres`/`postgres` (superusuário), `umami`/`umami` e `notify`/`notify`, cada um dono do seu banco |
 
 - Para mudar portas ou senhas, copie `.env.example` para `.env` e edite.
+- O Umami não publica porta ([#62](https://github.com/romulospl/notify/issues/62), [docs/umami.md](docs/umami.md)). Para usar a interface dele, o script da conta de serviço ou o teste ponta a ponta do gateway, inclua o override de desenvolvimento: `docker compose -f compose.yaml -f infra/compose/umami-port.yaml up -d --wait` (ou `COMPOSE_FILE=compose.yaml:infra/compose/umami-port.yaml` no `.env`).
 - `docker compose down` para os serviços e mantém os dados. `docker compose down -v` apaga o volume, e a próxima subida recria os bancos do zero.
 - Os arquivos ficam em [`infra/compose/`](infra/compose/). Gateway e coletor entram no Compose nas issues que os criam.
 

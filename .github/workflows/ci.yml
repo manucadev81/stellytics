@@ -129,13 +129,36 @@ jobs:
             "select count(*) from \"user\"" 2>/dev/null; then
             echo "notify_ingest não deveria ler a tabela user"; exit 1
           fi
-          curl -fsS http://127.0.0.1:3001/api/heartbeat
+          docker compose exec -T umami curl -fsS http://localhost:3000/api/heartbeat
           curl -fsS http://127.0.0.1:3000/api/auth/ok
           # Mailpit recebe os e-mails do portal (#60).
           curl -fsS http://127.0.0.1:8025/api/v1/info >/dev/null
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/sign-up)" = 200
           # Rota privada sem sessão redireciona para o login.
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/dashboard)" = 307
+      # #62: o Umami só existe na rede interna. Nenhuma porta dele é publicada e
+      # nenhum endereço publicado (gateway, portal, Mailpit...) responde ao
+      # /api/send ou ao /api/record do Umami.
+      - name: Confere que o Umami não é alcançável de fora
+        run: |
+          if [ -n "$(docker compose ps --format json umami | jq -r '.Publishers[]? | select(.PublishedPort > 0)')" ]; then
+            echo "o serviço umami publica porta"; exit 1
+          fi
+          body='{"type":"event","payload":{"website":"00000000-0000-4000-8000-000000000000","hostname":"x.example","url":"/"}}'
+          ports=$(docker compose ps --format json | jq -r '.Publishers[]? | select(.PublishedPort > 0) | .PublishedPort' | sort -u)
+          test -n "$ports"
+          for port in $ports 3001; do
+            for path in /api/send /api/record; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X POST \
+                -H 'content-type: application/json' -d "$body" "http://127.0.0.1:$port$path" || true)
+              echo "127.0.0.1:$port$path -> $code"
+              case "$code" in 000 | 404 | 405) ;; *) echo "o Umami respondeu fora da rede interna"; exit 1 ;; esac
+            done
+          done
+      # Daqui em diante os testes usam a API de administração do Umami, que só
+      # o override de desenvolvimento publica (em 127.0.0.1 do runner).
+      - name: Publica o Umami no localhost para os testes
+        run: docker compose -f compose.yaml -f infra/compose/umami-port.yaml up -d --wait umami
       # ADR 0001 / #58: a chave de API de um usuário comum do Umami basta para o
       # portal. Confere de novo a cada mudança, inclusive ao subir o Umami.
       - name: Confere a conta de serviço no Umami
