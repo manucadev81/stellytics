@@ -6,7 +6,7 @@
 - **Issues cobertas:** #30, #31, #32, #33, #34, #35 e #36
 - **Depende de:** [ADR 0002](../adr/0002-arquitetura-e-stack.md) e [spec do E2](e2-tenants-e-controle-de-acesso.md) (seção 5, chave de ingestão; seção 6, status do tenant)
 
-Este documento fixa o contrato entre o coletor (`services/collector`), o banco `notify` e os painéis de API (E6). Ele cobre o que entra no coletor, o que sai dele, as regras de normalização de rotas, as tabelas de métricas e a retenção. As decisões marcadas com **D1** a **D8** foram confirmadas em 14/11/2026 e estão reunidas na [seção 8](#8-decisões-tomadas).
+Este documento fixa o contrato entre o coletor (`services/collector`), o banco `notify` e os painéis de API (E6). Ele cobre o que entra no coletor, o que sai dele, as regras de normalização de rotas, as tabelas de métricas e a retenção. As decisões marcadas com **D1** a **D9** foram confirmadas em 14/11/2026 e estão reunidas na [seção 8](#8-decisões-tomadas).
 
 ## 1. Fluxo
 
@@ -29,13 +29,17 @@ flowchart LR
 
 | Entrada | O que vira | Observação |
 |---|---|---|
-| Span com `span.kind = SERVER` e `http.request.method` | Uma requisição | A duração é `end - start`. O balde de tempo é o minuto do fim do span (D6) |
-| Métrica `http.server.request.duration` (histograma) | As requisições já contadas | Os buckets são somados aos nossos, desde que os limites batam com os da seção 4. Se não baterem, cada bucket de origem cai no nosso bucket que contém o limite superior dele |
+| Span com `span.kind = SERVER` e `http.request.method` (ou `http.method`) | Uma requisição | A duração é `end - start`. O balde de tempo é o minuto do fim do span (D6) |
+| Métrica `http.server.request.duration` (histograma em segundos) ou a antiga `http.server.duration` (em milissegundos, pela unidade `ms`) | As requisições já contadas | Os buckets são somados aos nossos, desde que os limites batam com os da seção 4. Se não baterem, cada bucket de origem cai no nosso bucket que contém o limite superior dele. O balde de tempo é o minuto do `Timestamp` do ponto |
 | Qualquer outro span, métrica ou log | Nada | Descartado no coletor. Nunca é gravado |
 
 Atributos lidos do span ou do ponto de métrica: `http.route`, `url.path` (ou `http.target`, nas convenções antigas), `http.request.method` (ou `http.method`) e `http.response.status_code` (ou `http.status_code`). Os demais, incluindo `service.name` (D5 do E2), IDs de usuário, `url.query`, IP e User-Agent, são ignorados.
 
-Métodos fora da lista padrão do HTTP (`GET`, `HEAD`, `POST`, `PUT`, `DELETE`, `CONNECT`, `OPTIONS`, `TRACE`, `PATCH`) viram `_OTHER`, como pedem as convenções do OpenTelemetry. Sem status, grava `0`.
+**Métrica tem prioridade sobre span (D9).** Se um serviço mandou a métrica nos últimos 15 minutos, os spans de servidor dele são ignorados, para a mesma requisição não contar duas vezes num dual-export com traces e métricas. Na troca de uma fonte para a outra, pode haver dupla contagem por até um lote.
+
+**Temporalidade.** Pontos `delta` entram como vieram. Pontos `cumulative` (o padrão de vários SDKs) viram delta no coletor, que guarda em memória o último valor de cada série (métrica, atributos do recurso e do ponto). Na primeira vez que vê uma série, o coletor só conta o valor inteiro se o processo começou há até 5 minutos (`Timestamp - StartTimestamp`); senão, guarda como base e conta a partir do próximo ponto, para não somar de novo tudo o que o processo contou antes de um reinício do coletor. Queda no valor ou `StartTimestamp` novo indica reinício do processo: o ponto conta inteiro. O guia de dual-export (#35) recomenda delta.
+
+Sem rota (nem `http.route` nem caminho), grava `{unknown}`. Métodos fora da lista padrão do HTTP (`GET`, `HEAD`, `POST`, `PUT`, `DELETE`, `CONNECT`, `OPTIONS`, `TRACE`, `PATCH`) viram `_OTHER`, como pedem as convenções do OpenTelemetry. Sem status, grava `0`.
 
 ## 3. Normalização de rotas (#32)
 
@@ -135,6 +139,7 @@ O agregado `api_metric_sum_buckets(duration_buckets)` soma os arrays por posiç�
 | D6 | O balde de tempo é o minuto do fim do span | Minuto do início | É quando a requisição terminou, como nas métricas do OTel |
 | D7 | Um marcador `{address}` para G, C e M | Marcadores separados para conta, contrato e muxed | O caminho em volta já diz o que é (`/accounts/`, `/contracts/`); menos marcadores, painel mais simples |
 | D8 | `{hash}` exige 16 caracteres hexadecimais ou mais | Qualquer segmento hexadecimal | Evita trocar palavras como `cafe` ou `add` por `{hash}` |
+| D9 | A métrica `http.server.request.duration` tem prioridade: com ela nos últimos 15 minutos, os spans do serviço são ignorados (14/11/2026) | Spans com prioridade; só spans | A métrica já vem agregada e não sofre com sampling de traces; spans ficam para quem só manda traces |
 
 ## 9. Fora do escopo
 

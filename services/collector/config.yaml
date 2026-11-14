@@ -3,8 +3,10 @@
 # Toda requisição OTLP, em gRPC (4317) ou HTTP (4318), passa pela extensão
 # ingestkeyauth: sem chave de ingestão válida, 401 / Unauthenticated. O
 # processor tenantattr carimba o tenant e o serviço da chave em cada recurso e
-# precisa vir antes do batch, que perde o contexto do pedido. Até a #31, nada
-# sai do coletor (exporter nop): traces, métricas e logs são descartados.
+# precisa vir antes do batch, que perde o contexto do pedido. O exporter
+# notifypg (#31) transforma spans de servidor HTTP e o histograma
+# http.server.request.duration em pontos de 1 minuto em api_metric_1m; o resto
+# dos traces e das métricas, e todos os logs, são descartados.
 extensions:
   ingestkeyauth:
     database_url: ${env:DATABASE_URL}
@@ -31,6 +33,8 @@ processors:
   batch: {}
 
 exporters:
+  notifypg:
+    database_url: ${env:DATABASE_URL}
   nop: {}
 
 service:
@@ -42,11 +46,11 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, tenantattr, batch]
-      exporters: [nop]
+      exporters: [notifypg]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, tenantattr, batch]
-      exporters: [nop]
+      exporters: [notifypg]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, tenantattr, batch]

@@ -6,6 +6,7 @@ require (
 	github.com/jackc/pgx/v5 v5.11.0
 	go.opentelemetry.io/collector/client v1.70.0
 	go.opentelemetry.io/collector/component v1.70.0
+	go.opentelemetry.io/collector/config/configretry v1.70.0
 	go.opentelemetry.io/collector/confmap v1.70.0
 	go.opentelemetry.io/collector/confmap/provider/envprovider v1.70.0
 	go.opentelemetry.io/collector/confmap/provider/fileprovider v1.70.0
@@ -14,6 +15,7 @@ require (
 	go.opentelemetry.io/collector/consumer/consumererror v0.164.0
 	go.opentelemetry.io/collector/consumer/consumertest v0.164.0
 	go.opentelemetry.io/collector/exporter v1.70.0
+	go.opentelemetry.io/collector/exporter/exporterhelper v0.164.0
 	go.opentelemetry.io/collector/exporter/nopexporter v0.164.0
 	go.opentelemetry.io/collector/extension v1.70.0
 	go.opentelemetry.io/collector/extension/extensionauth v1.70.0
@@ -54,6 +56,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/brunoscheufler/aws-ecs-metadata-go v0.0.0-20221221133751-67e37ae746cd // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
+	github.com/cenkalti/backoff/v7 v7.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/ebitengine/purego v0.11.2 // indirect
@@ -70,6 +73,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.31.0 // indirect
 	github.com/hashicorp/go-version v1.9.0 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
@@ -123,6 +127,7 @@ require (
 	go.opentelemetry.io/collector/extension/extensioncapabilities v0.164.0 // indirect
 	go.opentelemetry.io/collector/extension/extensionmiddleware v0.164.0 // indirect
 	go.opentelemetry.io/collector/extension/extensiontest v0.164.0 // indirect
+	go.opentelemetry.io/collector/extension/xextension v0.164.0 // indirect
 	go.opentelemetry.io/collector/featuregate v1.70.0 // indirect
 	go.opentelemetry.io/collector/internal/componentalias v0.164.0 // indirect
 	go.opentelemetry.io/collector/internal/fanoutconsumer v0.164.0 // indirect

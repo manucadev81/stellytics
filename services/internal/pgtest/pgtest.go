@@ -32,16 +32,19 @@ func Database(t *testing.T, adminURL string) string {
 	}
 	defer conn.Close(ctx)
 
-	var canCreate, migrated bool
-	err = conn.QueryRow(ctx, `SELECT rolcreatedb OR rolsuper, to_regclass('ingest_site') IS NOT NULL
-		FROM pg_roles WHERE rolname = current_user`).Scan(&canCreate, &migrated)
+	var canCreate bool
+	err = conn.QueryRow(ctx, `SELECT rolcreatedb OR rolsuper FROM pg_roles WHERE rolname = current_user`).Scan(&canCreate)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !canCreate {
-		if !migrated {
-			t.Skip("o banco de DATABASE_URL não tem a visão ingest_site e o usuário não pode criar um banco " +
-				"temporário: suba o portal (que aplica as migrações) ou use um usuário com CREATEDB")
+		// Sem banco temporário, só vale o banco que o portal já migrou por inteiro.
+		var applied int
+		_ = conn.QueryRow(ctx, `SELECT count(*) FROM drizzle.__drizzle_migrations`).Scan(&applied)
+		if total := len(migrationFiles(t)); applied < total {
+			t.Skipf("o banco de DATABASE_URL tem %d de %d migrações do portal e o usuário não pode criar um banco "+
+				"temporário: rode pnpm --filter @notify/portal db:migrate (ou suba o portal) ou use um usuário com CREATEDB",
+				applied, total)
 		}
 		return adminURL
 	}
@@ -85,13 +88,7 @@ func Database(t *testing.T, adminURL string) string {
 func applyMigrations(t *testing.T, db *pgx.Conn) {
 	t.Helper()
 	ctx := context.Background()
-	_, here, _, _ := runtime.Caller(0)
-	files, err := filepath.Glob(filepath.Join(filepath.Dir(here), "../../../apps/portal/drizzle/*.sql"))
-	if err != nil || len(files) == 0 {
-		t.Fatalf("migrações do portal não encontradas: %v", err)
-	}
-	sort.Strings(files)
-	for _, f := range files {
+	for _, f := range migrationFiles(t) {
 		sql, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatal(err)
@@ -141,4 +138,16 @@ func NewUUID(t *testing.T) string {
 	b[6] = b[6]&0x0f | 0x40
 	b[8] = b[8]&0x3f | 0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// migrationFiles devolve as migrações do portal, em ordem.
+func migrationFiles(t *testing.T) []string {
+	t.Helper()
+	_, here, _, _ := runtime.Caller(0)
+	files, err := filepath.Glob(filepath.Join(filepath.Dir(here), "../../../apps/portal/drizzle/*.sql"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("migrações do portal não encontradas: %v", err)
+	}
+	sort.Strings(files)
+	return files
 }
