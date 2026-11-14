@@ -64,6 +64,13 @@ O monorepo tem a estrutura do ADR 0002 (issue #11). O código de aplicação at�
 - Contrato no `docs/specs/e5-pipeline-de-api.md`. Componentes Go em `services/collector/components/`, um pacote por componente.
 - **Normalização de rotas (#32):** `components/routenorm`, `Route(httpRoute, path)`. O `http.route` do cliente vale como veio; sem ele, segmentos viram `{uuid}`, `{address}` (StrKey G/C de 56 ou M de 69 caracteres, sem conferir checksum), `{hash}` (16+ hex, com ou sem `0x`) ou `{id}` (só dígitos), nessa ordem. Tira query, fragmento, barras repetidas e a final; corta em 256 bytes no fim de um segmento. Tem fuzz (`go test -fuzz FuzzPath ./collector/components/routenorm`), com os casos achados em `testdata/fuzz`.
 
+## Métricas de API (banco `notify`)
+
+- Contrato no `docs/specs/e5-pipeline-de-api.md`, seção 4. Migração escrita à mão `apps/portal/drizzle/0004_api_metrics.sql` (#33), testada em `apps/portal/test/api-metrics.test.ts`.
+- `api_metric_1m` (gravada pelo coletor), `api_metric_1h` e `api_metric_1d` (job da #34): mesmas colunas, chave `(tenant_id, api_service_id, route, method, status_code, bucket_start)`, particionadas por mês em UTC (`<tabela>_pYYYYMM`) com partição `<tabela>_default`. `api_metric_ensure_partitions(meses)` cria as partições que faltam e move para elas as linhas da default.
+- `duration_buckets` tem 15 posições, com os limites de `api_metric_bounds()` (buckets do OTel para `http.server.request.duration`, em segundos, mais um acima de 10 s). Percentil: `api_metric_quantile(api_metric_sum_buckets(duration_buckets), 0.95)`; no `ON CONFLICT`, some com `api_metric_add_buckets`.
+- `notify_collector` tem `SELECT`, `INSERT` e `UPDATE` só em `api_metric_1m`.
+
 ## Exemplos (`examples/`)
 
 - `static-html`, `spa` e `nextjs-ssr` instalam o script como um tenant faria; `examples/README.md` tem os trechos de instalação usados no guia de onboarding (#43). HTML e SPA sobem com `examples/serve.mjs`, que troca `<!-- notify:script -->` pela tag (site em `NOTIFY_WEBSITE_ID`).
