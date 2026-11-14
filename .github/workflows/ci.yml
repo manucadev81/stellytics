@@ -202,9 +202,10 @@ jobs:
         env:
           UMAMI_URL: http://127.0.0.1:3001
         run: pnpm --filter @notify/examples-e2e e2e
-      # #35: o backend de exemplo faz dual-export pelo OTel Collector do tenant
-      # até o coletor do notify, e as requisições chegam em api_metric_1m.
-      - name: Backend de exemplo com dual-export OTLP
+      # #35/#36: o backend de exemplo faz dual-export pelo OTel Collector do tenant
+      # até o coletor do notify; confere rota, status, latência, tenant e que
+      # nenhum trace, span ou log é persistido.
+      - name: Ponta a ponta do pipeline de API
         run: examples/api-backend/compose-check.sh
       - name: Relatório do Playwright em caso de falha
         if: failure()
