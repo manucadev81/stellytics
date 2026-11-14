@@ -2,8 +2,19 @@
 
 Distribuição própria do OpenTelemetry Collector, montada com o OCB (OpenTelemetry Collector Builder). Contrato em [`docs/specs/e5-pipeline-de-api.md`](../../docs/specs/e5-pipeline-de-api.md).
 
-- **Pipeline:** receiver OTLP (gRPC na 4317, HTTP na 4318) → `memory_limiter` → `tenantattr` → `batch` → exporter. Até a #31 o exporter é o `nop`, então nada é gravado ainda.
-- **Guarda só contadores e histogramas.** Traces, spans e logs são descartados (#31).
+- **Pipeline:** receiver OTLP (gRPC na 4317, HTTP na 4318) → `memory_limiter` → `tenantattr` → `batch` → `notifypg` (traces e métricas) ou `nop` (logs).
+- **Guarda só contadores e histogramas** em `api_metric_1m`. Traces, spans e logs nunca são gravados (#31).
+
+## Métricas (#31)
+
+O exporter `notifypg` (`components/pgexporter`) usa o pacote `components/httpmetrics` para transformar cada lote em pontos de 1 minuto. Depois grava os pontos em `api_metric_1m` com `INSERT ... ON CONFLICT` somando, numa transação e em ordem fixa de chave.
+
+- **Entradas:** spans de servidor HTTP (`span.kind = SERVER` com método) e o histograma `http.server.request.duration` (ou o antigo `http.server.duration`, em ms). Todo o resto é descartado.
+- **Atributos:** de cada requisição ficam só rota normalizada (`routenorm`), método, status e duração. Os buckets de origem são levados para os 15 do banco.
+- **D9:** se o serviço mandou a métrica nos últimos 15 minutos, os spans dele são ignorados. Métricas e traces passam por batches separados, então na primeira troca pode haver dupla contagem por um lote.
+- **Cumulativo:** pontos `cumulative` viram delta com o último valor de cada série, em memória. A primeira observação só conta se o processo começou há até 5 minutos.
+- **Teto de rotas (D4):** 500 rotas por serviço e dia; o excesso vira `{other}`. É contado por instância do coletor.
+- **Falha no banco:** o lote é calculado uma vez e regravado até 4 vezes. Depois disso é descartado com erro permanente, porque recalcular a partir do OTLP daria delta zero nas séries cumulativas.
 - **Componentes próprios** em [`components/`](components/).
 
 ## Autenticação (#30)
@@ -39,4 +50,10 @@ No Compose, o serviço `collector` publica 4317 e 4318 em `127.0.0.1`. A imagem 
 
 - `components/ingestkeyauth`: unidade (formato, cache, erro do banco) e integração com a visão real como `notify_collector` (precisa de `DATABASE_URL`; veja `internal/pgtest`).
 - `components/tenantattr`: inclui `pipeline_test.go`, que sobe o receiver OTLP de verdade em processo e confere HTTP e gRPC: recusa sem chave e tenant e serviço vindos da chave, por cima do que o cliente mandou.
-- `e2e/` (tag `e2e`, job `compose` do CI): contra o contêiner, com chaves criadas no banco. Passam a chave válida; são recusadas a errada, a ausente e a de tenant removido.
+- `components/httpmetrics`: spans e histogramas para pontos, remapeamento de buckets e ms, cumulativo para delta, D9, teto de rotas.
+- `components/pgexporter`: retentativa sobre o mesmo lote e upsert real em `api_metric_1m` como `notify_collector`.
+- `e2e/` (tag `e2e`, job `compose` do CI): contra o contêiner, com chaves criadas no banco.
+  - Passam a chave válida; são recusadas a errada, a ausente e a de tenant removido.
+  - A métrica de um serviço é gravada, e os spans dele são ignorados (D9).
+  - Os spans de outro serviço viram rota normalizada.
+  - Logs e spans de cliente não deixam nada.

@@ -25,7 +25,11 @@ processors:
     name: tenantattr
 
 exporters:
-  # Até a #31 (exporter para o Postgres), nada sai do coletor.
+  # Contadores e histogramas para o Postgres (#31).
+  - gomod: github.com/romulospl/notify/services v0.0.0
+    import: github.com/romulospl/notify/services/collector/components/pgexporter
+    name: pgexporter
+  # Logs são descartados (spec do E5, seção 2).
   - gomod: go.opentelemetry.io/collector/exporter/nopexporter v0.164.0
 
 providers:

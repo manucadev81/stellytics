@@ -57,8 +57,8 @@ func TestCollectorAuth(t *testing.T) {
 	user := randomText(t, 16)
 	exec(t, db, `INSERT INTO "user" (id, name, email, email_verified) VALUES ($1, 'e2e', $1 || '@collector.invalid', true)`, user)
 	t.Cleanup(func() { _, _ = db.Exec(context.Background(), `DELETE FROM "user" WHERE id = $1`, user) })
-	good := createKey(t, db, user, "active")
-	ofRemoved := createKey(t, db, user, "removed")
+	good, goodTenant, goodService := createKey(t, db, user, "active")
+	ofRemoved, _, _ := createKey(t, db, user, "removed")
 	wrong := good[:len(good)-1] + flip(good[len(good)-1])
 
 	for name, c := range map[string]struct {
@@ -90,6 +90,11 @@ func TestCollectorAuth(t *testing.T) {
 			}
 		})
 	}
+
+	// As quatro chamadas aceitas (HTTP e gRPC, "Bearer" e "bearer") viram uma
+	// linha só, somada. Esperar por ela também evita a limpeza do teste rodar
+	// antes de o batch do coletor gravar.
+	wantRows(t, db, goodTenant, goodService, []row{{"/ledgers/{id}", "GET", 200, 4}})
 }
 
 // metrics monta um ponto de http.server.request.duration, como um SDK manda.
@@ -108,6 +113,8 @@ func metrics() pmetric.Metrics {
 	dp.ExplicitBounds().FromRaw([]float64{0.005, 0.01, 0.025})
 	dp.BucketCounts().FromRaw([]uint64{0, 0, 1, 0})
 	dp.Attributes().PutStr("http.route", "/ledgers/{id}")
+	dp.Attributes().PutStr("http.request.method", "GET")
+	dp.Attributes().PutInt("http.response.status_code", 200)
 	return md
 }
 
@@ -147,11 +154,10 @@ func exportGRPC(t *testing.T, auth string) error {
 }
 
 // createKey cria um tenant com o status dado, um serviço e uma chave no
-// formato do portal (#59), e devolve a chave completa.
-func createKey(t *testing.T, db *pgx.Conn, user, tenantStatus string) string {
+// formato do portal (#59), e devolve a chave completa, o tenant e o serviço.
+func createKey(t *testing.T, db *pgx.Conn, user, tenantStatus string) (key, tenantID, serviceID string) {
 	t.Helper()
 	ctx := context.Background()
-	var tenantID, serviceID string
 	slug := "collector-e2e-" + randomText(t, 12)
 	if err := db.QueryRow(ctx, `INSERT INTO tenant (name, slug, status) VALUES ($1, $1, $2) RETURNING id`,
 		slug, tenantStatus).Scan(&tenantID); err != nil {
@@ -163,6 +169,7 @@ func createKey(t *testing.T, db *pgx.Conn, user, tenantStatus string) string {
 	}
 	t.Cleanup(func() {
 		ctx := context.Background()
+		_, _ = db.Exec(ctx, `DELETE FROM api_metric_1m WHERE tenant_id = $1`, tenantID)
 		_, _ = db.Exec(ctx, `DELETE FROM ingest_key WHERE tenant_id = $1`, tenantID)
 		_, _ = db.Exec(ctx, `DELETE FROM api_service WHERE tenant_id = $1`, tenantID)
 		_, _ = db.Exec(ctx, `DELETE FROM tenant WHERE id = $1`, tenantID)
@@ -177,11 +184,11 @@ func createKey(t *testing.T, db *pgx.Conn, user, tenantStatus string) string {
 	for i := range prefix {
 		prefix[i] = alphabet[b[i]%32]
 	}
-	key := "ntf_" + string(prefix) + "_" + base64.RawURLEncoding.EncodeToString(b[8:])
+	key = "ntf_" + string(prefix) + "_" + base64.RawURLEncoding.EncodeToString(b[8:])
 	hash := sha256.Sum256([]byte(key))
 	exec(t, db, `INSERT INTO ingest_key (api_service_id, tenant_id, prefix, key_hash, created_by) VALUES ($1, $2, $3, $4, $5)`,
 		serviceID, tenantID, string(prefix), hash[:], user)
-	return key
+	return key, tenantID, serviceID
 }
 
 func exec(t *testing.T, db *pgx.Conn, q string, args ...any) {
@@ -205,4 +212,8 @@ func flip(c byte) string {
 		return "B"
 	}
 	return "A"
+}
+
+func pmetricotlpRequest(md pmetric.Metrics) ([]byte, error) {
+	return pmetricotlp.NewExportRequestFromMetrics(md).MarshalProto()
 }

@@ -35,7 +35,7 @@ var keyCacheTTL = func() time.Duration {
 
 func TestRevokedKeyIsRefusedWithinCacheTTL(t *testing.T) {
 	db, user := isolationDB(t)
-	key := createKey(t, db, user, "active")
+	key, _, _ := createKey(t, db, user, "active")
 	expectAccepted(t, key)
 
 	exec(t, db, `UPDATE ingest_key SET revoked_at = now() WHERE prefix = $1`, prefixOf(key))
@@ -45,8 +45,8 @@ func TestRevokedKeyIsRefusedWithinCacheTTL(t *testing.T) {
 
 func TestRemovedTenantIsRefusedWithinCacheTTL(t *testing.T) {
 	db, user := isolationDB(t)
-	key := createKey(t, db, user, "active")
-	other := createKey(t, db, user, "active")
+	key, _, _ := createKey(t, db, user, "active")
+	other, _, _ := createKey(t, db, user, "active")
 	expectAccepted(t, key)
 
 	setTenantStatus(t, db, key, "removed")

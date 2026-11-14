@@ -6,6 +6,7 @@ package main
 
 import (
 	ingestkeyauth "github.com/romulospl/notify/services/collector/components/ingestkeyauth"
+	pgexporter "github.com/romulospl/notify/services/collector/components/pgexporter"
 	tenantattr "github.com/romulospl/notify/services/collector/components/tenantattr"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/connector"
@@ -62,12 +63,14 @@ func components() (otelcol.Factories, error) {
 	})
 
 	factories.Exporters, err = otelcol.MakeFactoryMap[exporter.Factory](
+		pgexporter.NewFactory(),
 		nopexporter.NewFactory(),
 	)
 	if err != nil {
 		return otelcol.Factories{}, err
 	}
 	factories.ExporterModules = makeModulesMap(factories.Exporters, map[component.Type]string{
+		pgexporter.NewFactory().Type():  "github.com/romulospl/notify/services v0.0.0",
 		nopexporter.NewFactory().Type(): "go.opentelemetry.io/collector/exporter/nopexporter v0.164.0",
 	})
 
