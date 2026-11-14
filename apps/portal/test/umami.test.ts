@@ -52,6 +52,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   umami.requests.length = 0;
+  umami.createBodies.length = 0;
 });
 
 afterAll(async () => {
@@ -97,6 +98,12 @@ describe("criação de site", () => {
     const ctx = await createMember();
     await createSite(ctx, { name: "Only sites", domain: "only.example.org" });
     expect(umami.requests).toEqual([{ method: "POST", path: "/api/websites" }]);
+  });
+
+  it("cria o site só com nome e domínio, sem ligar gravação de sessão nem heatmaps (#62)", async () => {
+    const ctx = await createMember();
+    await createSite(ctx, { name: "No recorder", domain: "norec.example.org" });
+    expect(umami.createBodies).toEqual([{ name: "No recorder", domain: "norec.example.org" }]);
   });
 
   it("recusa domínio inválido ou repetido sem chamar o Umami", async () => {

@@ -7,7 +7,7 @@ O Umami (v3.4.1, [ADR 0001](adr/0001-ferramenta-base.md)) roda **sem nenhum patc
 O Umami não publica porta (`infra/compose/dev.yaml`). Só o portal e o gateway `ingest-web` falam com ele, por `http://umami:3000` na rede do Compose. Se o `/api/send` do Umami ficasse acessível, qualquer um mandaria eventos direto, sem passar pela prova de execução de JS, pelo limite por IP e pelo truncamento de IP do gateway; e a interface de administração ficaria exposta.
 
 - **Compose:** o serviço `umami` não tem `ports`. Para desenvolvimento, `infra/compose/umami-port.yaml` publica a porta em `127.0.0.1:3001`; só o CI e a máquina de quem desenvolve usam esse arquivo.
-- **Caddy (produção):** não tem rota para o Umami. Só o gateway (`/e`, `/c` e `/s/`) e o portal são publicados (ver [`infra/README.md`](../infra/README.md)).
+- **Caddy (produção, ainda a criar na [#14](https://github.com/romulospl/notify/issues/14)):** não pode ter rota para o Umami. Só o gateway (`/e`, `/c` e `/s/`) e o portal são publicados (ver [`infra/README.md`](../infra/README.md)).
 - **Gateway:** só responde a `POST /e`, `GET /c`, `GET /s/` e `GET /healthz`. Ele repassa ao Umami apenas o `/api/send`, com o payload remontado; o `/api/record` e as outras rotas do Umami não existem nele.
 
 O job `compose` do CI confere que o serviço não publica porta e que nenhuma porta publicada pelo ambiente responde ao `/api/send` ou ao `/api/record` como o Umami responderia.

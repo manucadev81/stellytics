@@ -77,14 +77,15 @@ func TestRecorderRecordsNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close(ctx)
+	// Só o site do teste: um volume local pode ter outros sites com gravação.
 	for _, q := range []string{
-		`SELECT count(*) FROM session_replay`,
-		`SELECT count(*) FROM session_replay_saved`,
-		`SELECT count(*) FROM heatmap_event`,
-		`SELECT count(*) FROM website WHERE recorder_enabled OR replay_config IS NOT NULL`,
+		`SELECT count(*) FROM session_replay WHERE website_id = $1`,
+		`SELECT count(*) FROM session_replay_saved WHERE website_id = $1`,
+		`SELECT count(*) FROM heatmap_event WHERE website_id = $1`,
+		`SELECT count(*) FROM website WHERE website_id = $1 AND (recorder_enabled OR replay_config IS NOT NULL)`,
 	} {
 		var n int
-		if err := db.QueryRow(ctx, q).Scan(&n); err != nil {
+		if err := db.QueryRow(ctx, q, websiteID).Scan(&n); err != nil {
 			t.Fatal(err)
 		}
 		if n != 0 {
