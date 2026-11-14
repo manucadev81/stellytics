@@ -2,7 +2,7 @@
 
 // Teste ponta a ponta contra o ambiente do Docker Compose:
 //
-//	docker compose up -d --build --wait
+//	docker compose -f compose.yaml -f infra/compose/umami-port.yaml up -d --build --wait
 //	cd services && go test -tags e2e ./ingest-web/e2e/...
 //
 // Cria um website no Umami pela API e um tenant ativo com esse site no banco

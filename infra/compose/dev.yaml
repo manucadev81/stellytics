@@ -40,9 +40,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    # Só no localhost. A #62 tira a porta e deixa o Umami apenas na rede interna.
-    ports:
-      - "127.0.0.1:${UMAMI_PORT:-3001}:3000"
+    # Sem porta publicada (#62): o Umami só é alcançável pela rede interna, pelo
+    # portal e pelo gateway. Publicar o /api/send deixaria contornar o anti-bot e
+    # o truncamento de IP. Para usar a interface ou a API no host durante o
+    # desenvolvimento, inclua o umami-port.yaml (ver o README desta pasta).
+    # Gravação de sessão e heatmaps ficam desligados: só existem com
+    # recorder_enabled por site, que o portal nunca liga, e a rota /api/record
+    # não é repassada pelo gateway (docs/umami.md).
     init: true
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:3000/api/heartbeat"]
