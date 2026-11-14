@@ -48,6 +48,7 @@ O monorepo tem a estrutura do ADR 0002 (issue #11). O código de aplicação at�
 - O payload repassado ao `UMAMI_URL/api/send` é montado de novo só com `website`, `hostname`, `url`, `referrer`, `title`, `language` e `screen`. Nunca repasse `ip`, `userAgent`, `id` ou `timestamp` do cliente: o Umami aceitaria e o cliente poderia trocar IP ou sessão.
 - Ao Umami só chegam `Content-Type`, o `User-Agent` original e o IP **já truncado** (`clientip.Truncate`) no header de `CLIENT_IP_HEADER`. O `X-Forwarded-For` só vale vindo de `TRUSTED_PROXIES`.
 - **Contrato `ingest_site`** (spec do E2, seções 4 e 6): o gateway conecta como `notify_ingest` e só lê `ingest_site(umami_website_id, accepts_ingest)`, criada pela migração `apps/portal/drizzle/0002_ingest_views.sql`. Site recusado recebe a mesma resposta do sucesso (`204`) e o evento é descartado; o cache é de no máximo 1 minuto.
+- **Privacidade (#24):** nenhum log leva IP, `X-Forwarded-For` ou `User-Agent`; nenhuma resposta grava cookie. O e2e `services/ingest-web/e2e/privacy_test.go` varre as colunas de texto dos bancos `umami` e `notify` atrás do IP completo e confere que a geolocalização usa o IP truncado. Ele exige que o gateway confie no `X-Forwarded-For` do teste (`INGEST_TRUSTED_PROXIES`, definido no job `compose` do CI).
 - A imagem é `scratch` (sem shell); o healthcheck é `ingest-web -healthcheck`. Ela copia `packages/tracker/published` para `/scripts` quando a pasta existe.
 
 ## Onde está o planejamento

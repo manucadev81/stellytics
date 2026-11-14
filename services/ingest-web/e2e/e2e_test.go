@@ -8,7 +8,9 @@
 // Cria um website no Umami pela API e um tenant ativo com esse site no banco
 // notify (o que aparece na ingest_site), envia um page view ao gateway e
 // confere que ele aparece no Umami, e que o evento enviado antes do cadastro não.
-// As URLs podem ser trocadas por GATEWAY_URL, UMAMI_URL e NOTIFY_DATABASE_URL.
+// As URLs podem ser trocadas por GATEWAY_URL, UMAMI_URL, NOTIFY_DATABASE_URL e
+// UMAMI_DATABASE_URL. O teste de privacidade (privacy_test.go) exige que o
+// gateway confie no X-Forwarded-For da conexão do teste (INGEST_TRUSTED_PROXIES).
 package e2e
 
 import (
@@ -39,6 +41,7 @@ var (
 	gatewayURL = env("GATEWAY_URL", "http://127.0.0.1:3002")
 	umamiURL   = env("UMAMI_URL", "http://127.0.0.1:3001")
 	notifyDB   = env("NOTIFY_DATABASE_URL", "postgresql://notify:notify@127.0.0.1:5432/notify")
+	umamiDB    = env("UMAMI_DATABASE_URL", "postgresql://umami:umami@127.0.0.1:5432/umami")
 )
 
 // siteCacheTTL é o SITE_CACHE_TTL do gateway no Compose.
@@ -72,22 +75,7 @@ func TestEventReachesUmami(t *testing.T) {
 		t.Fatalf("site fora da ingest_site: status = %d, quero 204", code)
 	}
 
-	var tenantID string
-	slug := "e2e-" + websiteID
-	if err := db.QueryRow(ctx,
-		`INSERT INTO tenant (name, slug) VALUES ($1, $1) RETURNING id`, slug,
-	).Scan(&tenantID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(ctx, `INSERT INTO site (tenant_id, name, domain, umami_website_id)
-		VALUES ($1, 'e2e', 'e2e.example', $2)`, tenantID, websiteID); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		ctx := context.Background()
-		_, _ = db.Exec(ctx, `DELETE FROM site WHERE tenant_id = $1`, tenantID)
-		_, _ = db.Exec(ctx, `DELETE FROM tenant WHERE id = $1`, tenantID)
-	})
+	registerSite(t, db, websiteID)
 
 	// A resposta negativa fica no cache do gateway por SITE_CACHE_TTL (5 s no
 	// Compose).
@@ -113,13 +101,39 @@ func TestEventReachesUmami(t *testing.T) {
 	}
 }
 
-func sendEvent(t *testing.T, websiteID, path string) int {
+// registerSite cria um tenant ativo com o site no banco notify, o que o põe na
+// ingest_site com accepts_ingest verdadeiro.
+func registerSite(t *testing.T, db *pgx.Conn, websiteID string) {
+	t.Helper()
+	ctx := context.Background()
+	var tenantID string
+	if err := db.QueryRow(ctx,
+		`INSERT INTO tenant (name, slug) VALUES ($1, $1) RETURNING id`, "e2e-"+websiteID,
+	).Scan(&tenantID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO site (tenant_id, name, domain, umami_website_id)
+		VALUES ($1, 'e2e', 'e2e.example', $2)`, tenantID, websiteID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx := context.Background()
+		_, _ = db.Exec(ctx, `DELETE FROM site WHERE tenant_id = $1`, tenantID)
+		_, _ = db.Exec(ctx, `DELETE FROM tenant WHERE id = $1`, tenantID)
+	})
+}
+
+// sendEvent manda um page view ao gateway; hdr são pares de cabeçalho extras.
+func sendEvent(t *testing.T, websiteID, path string, hdr ...string) int {
 	t.Helper()
 	body := fmt.Sprintf(`{"type":"event","payload":{"website":%q,"hostname":"e2e.example","url":%q,`+
 		`"title":"e2e","language":"pt-BR","screen":"1920x1080"}}`, websiteID, path)
 	req, _ := http.NewRequest(http.MethodPost, gatewayURL+"/e", strings.NewReader(body))
 	req.Header.Set("Content-Type", "text/plain;charset=UTF-8")
 	req.Header.Set("User-Agent", browserUA)
+	for i := 0; i+1 < len(hdr); i += 2 {
+		req.Header.Set(hdr[i], hdr[i+1])
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
