@@ -19,7 +19,7 @@ As 9 issues de código do E2 estão na `main` e fechadas (a #57, esqueleto do po
 | [#20 (2.5)](https://github.com/romulospl/notify/issues/20) | Remoção e reativação de projeto (o coletor, #30, recusa a chave do projeto removido; teste da transição na branch `test/e2-collector-isolation`) | [#88](https://github.com/romulospl/notify/pull/88) | `f83dc69` |
 | — | Correção da #59: ações de chave com ID de outro tenant respondem 404 | [#88](https://github.com/romulospl/notify/pull/88) | `de177f7` |
 | [#21 (2.6)](https://github.com/romulospl/notify/issues/21) | Suíte de isolamento | [#88](https://github.com/romulospl/notify/pull/88) | `f867a3d` |
-| [#21 (2.6)](https://github.com/romulospl/notify/issues/21) | Último caso: chave de A dizendo ser de B, gravada como A (e2e do coletor) | ver `git log -- services/collector/e2e/isolation_test.go` | — |
+| [#21 (2.6)](https://github.com/romulospl/notify/issues/21) | Último caso: chave de A dizendo ser de B, gravada como A (e2e do coletor) | [#99](https://github.com/romulospl/notify/pull/99) | `3659ae7` |
 
 O spec do E2 e o ADR 0003 entraram junto, no commit `75658a7`.
 
