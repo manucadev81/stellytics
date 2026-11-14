@@ -39,7 +39,13 @@ async function scriptTag() {
 const tag = await scriptTag();
 
 createServer(async (req, res) => {
-  const path = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname));
+  let path;
+  try {
+    path = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname));
+  } catch {
+    res.writeHead(400).end("bad request");
+    return;
+  }
   let file = join(root, path.endsWith("/") ? `${path}index.html` : path);
   if (!file.startsWith(root)) {
     res.writeHead(404).end();

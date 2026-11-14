@@ -54,11 +54,13 @@ try {
   });
   status = result.status ?? 1;
 } finally {
+  // Cada passo da limpeza segue mesmo se o anterior falhar.
+  const step = (promise) => promise.catch((error) => console.error(`limpeza: ${error.message}`));
   if (tenantId) {
-    await notify`DELETE FROM site WHERE tenant_id = ${tenantId}`;
-    await notify`DELETE FROM tenant WHERE id = ${tenantId}`;
+    await step(notify`DELETE FROM site WHERE tenant_id = ${tenantId}`);
+    await step(notify`DELETE FROM tenant WHERE id = ${tenantId}`);
   }
-  for (const id of Object.values(sites)) await umami("DELETE", `/api/websites/${id}`, token).catch(() => {});
-  await notify.end();
+  for (const id of Object.values(sites)) await step(umami("DELETE", `/api/websites/${id}`, token));
+  await step(notify.end());
 }
 process.exit(status);
