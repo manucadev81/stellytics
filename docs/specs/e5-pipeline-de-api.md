@@ -1,12 +1,12 @@
 # Spec E5: pipeline de analytics de API
 
-- **Status:** Proposto
+- **Status:** Aceito
 - **Data:** 14/11/2026
 - **Épico:** [#5 (E5)](https://github.com/romulospl/notify/issues/5)
 - **Issues cobertas:** #30, #31, #32, #33, #34, #35 e #36
 - **Depende de:** [ADR 0002](../adr/0002-arquitetura-e-stack.md) e [spec do E2](e2-tenants-e-controle-de-acesso.md) (seção 5, chave de ingestão; seção 6, status do tenant)
 
-Este documento fixa o contrato entre o coletor (`services/collector`), o banco `notify` e os painéis de API (E6). Ele cobre o que entra no coletor, o que sai dele, as regras de normalização de rotas, as tabelas de métricas e a retenção. As decisões marcadas com **D1** a **D8** estão reunidas na [seção 8](#8-decisões-propostas) e ainda precisam ser confirmadas.
+Este documento fixa o contrato entre o coletor (`services/collector`), o banco `notify` e os painéis de API (E6). Ele cobre o que entra no coletor, o que sai dele, as regras de normalização de rotas, as tabelas de métricas e a retenção. As decisões marcadas com **D1** a **D8** foram confirmadas em 14/11/2026 e estão reunidas na [seção 8](#8-decisões-tomadas).
 
 ## 1. Fluxo
 
@@ -123,9 +123,9 @@ A função `api_metric_quantile(buckets bigint[], q double precision)` devolve o
 | #34 | Job idempotente, retenção apagando partição antiga |
 | #31 e #36 | Payload OTLP real: nenhum span ou log gravado, atributo de alta cardinalidade fora, tenant e serviço vindos da chave |
 
-## 8. Decisões propostas
+## 8. Decisões tomadas
 
-| Nº | Proposta | Alternativa | Por quê |
+| Nº | Decisão | Alternativa descartada | Por quê |
 |---|---|---|---|
 | D1 | O método HTTP é uma dimensão | Só rota e status, como lista a #33 | `GET` e `POST` na mesma rota têm latência e volume muito diferentes; são só 10 valores possíveis |
 | D2 | Buckets fixos das convenções OTel, em segundos | Buckets próprios em milissegundos | Histogramas prontos (`http.server.request.duration`) entram sem conversão |
