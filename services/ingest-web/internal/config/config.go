@@ -39,8 +39,9 @@ type Config struct {
 	ProofBits int
 	// ProofTTL é a validade de um desafio.
 	ProofTTL time.Duration
-	// FingerprintLimit é o máximo de fingerprints distintas por IP truncado
-	// dentro de FingerprintWindow (#26). Zero desliga a checagem.
+	// FingerprintLimit é o máximo de fingerprints distintas por IP truncado e
+	// site dentro de FingerprintWindow (#26). Zero desliga a checagem. O teto
+	// de 1000 limita a varredura feita sob o lock quando uma conta está cheia.
 	FingerprintLimit  int
 	FingerprintWindow time.Duration
 }
@@ -105,8 +106,8 @@ func Load(getenv func(string) string) (Config, error) {
 		errs = append(errs, fmt.Errorf("PROOF_TTL inválido (1m a 1h): %q", getenv("PROOF_TTL")))
 	}
 
-	if c.FingerprintLimit, err = parseInt(getenv("FINGERPRINT_LIMIT"), 50); err != nil || c.FingerprintLimit < 0 || c.FingerprintLimit > 10_000 {
-		errs = append(errs, fmt.Errorf("FINGERPRINT_LIMIT inválido (0 a 10000): %q", getenv("FINGERPRINT_LIMIT")))
+	if c.FingerprintLimit, err = parseInt(getenv("FINGERPRINT_LIMIT"), 50); err != nil || c.FingerprintLimit < 0 || c.FingerprintLimit > 1000 {
+		errs = append(errs, fmt.Errorf("FINGERPRINT_LIMIT inválido (0 a 1000): %q", getenv("FINGERPRINT_LIMIT")))
 	}
 	if c.FingerprintWindow, err = parseDuration(getenv("FINGERPRINT_WINDOW"), 10*time.Minute); err != nil || c.FingerprintWindow < time.Minute || c.FingerprintWindow > 24*time.Hour {
 		errs = append(errs, fmt.Errorf("FINGERPRINT_WINDOW inválido (1m a 24h): %q", getenv("FINGERPRINT_WINDOW")))

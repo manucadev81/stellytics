@@ -31,7 +31,7 @@ type sender interface {
 
 // fingerprints é a parte do fingerprint.Counter que o handler usa.
 type fingerprints interface {
-	Allow(ip netip.Addr, fp uint64) bool
+	Allow(ip netip.Addr, site string, fp uint64) bool
 }
 
 // limiter é a parte do limit.Limiter que o handler usa.
@@ -154,10 +154,10 @@ func (g *gateway) event(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Muitos navegadores diferentes no mesmo IP truncado (#26): as fingerprints
-	// além do limite são descartadas, com a mesma resposta do sucesso.
+	// Muitos navegadores diferentes no mesmo IP truncado e site (#26): as
+	// fingerprints além do limite são descartadas, com a mesma resposta do sucesso.
 	fp := fingerprint.Of(r.UserAgent(), r.Header.Get("Accept-Language"), ev.Payload.Language, ev.Payload.Screen)
-	if !g.fps.Allow(truncated, fp) {
+	if !g.fps.Allow(truncated, ev.Payload.Website, fp) {
 		g.log.Debug("evento descartado", "reason", "fingerprints demais no IP")
 		w.WriteHeader(http.StatusNoContent)
 		return

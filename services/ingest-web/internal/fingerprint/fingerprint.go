@@ -2,11 +2,14 @@
 //
 // A fingerprint é um hash de User-Agent, Accept-Language, idioma e tela. Ela não
 // identifica uma pessoa (muita gente tem a mesma combinação) e só existe em
-// memória, por uma janela curta. Por IP truncado, o Counter aceita até Limit
-// fingerprints distintas vistas dentro da janela; eventos de fingerprints além
-// disso são descartados. Um robô que troca de User-Agent a cada request, a
-// partir de um IP só, não infla as métricas; as primeiras fingerprints do IP
-// continuam contando normalmente.
+// memória, por uma janela curta. Por IP truncado e site, o Counter aceita até
+// Limit fingerprints distintas vistas dentro da janela; eventos de
+// fingerprints além disso são descartados. Um robô que troca de User-Agent a
+// cada request, a partir de um IP só, não infla as métricas; as primeiras
+// fingerprints do IP continuam contando normalmente.
+//
+// A conta é separada por site: um robô no mesmo /24 (ou na mesma CGNAT) que
+// lote a cota do próprio site não tira as vagas dos sites de outros tenants.
 package fingerprint
 
 import (
@@ -35,14 +38,20 @@ type Counter struct {
 	window time.Duration
 	now    func() time.Time
 
-	mu  sync.Mutex
-	ips map[netip.Addr]map[uint64]time.Time
+	mu   sync.Mutex
+	keys map[key]map[uint64]time.Time
+}
+
+// key é a conta: o IP truncado e o site (UUID em minúsculas).
+type key struct {
+	ip   netip.Addr
+	site string
 }
 
 // New cria um Counter que aceita até limit fingerprints por IP em window.
 // limit 0 desliga a checagem.
 func New(limit int, window time.Duration) *Counter {
-	return &Counter{limit: limit, window: window, now: time.Now, ips: make(map[netip.Addr]map[uint64]time.Time)}
+	return &Counter{limit: limit, window: window, now: time.Now, keys: make(map[key]map[uint64]time.Time)}
 }
 
 // WithClock troca o relógio (para testes) e devolve o próprio Counter.
@@ -51,10 +60,10 @@ func (c *Counter) WithClock(now func() time.Time) *Counter {
 	return c
 }
 
-// Allow registra fp no IP truncado ip e diz se o evento pode seguir. Uma
-// fingerprint já vista na janela sempre segue; uma nova só entra enquanto o IP
-// tiver menos de limit fingerprints ativas.
-func (c *Counter) Allow(ip netip.Addr, fp uint64) bool {
+// Allow registra fp na conta do IP truncado ip no site e diz se o evento pode
+// seguir. Uma fingerprint já vista na janela sempre segue; uma nova só entra
+// enquanto a conta tiver menos de limit fingerprints ativas.
+func (c *Counter) Allow(ip netip.Addr, site string, fp uint64) bool {
 	if c.limit <= 0 {
 		return true
 	}
@@ -62,10 +71,11 @@ func (c *Counter) Allow(ip netip.Addr, fp uint64) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	seen := c.ips[ip]
+	k := key{ip, site}
+	seen := c.keys[k]
 	if seen == nil {
 		seen = make(map[uint64]time.Time)
-		c.ips[ip] = seen
+		c.keys[k] = seen
 	}
 	if _, ok := seen[fp]; ok {
 		seen[fp] = now
@@ -90,24 +100,24 @@ func (c *Counter) expire(seen map[uint64]time.Time, now time.Time) {
 	}
 }
 
-// Sweep tira da memória as fingerprints fora da janela e os IPs sem nenhuma.
+// Sweep tira da memória as fingerprints fora da janela e as contas sem nenhuma.
 func (c *Counter) Sweep() {
 	now := c.now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for ip, seen := range c.ips {
+	for k, seen := range c.keys {
 		c.expire(seen, now)
 		if len(seen) == 0 {
-			delete(c.ips, ip)
+			delete(c.keys, k)
 		}
 	}
 }
 
-// Len diz quantos IPs estão em memória.
+// Len diz quantas contas (IP e site) estão em memória.
 func (c *Counter) Len() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return len(c.ips)
+	return len(c.keys)
 }
 
 // Run chama Sweep a cada every até o contexto acabar.

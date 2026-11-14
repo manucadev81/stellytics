@@ -63,13 +63,13 @@ O `crypto.subtle` só existe em contexto seguro (HTTPS ou `localhost`). Numa pá
 
 A fingerprint é um hash de `User-Agent`, `Accept-Language`, idioma e tela do evento. Ela fica só em memória e não identifica uma pessoa, porque muita gente tem a mesma combinação.
 
-- Por IP truncado, o gateway aceita até `FINGERPRINT_LIMIT` fingerprints distintas vistas dentro de `FINGERPRINT_WINDOW`.
+- Por IP truncado e site, o gateway aceita até `FINGERPRINT_LIMIT` fingerprints distintas vistas dentro de `FINGERPRINT_WINDOW`. A conta é separada por site para que um robô no mesmo /24 (ou na mesma CGNAT), lotando a cota do próprio site, não tire as vagas dos sites de outros tenants.
 - A janela é deslizante: cada evento renova a fingerprint dele, e as que ficam paradas por mais que a janela liberam a vaga.
 - Eventos de uma fingerprint nova, além do limite, recebem `204` e são descartados. As fingerprints que já estavam no IP continuam contando.
 
 Assim, um robô que troca de `User-Agent` a cada request, a partir de um IP só, não infla as métricas.
 
-O padrão é generoso (50 em 10 minutos) porque o IP truncado junta um /24 inteiro, e uma empresa ou universidade atrás de NAT tem muitos navegadores legítimos. Com `0`, a checagem fica desligada.
+O padrão é generoso (50 em 10 minutos) porque o IP truncado junta um /24 inteiro, e uma empresa, universidade ou operadora com CGNAT tem muitos navegadores legítimos. O custo da regra é que, num /24 com mais de 50 navegadores ativos no mesmo site, os que chegarem depois só passam a contar quando vagas ficarem paradas pela janela inteira. Com `0`, a checagem fica desligada.
 
 ## Contrato com o banco: `ingest_site`
 
@@ -107,7 +107,7 @@ Vem do `RemoteAddr`. O `X-Forwarded-For` só é lido quando a conexão chega de 
 | `PROOF_SECRET` | sorteada ao subir | Chave dos desafios, com 32+ caracteres. Defina em produção: a chave sorteada não vale entre reinícios nem entre réplicas |
 | `PROOF_BITS` | `12` | Dificuldade da prova (0 a 24) |
 | `PROOF_TTL` | `10m` | Validade de um desafio (1m a 1h) |
-| `FINGERPRINT_LIMIT` | `50` | Fingerprints distintas por IP truncado na janela (0 a 10000; 0 desliga) |
+| `FINGERPRINT_LIMIT` | `50` | Fingerprints distintas por IP truncado e site na janela (0 a 1000; 0 desliga) |
 | `FINGERPRINT_WINDOW` | `10m` | Janela deslizante das fingerprints (1m a 24h) |
 
 ## Desenvolvimento

@@ -60,6 +60,7 @@ func TestLoadErrors(t *testing.T) {
 		"bits demais":      {"DATABASE_URL": "x", "UMAMI_URL": "http://u", "PROOF_BITS": "25"},
 		"prova longa":      {"DATABASE_URL": "x", "UMAMI_URL": "http://u", "PROOF_TTL": "2h"},
 		"limite negativo":  {"DATABASE_URL": "x", "UMAMI_URL": "http://u", "FINGERPRINT_LIMIT": "-1"},
+		"limite alto":      {"DATABASE_URL": "x", "UMAMI_URL": "http://u", "FINGERPRINT_LIMIT": "1001"},
 		"janela curta":     {"DATABASE_URL": "x", "UMAMI_URL": "http://u", "FINGERPRINT_WINDOW": "30s"},
 	}
 	for name, m := range cases {
