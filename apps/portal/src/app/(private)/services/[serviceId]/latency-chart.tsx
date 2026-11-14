@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AxisLabels } from "@/components/column-chart";
+import { AxisLabels, useRovingFocus } from "@/components/column-chart";
 import { formatLatency } from "@/lib/format";
 
 // Latência p50 e p95 por balde do período (#37). Duas séries: legenda acima e
@@ -52,6 +52,7 @@ export function LatencyChart({ points }: { points: LatencyPoint[] }) {
   const { top, step } = niceSeconds(Math.max(0, ...values.p95.map((v) => v ?? 0), ...values.p50.map((v) => v ?? 0)));
   const ticks = Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step);
   const hovered = active === null ? null : points[active];
+  const roving = useRovingFocus(n, setActive);
 
   // Rótulos diretos à direita, na altura do último valor; afastados se colidirem.
   const [p50End, p95End] = SERIES.map((s) => {
@@ -133,12 +134,18 @@ export function LatencyChart({ points }: { points: LatencyPoint[] }) {
               );
             }),
           )}
-          <div role="list" aria-label="Latency per period" className="absolute inset-0 flex" onPointerLeave={() => setActive(null)}>
+          <div
+            role="list"
+            aria-label="Latency per period. Use the arrow keys to move between periods."
+            className="absolute inset-0 flex"
+            onPointerLeave={() => setActive(null)}
+            onKeyDown={roving.onKeyDown}
+          >
             {points.map((p, i) => (
               <div
                 key={i}
                 role="listitem"
-                tabIndex={0}
+                {...roving.item(i)}
                 aria-label={
                   p.p50 === null
                     ? `${p.longLabel}: no requests`

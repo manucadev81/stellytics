@@ -132,12 +132,16 @@ export function formatLatency(seconds: number | null): string {
 }
 
 // Fração de requisições com erro, com uma casa decimal abaixo de 10%: 0.4% de
-// erros de servidor é bem diferente de 0%.
+// erros de servidor é bem diferente de 0%. Nunca arredonda para 0% ou 100%
+// quando não é exato, porque "100% de erros" diz que nada funcionou.
 export function formatShare(part: number, total: number): string {
   if (total <= 0) return "—";
   const pct = (part / total) * 100;
   if (part > 0 && pct < 0.1) return "< 0.1%";
-  return pct < 10 ? `${pct.toFixed(1)}%` : `${Math.round(pct)}%`;
+  const oneDecimal = pct.toFixed(1);
+  if (Number(oneDecimal) < 10) return `${oneDecimal}%`;
+  const whole = Math.round(pct);
+  return whole === 100 && part < total ? "> 99%" : `${whole}%`;
 }
 
 const STATUS_TEXT: Record<number, string> = {

@@ -30,7 +30,8 @@ Os dois gráficos têm a tabela equivalente em "Show charts as a table".
 **De qual tabela vem cada trecho** (`metricSources`):
 
 - o job da #34 consolida, a cada 15 minutos, as horas que terminaram há pelo menos 5 minutos, e os dias a partir das horas;
-- com uma hora de folga, o painel lê `api_metric_1d` para os dias fechados antes da última hora consolidada, `api_metric_1h` para as horas fechadas e `api_metric_1m` para o resto (no máximo as duas últimas horas);
+- o corte entre `api_metric_1h` e `api_metric_1m` é o menor entre a hora corrente menos uma (folga para lotes atrasados do coletor) e o fim da última hora consolidada do tenant (`max(bucket_start)` do 1h, pelo índice `(tenant_id, bucket_start)`);
+- o painel lê `api_metric_1d` para os dias inteiros antes desse corte, `api_metric_1h` para as horas antes dele e `api_metric_1m` para o resto: com o job em dia, as duas últimas horas; com o job parado ou atrasado, tudo o que ele ainda não consolidou, em vez de sumir do painel;
 - período por hora (24 horas) nunca usa `api_metric_1d`;
 - os trechos não se sobrepõem, então nada conta duas vezes.
 
@@ -43,23 +44,29 @@ Uma consulta só, com `GROUPING SETS`, devolve a série, os endpoints, os status
 - **Latência em ms ou s**, com uma casa abaixo de 10 ms. O percentil para em 10 s, o último limite do histograma (D2 do spec do E5), e aparece como "≥ 10 s".
 - **Mesmos períodos do painel web** (`src/lib/period.ts`, em UTC) e o mesmo seletor.
 - **Endpoint é método mais rota.** O limite de 100 linhas é folgado: o coletor limita a 500 rotas por serviço e dia (D4 do spec do E5).
+- **Teclado:** cada gráfico é uma parada de Tab só (o balde mais recente); as setas, Home e End andam entre os baldes e abrem o tooltip. Sem isso, 90 dias seriam 90 paradas por gráfico. Vale também para o painel web.
+- **Frações** nunca arredondam para 0% nem 100% quando não são exatas ("< 0.1%", "> 99%").
 - **Gráfico de colunas compartilhado:** o gráfico do painel web virou o componente `src/components/column-chart.tsx`, usado pelos dois painéis. O de latência fica em `services/[serviceId]/latency-chart.tsx`. Cores das posições 1 e 2 da paleta da skill `dataviz` (azul e laranja), nos dois modos.
 - **Projeto removido** vê só o aviso, sem leitura de métricas (spec do E2, seção 6).
 
 **Testes:**
 
 - `test/api-dashboard.test.ts`:
-  - de qual tabela vem cada trecho, inclusive logo depois da meia-noite;
+  - de qual tabela vem cada trecho, inclusive logo depois da meia-noite, com o job atrasado e sem nada consolidado;
+  - com o job parado, as horas que só existem no 1m aparecem, sem contar duas vezes as que já estão no 1h;
   - a leitura junta 1d, 1h e 1m sem contar nada duas vezes, com linhas de armadilha (minutos e horas que o consolidado já cobre, o dia corrente parcial, outro serviço, outro tenant);
   - percentil com interpolação conferida;
   - página renderizada, com os indicadores, uma coluna e um ponto por balde, os endpoints e os status;
   - serviço vazio, serviço de outro tenant (404 no painel e nas chaves) e projeto removido.
 - `test/isolation.test.ts`: dois casos do painel (#21). A vê só o próprio serviço, mesmo com uma linha impossível (serviço de A com o tenant de B), e o operador recebe 404 (D2).
-- **Conferido que os testes pegam falhas:** tirar o filtro de tenant de um trecho, deixar o trecho de horas sobrepor o de minutos e deixar o período por hora ler o 1d fazem testes falharem.
+- **Conferido que os testes pegam falhas:** tirar o filtro de tenant de um trecho, deixar o trecho de horas sobrepor o de minutos, deixar o período por hora ler o 1d e ignorar a última hora consolidada fazem testes falharem.
+
+**Revisão independente** de um subagente: sem falha de isolamento nem de SQL. Tratados o corte fixo (dados sumiam com o job atrasado), as paradas de Tab, o arredondamento das frações e um trecho do `e2-implementacao.md` que ainda apontava as chaves para `/services/[serviceId]`.
 
 **Conferido no navegador** com cerca de 6 mil linhas de teste (30 dias): claro e escuro, desktop e 390px de largura, períodos de 24 horas, 7 e 30 dias, tooltip do gráfico de latência.
 
 ## 3. Limites e pendências
 
-- **Se o job da #34 parar**, as horas que ele deixou de consolidar somem do painel, menos as duas últimas, que vêm do `api_metric_1m`. O monitoramento do job entra com as métricas internas da produção (ADR 0005).
+- **Se o job da #34 ficar parado mais de 35 dias** (a retenção do `api_metric_1m`), as horas não consolidadas se perdem. Até lá, o painel lê do `api_metric_1m`. O monitoramento do job entra com as métricas internas da produção (ADR 0005).
+- **A tabela de endpoints** traz todos os pares rota e método do período antes de cortar em 100. Com o teto de 500 rotas por serviço e dia, cabe; se crescer, vira uma consulta com `LIMIT`. O monitoramento do job entra com as métricas internas da produção (ADR 0005).
 - **#38:** o painel global do SCF ainda não existe.

@@ -110,24 +110,41 @@ afterAll(async () => {
 
 describe("de qual tabela vem cada trecho", () => {
   const iso = (r: { from: Date; to: Date } | null) => r && { from: r.from.toISOString(), to: r.to.toISOString() };
+  // Job em dia: a última hora consolidada terminou há 5 minutos ou mais.
+  const CAUGHT_UP = new Date("2026-11-14T10:00:00Z");
 
   it("dias fechados do 1d, horas fechadas do 1h e as duas últimas horas do 1m", () => {
-    const s = metricSources(resolvePeriod("7d", NOW));
+    const s = metricSources(resolvePeriod("7d", NOW), CAUGHT_UP);
     expect(iso(s.day)).toEqual({ from: "2026-11-08T00:00:00.000Z", to: "2026-11-14T00:00:00.000Z" });
     expect(iso(s.hour)).toEqual({ from: "2026-11-14T00:00:00.000Z", to: "2026-11-14T09:00:00.000Z" });
     expect(iso(s.minute)).toEqual({ from: "2026-11-14T09:00:00.000Z", to: NOW.toISOString() });
   });
 
   it("período por hora não usa o 1d", () => {
-    const s = metricSources(resolvePeriod("24h", NOW));
+    const s = metricSources(resolvePeriod("24h", NOW), CAUGHT_UP);
     expect(s.day).toBeNull();
     expect(iso(s.hour)).toEqual({ from: "2026-11-13T11:00:00.000Z", to: "2026-11-14T09:00:00.000Z" });
     expect(iso(s.minute)).toEqual({ from: "2026-11-14T09:00:00.000Z", to: NOW.toISOString() });
   });
 
+  it("job atrasado: o que não foi consolidado continua vindo do 1m", () => {
+    const s = metricSources(resolvePeriod("7d", NOW), new Date("2026-11-13T21:00:00Z"));
+    expect(iso(s.day)).toEqual({ from: "2026-11-08T00:00:00.000Z", to: "2026-11-13T00:00:00.000Z" });
+    expect(iso(s.hour)).toEqual({ from: "2026-11-13T00:00:00.000Z", to: "2026-11-13T21:00:00.000Z" });
+    expect(iso(s.minute)).toEqual({ from: "2026-11-13T21:00:00.000Z", to: NOW.toISOString() });
+  });
+
+  it("nada consolidado ainda: tudo do 1m", () => {
+    const period = resolvePeriod("30d", NOW);
+    const s = metricSources(period, null);
+    expect(s.day!.from >= s.day!.to).toBe(true);
+    expect(s.hour.from >= s.hour.to).toBe(true);
+    expect(iso(s.minute)).toEqual({ from: period.startAt.toISOString(), to: NOW.toISOString() });
+  });
+
   it("logo depois da meia-noite, o dia anterior ainda vem do 1h", () => {
     const at = new Date("2026-11-14T00:30:00Z");
-    const s = metricSources(resolvePeriod("12m", at));
+    const s = metricSources(resolvePeriod("12m", at), at);
     expect(iso(s.day)).toEqual({ from: "2025-12-01T00:00:00.000Z", to: "2026-11-13T00:00:00.000Z" });
     expect(iso(s.hour)).toEqual({ from: "2026-11-13T00:00:00.000Z", to: "2026-11-13T23:00:00.000Z" });
     expect(iso(s.minute)).toEqual({ from: "2026-11-13T23:00:00.000Z", to: at.toISOString() });
@@ -148,6 +165,9 @@ describe("formatação", () => {
     expect(formatShare(1, 5000)).toBe("< 0.1%");
     expect(formatShare(0, 10)).toBe("0.0%");
     expect(formatShare(50, 100)).toBe("50%");
+    expect(formatShare(9.97, 100)).toBe("10%");
+    expect(formatShare(995, 1000)).toBe("> 99%");
+    expect(formatShare(10, 10)).toBe("100%");
     expect(formatShare(0, 0)).toBe("—");
   });
 
@@ -220,6 +240,21 @@ describe("leitura das métricas", () => {
     expect(data.series).toHaveLength(24);
     expect(data.totals.requests).toBe(3);
     expect(data.series.find((p) => p.requests > 0)!.at.toISOString()).toBe("2026-11-13T20:00:00.000Z");
+  });
+
+  it("com o job parado, as horas só no 1m aparecem e nada conta duas vezes", async () => {
+    const a = await createMember();
+    // Última hora consolidada: 13/11 20:00. Depois disso, só minutos.
+    await insert("api_metric_1h", a, { at: "2026-11-13T20:00:00Z", count: 3 });
+    await insert("api_metric_1d", a, { at: "2026-11-13T00:00:00Z", count: 3 });
+    await insert("api_metric_1m", a, { at: "2026-11-13T20:10:00Z", count: 1000 }); // já no 1h
+    await insert("api_metric_1m", a, { at: "2026-11-13T23:30:00Z", count: 4 });
+    await insert("api_metric_1m", a, { at: "2026-11-14T03:15:00Z", count: 5 });
+    const day = (await getServiceDashboard(a.ctx, a.serviceId, resolvePeriod("7d", NOW)))!;
+    expect(day.totals.requests).toBe(12);
+    expect(day.series.slice(-2).map((p) => p.requests)).toEqual([7, 5]);
+    const hour = (await getServiceDashboard(a.ctx, a.serviceId, resolvePeriod("24h", NOW)))!;
+    expect(hour.totals.requests).toBe(12);
   });
 
   it("sem dados: zeros, percentis nulos e listas vazias", async () => {

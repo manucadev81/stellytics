@@ -246,9 +246,11 @@ describe("página do site", () => {
     expect(active[0]).toContain(`href="/sites/${m.siteId}?period=30d"`);
     expect(active[0]).toContain(">Last 30 days<");
     expect(html).toContain(`href="/sites/${m.siteId}?period=7d"`);
-    // Gráfico: uma coluna por dia, alcançável pelo teclado, com o valor no rótulo.
-    const columns = html.match(/role="listitem" tabindex="0"/g) ?? [];
+    // Gráfico: uma coluna por dia, com o valor no rótulo. Uma parada de Tab só
+    // (a coluna mais recente); as setas andam entre as outras.
+    const columns = html.match(/role="listitem" tabindex="(0|-1)"/g) ?? [];
     expect(columns).toHaveLength(30);
+    expect(columns.filter((c) => c.endsWith('"0"'))).toHaveLength(1);
     expect(html).toMatch(/aria-label="[^"]+: 7 page views, 3 visitors"/);
     expect(html).toMatch(/aria-label="[^"]+: 0 page views, 0 visitors"/);
     // Tabela equivalente ao gráfico, com uma linha por dia.
@@ -261,7 +263,7 @@ describe("página do site", () => {
     sessionUser = { id: m.userId, role: "tenant" };
     const html = await render(page(m.siteId, "1y"));
     expect(html).toMatch(/aria-current="page"[^>]*>Last 7 days</);
-    expect(html.match(/role="listitem" tabindex="0"/g)).toHaveLength(7);
+    expect(html.match(/role="listitem" tabindex="(0|-1)"/g)).toHaveLength(7);
   });
 
   it("sem dados: indicadores sem variação e listas vazias", async () => {

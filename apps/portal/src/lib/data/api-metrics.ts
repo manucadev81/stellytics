@@ -47,12 +47,22 @@ function floorDay(d: Date): Date {
 
 // De qual tabela vem cada trecho do período. O job da #34 consolida a cada
 // 15 minutos as horas que terminaram há pelo menos 5 minutos, e o dia a partir
-// das horas. Com uma hora de folga, o que começou antes de `hourCut` já está
-// em api_metric_1h, e os dias antes de `dayCut`, em api_metric_1d. O resto
-// (no máximo as duas últimas horas) vem de api_metric_1m. Os trechos não se
-// sobrepõem, então nada conta duas vezes.
-export function metricSources(period: Pick<Period, "unit" | "startAt" | "endAt">) {
-  const hourCut = new Date(floorHour(period.endAt).getTime() - HOUR);
+// das horas, na mesma execução. O que começou antes de `hourCut` vem de
+// api_metric_1h, os dias antes de `dayCut`, de api_metric_1d, e o resto, de
+// api_metric_1m. Os trechos não se sobrepõem, então nada conta duas vezes.
+//
+// `hourCut` é o menor entre:
+// - a hora corrente menos uma (folga sobre o job, para lotes atrasados do
+//   coletor entrarem antes de o painel trocar de tabela);
+// - o fim da última hora consolidada do tenant (`consolidatedUntil`): se o job
+//   parar ou atrasar, as horas ainda não consolidadas continuam vindo do 1m,
+//   em vez de sumirem. Nulo (nada consolidado ainda) põe tudo no 1m.
+export function metricSources(
+  period: Pick<Period, "unit" | "startAt" | "endAt">,
+  consolidatedUntil: Date | null,
+) {
+  const slack = new Date(floorHour(period.endAt).getTime() - HOUR);
+  const hourCut = consolidatedUntil === null ? period.startAt : consolidatedUntil < slack ? consolidatedUntil : slack;
   const dayCut = floorDay(hourCut);
   const { startAt: start, endAt: end } = period;
   const max = (a: Date, b: Date) => (a > b ? a : b);
@@ -101,7 +111,10 @@ export async function getServiceDashboard(
 ): Promise<ApiServiceDashboard | null> {
   const service = await getApiService(ctx, serviceId);
   if (!service) return null;
-  const src = metricSources(period);
+  // Fim da última hora consolidada do tenant; o índice (tenant_id, bucket_start) atende.
+  const [last] = await sql<{ until: Date | string | null }[]>`
+    SELECT max(bucket_start) + interval '1 hour' AS until FROM api_metric_1h WHERE tenant_id = ${ctx.tenantId}`;
+  const src = metricSources(period, last?.until ? new Date(last.until) : null);
   // Trecho vazio (from >= to) não devolve linha; o de dias some no período por hora.
   const day = src.day ?? { from: period.startAt, to: period.startAt };
 

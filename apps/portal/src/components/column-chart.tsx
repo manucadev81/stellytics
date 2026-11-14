@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { type KeyboardEvent, useRef, useState } from "react";
 
 // Colunas de uma série por balde do período, usadas pelos painéis do tenant
 // (#28, visualizações; #37, requisições). Uma série só, então sem legenda: o
@@ -30,6 +30,39 @@ export function niceScale(max: number): { top: number; step: number } {
   return { top: Math.ceil(max / roundedStep) * roundedStep, step: roundedStep };
 }
 
+// Foco por teclado nos gráficos: uma parada de Tab por gráfico (o balde mais
+// recente) e as setas, Home e End para andar entre os baldes. Sem isso, um
+// período de 90 dias seriam 90 paradas de Tab.
+export function useRovingFocus(count: number, onMove: (i: number) => void) {
+  const [current, setCurrent] = useState(count - 1);
+  const items = useRef<(HTMLElement | null)[]>([]);
+  const focusIndex = Math.min(current, count - 1);
+  function onKeyDown(e: KeyboardEvent) {
+    const next =
+      e.key === "ArrowRight" ? focusIndex + 1
+      : e.key === "ArrowLeft" ? focusIndex - 1
+      : e.key === "Home" ? 0
+      : e.key === "End" ? count - 1
+      : null;
+    if (next === null) return;
+    e.preventDefault();
+    const i = Math.max(0, Math.min(count - 1, next));
+    setCurrent(i);
+    onMove(i);
+    items.current[i]?.focus();
+  }
+  return {
+    onKeyDown,
+    item: (i: number) => ({
+      tabIndex: i === focusIndex ? 0 : -1,
+      ref: (el: HTMLElement | null) => {
+        items.current[i] = el;
+      },
+      onFocusCapture: () => setCurrent(i),
+    }),
+  };
+}
+
 // Só alguns rótulos no eixo x (início, meio e fim), para não colidirem.
 export function axisLabelIndexes(count: number): number[] {
   const last = count - 1;
@@ -43,6 +76,7 @@ export function ColumnChart({ points, label }: { points: ColumnPoint[]; label: s
   const tickFormat = top >= 10_000 ? compact : full;
   const hovered = active === null ? null : points[active];
   const dense = points.length > 40;
+  const roving = useRovingFocus(points.length, setActive);
 
   return (
     <div className="[--grid:#e4e4e7] [--series:#2a78d6] dark:[--grid:#27272a] dark:[--series:#3987e5]">
@@ -70,15 +104,16 @@ export function ColumnChart({ points, label }: { points: ColumnPoint[]; label: s
           ))}
           <div
             role="list"
-            aria-label={label}
+            aria-label={`${label}. Use the arrow keys to move between periods.`}
             className={`absolute inset-0 flex items-end ${dense ? "gap-px" : "gap-0.5"}`}
             onPointerLeave={() => setActive(null)}
+            onKeyDown={roving.onKeyDown}
           >
             {points.map((p, i) => (
               <div
                 key={i}
                 role="listitem"
-                tabIndex={0}
+                {...roving.item(i)}
                 aria-label={p.description}
                 className="flex h-full min-w-0 flex-1 cursor-default items-end justify-center outline-none focus-visible:bg-zinc-500/10"
                 onPointerEnter={() => setActive(i)}
