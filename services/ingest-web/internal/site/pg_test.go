@@ -19,9 +19,14 @@ import (
 
 // Teste de integração: precisa de DATABASE_URL (o banco notify, com o dono das
 // tabelas) e dos usuários de 02-ingest-roles.sh, que o CI e o Compose criam.
-// Quando a visão ingest_site ainda não existe (banco vazio do job go do CI),
-// aplica as migrações do portal. INGEST_DATABASE_URL troca a conexão usada
-// como notify_ingest.
+// INGEST_DATABASE_URL troca a conexão usada como notify_ingest.
+//
+// O teste nunca aplica migrações no banco de DATABASE_URL: elas são do portal,
+// que as registra no Drizzle, e aplicá-las por fora faria o portal falhar ao
+// migrar depois. Com permissão de criar banco (o CI), ele cria um banco
+// temporário, aplica as migrações lá e o apaga no fim. Sem essa permissão (o
+// usuário notify do Compose), usa o banco de DATABASE_URL se o portal já o
+// migrou, e pula o teste se não.
 
 func TestPGIntegration(t *testing.T) {
 	adminURL := os.Getenv("DATABASE_URL")
@@ -29,13 +34,13 @@ func TestPGIntegration(t *testing.T) {
 		t.Skip("DATABASE_URL não definida")
 	}
 	ctx := context.Background()
+	adminURL = testDatabase(t, adminURL)
 
 	admin, err := pgx.Connect(ctx, adminURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer admin.Close(ctx)
-	ensureMigrations(t, admin)
 
 	active := createTenant(t, admin, "active")
 	removed := createTenant(t, admin, "removed")
@@ -98,18 +103,71 @@ func TestPGIntegration(t *testing.T) {
 	assertDenied(t, "CREATE TABLE", err)
 }
 
-// ensureMigrations aplica as migrações do portal, em ordem, quando a visão
-// ingest_site não existe.
-func ensureMigrations(t *testing.T, admin *pgx.Conn) {
+// testDatabase devolve a URL do banco onde o teste roda: um banco temporário
+// com as migrações do portal, quando o usuário pode criar bancos, ou o próprio
+// banco de adminURL, quando o portal já o migrou.
+func testDatabase(t *testing.T, adminURL string) string {
 	t.Helper()
 	ctx := context.Background()
-	var exists bool
-	if err := admin.QueryRow(ctx, `SELECT to_regclass('ingest_site') IS NOT NULL`).Scan(&exists); err != nil {
+	conn, err := pgx.Connect(ctx, adminURL)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if exists {
-		return
+	defer conn.Close(ctx)
+
+	var canCreate, migrated bool
+	err = conn.QueryRow(ctx, `SELECT rolcreatedb OR rolsuper, to_regclass('ingest_site') IS NOT NULL
+		FROM pg_roles WHERE rolname = current_user`).Scan(&canCreate, &migrated)
+	if err != nil {
+		t.Fatal(err)
 	}
+	if !canCreate {
+		if !migrated {
+			t.Skip("o banco de DATABASE_URL não tem a visão ingest_site e o usuário não pode criar um banco " +
+				"temporário: suba o portal (que aplica as migrações) ou use um usuário com CREATEDB")
+		}
+		return adminURL
+	}
+
+	b := make([]byte, 6)
+	if _, err := rand.Read(b); err != nil {
+		t.Fatal(err)
+	}
+	name := fmt.Sprintf("ingest_site_test_%x", b)
+	if _, err := conn.Exec(ctx, "CREATE DATABASE "+pgx.Identifier{name}.Sanitize()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx := context.Background()
+		conn, err := pgx.Connect(ctx, adminURL)
+		if err != nil {
+			t.Errorf("apagando %s: %v", name, err)
+			return
+		}
+		defer conn.Close(ctx)
+		if _, err := conn.Exec(ctx, "DROP DATABASE "+pgx.Identifier{name}.Sanitize()+" WITH (FORCE)"); err != nil {
+			t.Errorf("apagando %s: %v", name, err)
+		}
+	})
+
+	u, err := url.Parse(adminURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.Path = "/" + name
+	tmp, err := pgx.Connect(ctx, u.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tmp.Close(ctx)
+	applyMigrations(t, tmp)
+	return u.String()
+}
+
+// applyMigrations aplica as migrações do portal, em ordem, num banco vazio.
+func applyMigrations(t *testing.T, db *pgx.Conn) {
+	t.Helper()
+	ctx := context.Background()
 	files, err := filepath.Glob("../../../../apps/portal/drizzle/*.sql")
 	if err != nil || len(files) == 0 {
 		t.Fatalf("migrações do portal não encontradas: %v", err)
@@ -124,7 +182,7 @@ func ensureMigrations(t *testing.T, admin *pgx.Conn) {
 			if strings.TrimSpace(stmt) == "" {
 				continue
 			}
-			if _, err := admin.Exec(ctx, stmt); err != nil {
+			if _, err := db.Exec(ctx, stmt); err != nil {
 				t.Fatalf("%s: %v (rodou infra/compose/postgres/init/02-ingest-roles.sh?)", filepath.Base(f), err)
 			}
 		}

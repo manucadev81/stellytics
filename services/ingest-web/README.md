@@ -118,7 +118,7 @@ De dentro de `services/`:
 go test -race ./ingest-web/...
 ```
 
-O teste de integração do pacote `site` roda quando `DATABASE_URL` aponta para o banco `notify`. Ele precisa dos usuários de `infra/compose/postgres/init/02-ingest-roles.sh` e aplica as migrações do portal quando a visão `ingest_site` não existe. Depois conecta como `notify_ingest`, com a senha `notify_ingest` ou pela URL de `INGEST_DATABASE_URL`.
+O teste de integração do pacote `site` roda quando `DATABASE_URL` aponta para o banco `notify`. Ele precisa dos usuários de `infra/compose/postgres/init/02-ingest-roles.sh` e nunca aplica migrações no banco de `DATABASE_URL`: elas são do portal, que as registra no Drizzle. Com um usuário que pode criar bancos (o CI), o teste cria um banco temporário, aplica as migrações lá e o apaga no fim. Com o usuário `notify` do Compose, ele usa o banco já migrado pelo portal, ou é pulado se o portal ainda não subiu. Depois conecta como `notify_ingest`, com a senha `notify_ingest` ou pela URL de `INGEST_DATABASE_URL`.
 
 O teste ponta a ponta precisa do ambiente do Compose no ar, com o Umami publicado pelo override de desenvolvimento (ele usa a API de administração do Umami):
 
