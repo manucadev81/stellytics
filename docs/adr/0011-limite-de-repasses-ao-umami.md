@@ -2,7 +2,7 @@
 
 - **Status:** Proposto
 - **Data:** 15/11/2026
-- **Issue:** ainda não criada; o texto pronto está em [`docs/relatorios/carga-1m-dia.md`](../relatorios/carga-1m-dia.md), seção "Pendência pronta para virar issue"
+- **Issue:** [#133](https://github.com/romulospl/notify/issues/133) (decisão sobre o 503) e [#134](https://github.com/romulospl/notify/issues/134) (limite por site); o texto original da pendência está em [`docs/relatorios/carga-1m-dia.md`](../relatorios/carga-1m-dia.md), seção "Pendência pronta para virar issue"
 - **Depende de:** [ADR 0002](0002-arquitetura-e-stack.md), [ADR 0009](0009-alta-disponibilidade.md)
 
 ## Contexto

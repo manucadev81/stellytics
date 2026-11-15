@@ -174,7 +174,7 @@ Como verificar uma imagem publicada e o SBOM atestado: ver o [`README.md`](../RE
 | Relato privado de vulnerabilidades | Só existe em repositório público. | Ligar *Settings, Code security, Private vulnerability reporting* ao abrir o repositório (pendência da #56). |
 | Proteção da `main` | Desligada por decisão. | Se ligada, exigir o check `ci` e revisão. |
 | 2FA e proteção das contas de mantenedores | Não é verificável pelo repositório. | Ação da organização. |
-| Verificação de build reproduzível | Não existe. | Issue a abrir (builds reproduzíveis verificados). |
+| Verificação de build reproduzível | Não existe. | [#136](https://github.com/romulospl/notify/issues/136) (builds reproduzíveis verificados). |
 | Calibragem dos limites anti-bot | Padrões não medidos com tráfego real. | Calibrar nos pilotos (E8). |
 | Replicação do gateway | Limites em memória por processo. | Se houver mais de uma réplica, mover os contadores para um armazenamento compartilhado ou aceitar a cota por réplica. |
 
