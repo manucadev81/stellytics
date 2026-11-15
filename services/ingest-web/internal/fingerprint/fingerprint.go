@@ -64,8 +64,17 @@ func (c *Counter) WithClock(now func() time.Time) *Counter {
 // seguir. Uma fingerprint já vista na janela sempre segue; uma nova só entra
 // enquanto a conta tiver menos de limit fingerprints ativas.
 func (c *Counter) Allow(ip netip.Addr, site string, fp uint64) bool {
+	ok, _ := c.Admit(ip, site, fp)
+	return ok
+}
+
+// Admit é o Allow que também diz se a fingerprint entrou agora na conta
+// (fresh). Quem descarta o evento depois por outro motivo (saturação do
+// repasse) chama Forget com fresh verdadeiro, para o descarte não gastar uma
+// das vagas de fingerprint do IP.
+func (c *Counter) Admit(ip netip.Addr, site string, fp uint64) (ok, fresh bool) {
 	if c.limit <= 0 {
-		return true
+		return true, false
 	}
 	now := c.now()
 	c.mu.Lock()
@@ -79,16 +88,33 @@ func (c *Counter) Allow(ip netip.Addr, site string, fp uint64) bool {
 	}
 	if _, ok := seen[fp]; ok {
 		seen[fp] = now
-		return true
+		return true, false
 	}
 	if len(seen) >= c.limit {
 		c.expire(seen, now)
 		if len(seen) >= c.limit {
-			return false
+			return false, false
 		}
 	}
 	seen[fp] = now
-	return true
+	return true, true
+}
+
+// Forget tira fp da conta do IP truncado ip no site. Só para desfazer um
+// Admit que devolveu fresh.
+func (c *Counter) Forget(ip netip.Addr, site string, fp uint64) {
+	if c.limit <= 0 {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	k := key{ip, site}
+	if seen := c.keys[k]; seen != nil {
+		delete(seen, fp)
+		if len(seen) == 0 {
+			delete(c.keys, k)
+		}
+	}
 }
 
 func (c *Counter) expire(seen map[uint64]time.Time, now time.Time) {

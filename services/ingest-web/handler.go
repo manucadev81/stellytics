@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,14 +23,10 @@ import (
 // maxBody é o tamanho máximo do corpo de um evento.
 const maxBody = 16 << 10
 
-// sender é a parte do relay.Client que o handler usa.
-type sender interface {
-	Send(ctx context.Context, ev relay.Event, userAgent string, truncatedIP netip.Addr) error
-}
-
 // fingerprints é a parte do fingerprint.Counter que o handler usa.
 type fingerprints interface {
-	Allow(ip netip.Addr, site string, fp uint64) bool
+	Admit(ip netip.Addr, site string, fp uint64) (ok, fresh bool)
+	Forget(ip netip.Addr, site string, fp uint64)
 }
 
 // limiter é a parte do limit.Limiter que o handler usa.
@@ -41,7 +36,7 @@ type limiter interface {
 
 type gateway struct {
 	sites   site.Store
-	relay   sender
+	relay   relay.Sender
 	limits  limiter
 	ips     clientip.Resolver
 	proofs  *proof.Issuer
@@ -157,13 +152,25 @@ func (g *gateway) event(w http.ResponseWriter, r *http.Request) {
 	// Muitos navegadores diferentes no mesmo IP truncado e site (#26): as
 	// fingerprints além do limite são descartadas, com a mesma resposta do sucesso.
 	fp := fingerprint.Of(r.UserAgent(), r.Header.Get("Accept-Language"), ev.Payload.Language, ev.Payload.Screen)
-	if !g.fps.Allow(truncated, ev.Payload.Website, fp) {
+	admitted, fresh := g.fps.Admit(truncated, ev.Payload.Website, fp)
+	if !admitted {
 		g.log.Debug("evento descartado", "reason", "fingerprints demais no IP")
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
 	if err := g.relay.Send(r.Context(), ev, r.UserAgent(), truncated); err != nil {
+		if errors.Is(err, relay.ErrSaturated) {
+			// Repasses ao Umami no limite: o evento é perdido (o script não tenta
+			// de novo) e o contador agregado registra. Não gastou a cota de
+			// fingerprints do IP. Sem log por evento.
+			if fresh {
+				g.fps.Forget(truncated, ev.Payload.Website, fp)
+			}
+			w.Header().Set("Retry-After", "1")
+			http.Error(w, "overloaded", http.StatusServiceUnavailable)
+			return
+		}
 		g.log.Error("repasse ao umami falhou", "err", err)
 		http.Error(w, "bad gateway", http.StatusBadGateway)
 		return
