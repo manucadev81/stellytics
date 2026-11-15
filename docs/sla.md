@@ -23,7 +23,7 @@ Fonte: RFP `scf-web-api-analytics` ("Web and API Analytics for Stellar Ecosystem
 | Painéis (portal e API de leitura) | 99,90% | **Nenhum número comprometido**, relato de medição | Uma VM: orçamento de 43 min/mês é consumido por um deploy ruim ou uma queda de VM | Degrau 2 (réplica e failover do banco, portal replicado) |
 | Vulnerabilidades críticas e altas | 24 h | **Hoje: 14 dias (crítica) e 30 dias (alta)** (`SECURITY.md`). Prazo de 24 h é meta, ver seção 5 | O processo técnico (release assinada, deploy por digest) pode ser rápido; o prazo de 24 h depende de uma pessoa disponível | Segunda pessoa de plantão e decisão do mantenedor de mudar `SECURITY.md` |
 
-**Decisão pendente do mantenedor.** Para assumir o compromisso de 24 h, `SECURITY.md` (e a primeira linha de `docs/runbooks/vulnerabilidades.md`) precisam ser alterados; esta mudança **não foi feita** neste PR porque é uma promessa pública e há uma única pessoa na operação. Enquanto isso, os documentos oficiais continuam em 14 e 30 dias e este documento diz abertamente que a meta é 24 h.
+**Decisão pendente do mantenedor (Romulo).** O projeto pode responder ao RFP com um prazo diferente do que `SECURITY.md` documenta hoje (14 dias crítica, 30 dias alta); quem decide é o mantenedor. Para assumir o compromisso de 24 h, `SECURITY.md` (e a primeira linha de `docs/runbooks/vulnerabilidades.md`) precisam ser alterados; esta mudança **não foi feita** neste PR porque é uma promessa pública e há uma única pessoa na operação. Enquanto isso, os documentos oficiais continuam em 14 e 30 dias e este documento diz abertamente que a meta é 24 h.
 
 ## 3. O que se mede e como
 
@@ -94,6 +94,11 @@ Linha do tempo alvo para crítica ou alta (**meta, não compromisso**), contada 
 - Deploy numa VM só interrompe o serviço; o deploy rotativo depende do degrau 1.
 - Retirar uma versão vulnerável do script de rastreamento não é trivial (ver o runbook).
 
-## 6. O que este documento ainda não faz
+## 6. Pendências e decisões em aberto
+
+- Decisão do mantenedor (Romulo): prazo de correção prometido no RFP versus 14/30 dias do `SECURITY.md` (seção 2).
+- Plantão, sondagem de ponta a ponta, relato mensal, degraus 1 e 2 do ADR 0009.
+
+## 7. O que este documento ainda não faz
 
 Nenhuma medição existe; nada aqui foi exercitado numa produção real. Não há sondagem sintética de ponta a ponta, relato mensal automatizado nem pager. Os valores de custo estão no ADR 0009 e são estimativas.

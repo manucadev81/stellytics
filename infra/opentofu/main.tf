@@ -256,6 +256,10 @@ resource "hcloud_volume" "standby" {
   labels            = local.labels
 
   lifecycle {
+    precondition {
+      condition     = var.ha_db_standby_location != var.location
+      error_message = "A réplica do Postgres precisa ficar em outro local que a principal."
+    }
     prevent_destroy = true
   }
 }
@@ -280,6 +284,10 @@ resource "hcloud_server" "standby" {
   rebuild_protection = true
 
   lifecycle {
+    precondition {
+      condition     = var.ha_db_standby_location != var.location
+      error_message = "A réplica do Postgres precisa ficar em outro local que a principal."
+    }
     ignore_changes = [user_data, image, ssh_keys]
   }
 }
