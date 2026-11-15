@@ -66,7 +66,7 @@ Faixas aceitas e valores que desligam controles (validados em `config.go`; o gat
 | `FINGERPRINT_WINDOW` | 1 min a 24 h | janela deslizante da contagem |
 | `RATE_LIMIT`, `RATE_BURST` | maiores que 0 | não há valor que desligue a taxa |
 | `SITE_CACHE_TTL` | 0 a 1 min | `0` consulta o banco a cada evento |
-| `SITE_STALE_TTL` | 0 a 1 h | `0` (padrão) desliga; acima disso, a resposta vencida de um site conhecido vale por esse tempo quando o banco falha |
+| `SITE_STALE_TTL` | 0 a 1 h | `0` (padrão) desliga; acima disso, a resposta vencida de um site conhecido vale por esse tempo quando o banco falha. **Janela de risco:** um tenant removido ou site arquivado durante a queda continua aceitando eventos até `SITE_CACHE_TTL` + `SITE_STALE_TTL` (ver [ADR 0009](adr/0009-alta-disponibilidade.md)) |
 
 **O que a prova impede:** `curl`, scripts que repetem um `POST /e` sem passar pelo desafio, e tráfego forjado com o ID de um site sem nunca ter carregado o fluxo do script. Um token de um site não vale para outro (o HMAC cobre o `website`).
 
