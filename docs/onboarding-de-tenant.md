@@ -1,8 +1,8 @@
 # Guia de onboarding de tenant
 
-Para quem vai medir um projeto do ecossistema Stellar na plataforma: do cadastro até ler os painéis, cobrindo analytics **web** (script de rastreamento) e de **API** (OpenTelemetry). Atende à issue [#43](https://github.com/romulospl/notify/issues/43).
+Para quem vai medir um projeto do ecossistema Stellar na plataforma: do cadastro até ler os painéis, cobrindo analytics **web** (script de rastreamento) e de **API** (OpenTelemetry). Escrito para a issue [#43](https://github.com/romulospl/notify/issues/43) (critério do piloto pendente).
 
-> **Estado da validação.** Os trechos deste guia foram conferidos contra os exemplos do repositório e contra o código das telas (seção 8). A validação com um **piloto real** (critério de aceite 2 da #43) **ainda não aconteceu**: depende dos pilotos das issues #45 e #46. Até lá, trate o guia como não validado por um projeto externo.
+> **Estado da validação.** Os trechos deste guia foram conferidos contra os exemplos do repositório e contra o código das telas (ver o PR #108). A validação com um **piloto real** (critério de aceite 2 da #43) **ainda não aconteceu**: depende dos pilotos das issues #45 e #46. Até lá, trate o guia como não validado por um projeto externo.
 
 Convenções: `<gateway>` é o host de ingestão web e `<coletor>` o endereço do coletor de API que o operador da instância informa. Hoje o coletor existe no Compose local (`127.0.0.1:4318` HTTP e `4317` gRPC), mas **ainda não está na produção** (`docs/andamento.md`); confirme o endereço com quem opera a instância antes de configurar.
 
@@ -25,11 +25,11 @@ Você pode usar só a parte web, só a de API, ou as duas.
 ## 2. Cadastro
 
 1. Abra `/sign-up` e informe nome, e-mail e senha (mínimo de 12 caracteres, com confirmação).
-2. O portal envia um e-mail com o link de confirmação, válido por 24 horas. **Sem confirmar, você não entra nem cria projeto.** Com o link válido, você já entra logado e segue para o projeto. Se o link vencer ou for inválido, vá a `/sign-in` com e-mail e senha: o portal manda um novo (há limite de 5 reenvios por hora).
+2. O portal envia um e-mail com o link de confirmação, válido por 24 horas. **Sem confirmar, você não entra nem cria projeto.** Com o link válido, você já entra logado e segue para o projeto. Se o link vencer ou for inválido, vá a `/sign-in` com e-mail e senha: o portal manda um novo (há limite por IP).
 3. Em `/onboarding`, dê um nome ao projeto (por exemplo, o nome do seu produto). Isso cria o projeto e a sua função de `owner`.
 4. O `/dashboard` mostra a contagem de sites e de serviços, com links para `/sites` e `/services`.
 
-Esqueceu a senha? `/forgot-password` envia um link de uso único, válido por 30 minutos, que encerra as outras sessões. A sessão do portal dura 7 dias.
+Esqueceu a senha? `/forgot-password` envia um link de uso único, válido por 30 minutos, que encerra as outras sessões. A sessão do portal dura 7 dias de inatividade (renova a cada dia de uso).
 
 O que **não existe**: convite de outros membros para o projeto e exclusão da própria conta. Um projeto tem a conta que o criou. Quem precisar remover um projeto fala com os operadores do SCF (a remoção é feita por eles, com motivo registrado, e pode ser revertida).
 
@@ -102,7 +102,7 @@ O script e os endpoints usam `/s/`, `/e` e `/c`, sem os termos que as listas pad
 
 1. Em `/services`, informe **Service name** (por exemplo `horizon-proxy`) e crie. O portal cria o serviço **e a primeira chave de ingestão**.
 2. A chave aparece **uma única vez**, num aviso "Copy your ingest key now. It won't be shown again". Copie e guarde num gerenciador de segredos. Ela tem o formato `ntf_<8 caracteres>_<segredo>`. O portal guarda só o hash; se você perder a chave, crie outra.
-3. Em `/services/[serviceId]/keys` (aba **Ingest keys**) você vê o prefixo, a data de criação, o último uso e o status de cada chave, cria novas e revoga as antigas. Cada serviço pode ter até **5 chaves ativas**. Para trocar a chave sem perder dados: crie a nova, atualize a sua API e só então revogue a antiga.
+3. Em `/services/[serviceId]/keys` (aba **Ingest keys**) você vê o prefixo, a data de criação e o status de cada chave (a coluna **Last used** existe, mas hoje nada a preenche e ela mostra "Never" mesmo com a chave em uso), cria novas e revoga as antigas. Cada serviço pode ter até **5 chaves ativas**. Para trocar a chave sem perder dados: crie a nova, atualize a sua API e só então revogue a antiga.
 
 **Uma chave por serviço.** A chave define o projeto e o serviço de cada métrica. O `service.name` e qualquer atributo de tenant que a sua API mandar são **ignorados**: o coletor apaga os atributos `notify.*` que vierem do cliente.
 
@@ -110,7 +110,7 @@ O script e os endpoints usam `/s/`, `/e` e `/c`, sem os termos que as listas pad
 
 - **Endpoint:** OTLP/HTTP (`/v1/metrics`, `/v1/traces`) ou OTLP/gRPC, no `<coletor>`.
 - **Header:** `Authorization: Bearer ntf_...`. Sem chave válida (ou com chave revogada, ou de projeto removido), a resposta é `401` (HTTP) ou `Unauthenticated` (gRPC).
-- **Sinal:** o histograma `http.server.request.duration` (em segundos, o nome atual das convenções semânticas do OpenTelemetry; a antiga `http.server.duration`, em `ms`, também vale). Alternativa: spans de servidor HTTP. Se o serviço manda as duas coisas, o notify usa a métrica e ignora os spans, para não contar em dobro.
+- **Sinal:** o histograma `http.server.request.duration` (em segundos, o nome atual das convenções semânticas do OpenTelemetry; a antiga `http.server.duration`, em `ms`, também vale). Alternativa: spans de servidor HTTP. Se o serviço manda as duas coisas, o notify usa a métrica e ignora os spans, para não contar em dobro. Prefira a métrica: traces com amostragem (sampling) contam menos requisições do que as reais.
 - **Atributos lidos:** `http.request.method`, `http.response.status_code` e `http.route`. Sem `http.route`, o coletor usa o caminho (`url.path`) e o normaliza.
 - **Temporalidade:** prefira **delta**. Cumulativo também funciona (o coletor converte), mas um reinício do coletor pode perder um intervalo.
 
@@ -164,7 +164,7 @@ Funciona com o Collector core (`otel/opentelemetry-collector`) a partir da v0.16
 
 ### 4.5 Conferir que chegou
 
-A coluna **Last used** da chave passa a mostrar a data de hoje (só o dia, não a hora), e o painel do serviço (seção 5.2) passa a mostrar requisições em cerca de um minuto. Se aparecer "No requests in this period yet", confira: endpoint, header `Authorization`, o nome da métrica e se a sua API realmente recebeu tráfego depois de configurar o exporter.
+A coluna **Last used** das chaves não serve de sinal: hoje ela mostra "Never" mesmo com a chave em uso. O sinal de que chegou é o painel do serviço (seção 5.2), que passa a mostrar requisições em 1 a 2 minutos, dependendo do intervalo de exportação do SDK. Se aparecer "No requests in this period yet", confira: endpoint, header `Authorization`, o nome da métrica e se a sua API realmente recebeu tráfego depois de configurar o exporter.
 
 ## 5. Ler os painéis
 
@@ -188,9 +188,9 @@ Os dois painéis têm o seletor de período **Last 24 hours, 7 days, 30 days, 90
 
 Como ler os números e os limites:
 
-- **p50 e p95 são aproximações.** A latência é guardada em 15 faixas (de 5 ms a 10 s, mais uma acima de 10 s) e o percentil é interpolado dentro da faixa; o erro máximo é a largura da faixa. Serve para tendência e comparação, não para medir milissegundos. Latência acima de 10 s aparece como 10 s.
-- **Atraso:** os dados novos aparecem em cerca de um minuto. Um job consolida os minutos em horas e dias a cada 15 minutos, só com horas fechadas há 5 minutos; enquanto isso o painel lê a parte recente direto dos minutos, então a diferença não deveria aparecer nos números.
-- **Retenção:** minutos por 35 dias, horas e dias por 25 meses. Os períodos mais longos do painel (90 dias e 12 meses) usam os consolidados.
+- **p50 e p95 são aproximações.** A latência é guardada em 15 baldes (14 limites, de 5 ms a 10 s, mais um balde acima de 10 s) e o percentil é interpolado dentro da faixa; o erro máximo é a largura da faixa. Serve para tendência e comparação, não para medir milissegundos. Latência acima de 10 s aparece como 10 s.
+- **Atraso:** os dados novos aparecem em 1 a 2 minutos, dependendo do intervalo de exportação do SDK. Um job consolida os minutos em horas e dias a cada 15 minutos, só com horas fechadas há 5 minutos; enquanto isso o painel lê a parte recente direto dos minutos, então a diferença não deveria aparecer nos números.
+- **Retenção:** minutos por 35 dias, horas e dias por 25 meses. O painel lê cada trecho da tabela que o cobre: as horas consolidadas vêm do 1h, os dias do 1d e a parte recente, ainda não consolidada, do 1m.
 - **Lacunas** nos gráficos de latência são períodos sem requisições.
 - **Só HTTP de servidor:** o painel não mostra clientes, IPs, corpos nem traces; isso nunca chega ao notify.
 - **Projeto removido:** um projeto removido pelo SCF vê apenas o aviso, e a ingestão (web e API) é recusada.
@@ -212,16 +212,3 @@ Como ler os números e os limites:
 - **Web:** sem cookie, sem `localStorage` nem `sessionStorage`. O gateway **trunca o IP** (último octeto no IPv4, /48 no IPv6) antes da geolocalização, e o IP completo não é gravado. Gravação de sessão e mapas de calor ficam desligados.
 - **API:** só contadores e histogramas por rota, método e status; traces, spans e logs são descartados.
 - Por não usar cookie, o script não exige banner de consentimento **por si só**; a decisão jurídica é do seu projeto. Os papéis, o que é gravado e os pontos de atenção estão em [`docs/privacidade.md`](privacidade.md), que não é parecer jurídico.
-
-## 8. Como este guia foi conferido
-
-Feito (15/11/2026, neste branch):
-
-- Rotas, textos e campos das telas conferidos no código de `apps/portal/src/app` (`/sign-up`, `/onboarding`, `/sites`, `/services`, `/services/[serviceId]`, `.../keys`, `/sites/[siteId]`, `/dashboard`), de `lib/period.ts`, `lib/data/api-metrics.ts` e `lib/auth.ts` (24 h do link, 30 min da recuperação, 7 dias de sessão, limite de 5 chaves, teto de 100 rotas).
-- Trechos de instalação do script idênticos aos de `examples/README.md`; hash e versão iguais aos de `packages/tracker/published/sri.json`; trechos de OTel iguais aos de `examples/api-backend`.
-- Links relativos verificados.
-
-Pendente:
-
-- **Piloto real** (#45/#46): ninguém de fora do projeto seguiu este guia do zero. É o critério de aceite 2 da #43 e continua aberto.
-- O endereço público do coletor de API e do gateway de produção depende da aplicação da #14 e da entrada do coletor no `prod.yaml`.
