@@ -69,7 +69,7 @@ Até o 5º dia útil do mês seguinte, uma nota pública em `docs/` ou issue, co
 - **99,9% nos painéis:** degrau 2 (réplica do Postgres e promoção ensaiada, portal replicado com uma só instância migrando).
 - **99,99%:** degraus 1 e 2 mais banco com três nós, failover medido em segundos, ponto de vista de monitoramento múltiplo, 12 meses de experiência de medição. **Não é prometido.**
 
-Variáveis do OpenTofu que preparam o provisionamento, desligadas por padrão: `ha_ingest_replicas`, `ha_floating_ip`, `ha_db_standby` (e `ha_ingest_location`, `ha_db_standby_location`). Ligar cria recursos pagos; a configuração do sistema por Ansible ainda não existe (ADR 0009, "Consequências").
+Variáveis do OpenTofu que preparam o provisionamento, desligadas por padrão: `ha_ingest_replicas`, `ha_floating_ip`, `ha_db_standby` (e `ha_ingest_location`, `ha_db_standby_location`). Ligar cria recursos pagos. O Ansible que configura a réplica do Postgres (replicação em streaming) e as VMs de ingestão extras existe, desligado por padrão, e foi testado em Docker local (`docs/deploy.md`, "Alta disponibilidade"); o **failover é manual** ([runbook](runbooks/failover-do-banco.md), RPO de frações de segundo a poucos segundos e RTO de 30 a 90 minutos, ambos estimativas sem medição em produção). Continuam fora: balanceador, IP flutuante na VM, TLS das réplicas de ingestão atrás de balanceador, failover automático, cache vencido no gateway, monitoramento da réplica. Isso **não** muda o compromisso: nenhum número é prometido.
 
 ## 5. Correção de vulnerabilidades críticas e altas em 24 h
 
@@ -97,7 +97,7 @@ Linha do tempo alvo para crítica ou alta (**meta, não compromisso**), contada 
 ## 6. Pendências e decisões em aberto
 
 - Decisão do mantenedor (Romulo): prazo de correção prometido no RFP versus 14/30 dias do `SECURITY.md` (seção 2).
-- Plantão, sondagem de ponta a ponta, relato mensal, degraus 1 e 2 do ADR 0009.
+- Plantão, sondagem de ponta a ponta, relato mensal. Degraus 1 e 2 do ADR 0009: a configuração das réplicas existe (desligada), faltam balanceador ou IP flutuante, cache vencido no gateway, portal replicado, alertas de atraso de replicação e um ensaio de failover numa conta real.
 
 ## 7. O que este documento ainda não faz
 

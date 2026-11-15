@@ -82,9 +82,10 @@ Custos mensais são **estimativas de ordem de grandeza** feitas de memória, sem
 
 - **Honestidade das metas:** o projeto passa a tratar 99,99% na ingestão e 99,90% nos painéis como **metas do RFP**, não como compromisso assumido, até haver o degrau correspondente em produção, medição e ensaio de failover. Ver [`docs/sla.md`](../sla.md).
 - **Variáveis novas no OpenTofu** (todas desligadas) e recursos novos só quando ligadas. Ligar qualquer uma cria recursos pagos; o `delete_protection` e o `prevent_destroy` valem para os volumes e o IP flutuante.
+- **Atualização (segunda parte da #52):** passaram a existir, desligados por padrão, `infra/ansible/ingest.yml` e `standby.yml` (papéis `notify_ingest` e `postgres_standby`), a variável `ha_replication` do `site.yml`, os arquivos `infra/compose/prod-ha-primary.yaml`, `prod-standby.yaml` e `prod-ingest.yaml`, o `Caddyfile.ingest` e o runbook [`failover-do-banco`](../runbooks/failover-do-banco.md). Replicação em streaming assíncrona com slot físico, promoção **manual** e o antigo primário refeito por `pg_basebackup`; o primário só ganha papel `replicator`, linha de `pg_hba` por faixa de rede, `max_slot_wal_keep_size` e portas no IP privado. Testado em Docker local por `infra/compose/test/ha-replication-test.sh` (replicação, somente leitura, promoção, gateways lendo do banco promovido, WAL-G depois da promoção). RPO e RTO esperados são estimativas (runbook). **Não** testado: rede privada, firewalls, balanceador e IP flutuante da Hetzner, failover automático, carga.
 - **Trabalho que continua pendente** (sem isso, ligar as variáveis não entrega HA):
-  - Ansible: papéis para as VMs de ingestão e para o standby (`pg_basebackup`, `primary_conninfo`, `pg_hba` pela rede privada), e configuração do IP flutuante na interface;
-  - Postgres: escuta na rede privada, usuário de replicação, `hot_standby`, e decisão sobre failover;
+  - Ansible: configuração do IP flutuante na interface da VM;
+  - Postgres: decisão sobre failover automático (testemunha), e o portal e o Umami ainda falam com o `postgres` do próprio Compose (o failover suportado move a pilha inteira para a VM da réplica);
   - Caddy: certificados com várias VMs (HTTP-01 por trás de balanceador é problema; DNS-01 exige módulo que a imagem não tem) ou terminação no balanceador;
   - código do gateway: servir cache vencido em caso de erro do banco; reavaliar limites por instância (dividir `RATE_LIMIT` e `FINGERPRINT_LIMIT` por N ou limitar no balanceador);
   - portal: uma só instância com `RUN_MIGRATIONS=true`;

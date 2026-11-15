@@ -351,6 +351,46 @@ ssh -N -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 root@<monitor_ipv4>
 
 **Ingestão de API:** quando o coletor (#30) for publicado na produção, ponha a URL pública dele em `monitor_api_url` e rode o playbook de novo.
 
+## Alta disponibilidade (opcional, degraus 1 e 2 do ADR 0009)
+
+> Tudo desligado por padrão: com os valores padrão, `site.yml`, o `prod.yaml` e o `.env` ficam **idênticos** aos de antes (conferido com `docker compose config` e renderizando o `env.j2`). Isto entrega a **configuração** das réplicas; **não** entrega failover automático nem as metas de 99,99% e 99,90% ([`docs/sla.md`](sla.md)). Nada disto foi aplicado numa conta real da Hetzner.
+
+O que existe:
+
+| Peça | Arquivos | Para quê |
+|---|---|---|
+| Primário com replicação | `compose/prod-ha-primary.yaml`, `compose/postgres/init/03-replication.sh`, variável `ha_replication` | Papel `replicator`, `pg_hba` só para a faixa `ha_replication_cidr` (`10.50.0.0/16`), limite de WAL por slot (`max_slot_wal_keep_size`, 10 GB), Postgres e Umami publicados no IP privado `ha_private_ip` |
+| Réplica do Postgres | `standby.yml`, papel `postgres_standby`, `compose/prod-standby.yaml`, `compose/postgres/standby-entrypoint.sh` | `pg_basebackup` + `standby.signal` + slot de replicação, hot standby somente leitura |
+| Ingestão extra | `ingest.yml`, papel `notify_ingest`, `compose/prod-ingest.yaml`, `caddy/Caddyfile.ingest` | Só Caddy e gateway web, lendo `ingest_site` (como `notify_ingest`) e repassando ao Umami do primário pela rede privada |
+| Failover manual | [`runbooks/failover-do-banco.md`](runbooks/failover-do-banco.md) | Promover a réplica, mover a pilha, o que fazer com o antigo primário |
+
+Ordem (cada passo é um `ansible-playbook` de `infra/ansible`, com o `secrets.yml`):
+
+1. **OpenTofu:** ligue `ha_db_standby` e/ou `ha_ingest_replicas` (ver `infra/opentofu/variables.tf`; cria recursos pagos). Preencha o inventário (`inventory/production.example.yml`, grupos `ingest` e `standby`) com os IPs públicos das VMs e o volume da réplica (o OpenTofu só exporta o IP privado da réplica; os demais vêm do console).
+2. **Segredo novo:** `replicator_db_password` em `secrets.yml` (`openssl rand -hex 32`). Guarde-o como os demais.
+3. **Primário:** `ansible-playbook site.yml -e @secrets.yml -e ha_replication=true`. Recria o contêiner do Postgres (reinício curto do banco, e o portal, o Umami e o gateway perdem a conexão por alguns segundos) e aplica `03-replication.sh` no volume existente (idempotente). O Docker só sobe o contêiner se o IP privado existir na VM: depois de reiniciar a VM, confira que a interface da rede privada subiu antes do Docker.
+4. **Réplica:** `ansible-playbook standby.yml -e @secrets.yml`. Copia o primário pela rede privada (o tempo cresce com o tamanho do banco; no teste local, um banco de poucos MB levou 6 s) e confere `pg_is_in_recovery() = t`.
+5. **Conferir:**
+
+   ```bash
+   # no primário
+   docker compose -f prod.yaml -f prod-ha-primary.yaml exec -T postgres psql -U postgres -Atc \
+     "SELECT state, sync_state, pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn) AS bytes_atras FROM pg_stat_replication"
+   # na réplica
+   docker compose -f prod-standby.yaml exec -T postgres psql -U postgres -d notify -Atc "SELECT pg_is_in_recovery()"
+   ```
+
+6. **Ingestão extra:** use o **mesmo** `ingest_proof_secret`, `notify_ingest_db_password` e `ingest_web_image` (por digest, verificada com cosign) do primário e rode `ansible-playbook ingest.yml -e @secrets.yml`. O Caddy dessas VMs só publica `/e`, `/c`, `/s/*` e `/healthz` do host da ingestão.
+
+Limites e cuidados:
+
+- **Backup:** só o primário agenda o `notify-backup`. A réplica não arquiva WAL enquanto é réplica (testado: `archived_count = 0`) nem faz backup base; o WAL-G continua exatamente como antes no primário (testado). Depois de uma promoção, a nova linha do tempo arquiva no mesmo prefixo; faça um backup base logo.
+- **Slot:** uma réplica parada retém WAL no primário até 10 GB (`ha_replication_max_slot_wal_keep`); passou disso, o slot é invalidado e a réplica precisa ser refeita (apague o diretório de dados dela e rode `standby.yml`). Sem réplica não há slot e o primário não guarda WAL a mais.
+- **Rede:** o Postgres e o Umami do primário passam a escutar o IP privado. O firewall da Hetzner não filtra a rede privada; a proteção é a rede em si e os papéis (`notify_ingest` só lê `ingest_site`, `replicator` só replica e não abre nenhum banco). A rede privada real **não foi testada**; no teste local a faixa é a de uma rede do Docker.
+- **TLS das réplicas de ingestão:** cada VM pede o certificado por HTTP-01. Atrás de um balanceador que repassa 80 e 443, o desafio cai numa VM qualquer e pode falhar; certificado no balanceador ou outro método continua em aberto (ADR 0009). O balanceador, o IP flutuante e o DNS **não** são configurados por aqui.
+- **Limites por instância:** `RATE_LIMIT` e `FINGERPRINT_LIMIT` valem por réplica (ADR 0009); com N réplicas o limite efetivo pode chegar a N vezes. O gateway ainda **não** serve o cache vencido quando o banco cai (mudança de código pendente).
+- **Portal e Umami** continuam numa VM só, com o banco local a ela (`postgres:5432` no `prod.yaml`).
+
 ## O que o guia ainda não cobre
 
 - **Coletor de API e rollup não estão em produção.** O `prod.yaml` não tem os serviços `collector` ([#30](https://github.com/romulospl/notify/issues/30)) nem `rollup` ([#34](https://github.com/romulospl/notify/issues/34)), e o Caddyfile não tem rota OTLP, embora existam no `dev.yaml`. Efeito: o portal deixa criar chaves de ingestão em `/services`, mas nada as recebe; as tabelas `api_metric_*` ficam vazias e a consolidação e a retenção de métricas de API não rodam. O `notify_collector_db_password` é obrigatório só porque o script de criação dos usuários do banco o usa. A release publica as imagens `collector` e `rollup`, mas o deploy ignora ambas. Para ligá-los será preciso acrescentá-los ao `prod.yaml` (com digest e `cosign verify` no playbook), abrir 4317/4318 no firewall e no Caddy, e então definir `monitor_api_url`.
@@ -358,7 +398,7 @@ ssh -N -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 root@<monitor_ipv4>
 - **Domínio e DNS na IaC:** hoje os registros são criados à mão (ADR 0004).
 - **SMTP de produção:** o guia exige um provedor, mas não escolhe nem configura nenhum (SPF, DKIM e DMARC do domínio do `mail_from` ficam com você).
 - **Transferir a operação para outra equipe:** plano, ordem, janela, migração de dados testada localmente (`infra/scripts/db-export.sh` e `db-import.sh`) e critérios de aceite em [`docs/transferencia.md`](transferencia.md) ([#54](https://github.com/romulospl/notify/issues/54)).
-- **Alta disponibilidade:** é uma VM só. Se ela cair, o serviço cai até a recriação (restauração do backup em VM nova, seção "Restaurar o banco").
+- **Alta disponibilidade:** por padrão é uma VM só; se ela cair, o serviço cai até a recriação (restauração do backup em VM nova, seção "Restaurar o banco"). A seção "Alta disponibilidade" acima configura réplica do Postgres e ingestão extra, mas o failover é manual, não há balanceador nem IP flutuante configurado e nada foi aplicado numa conta real.
 - **Teste de restauração em produção:** a restauração é testada no CI com S3 local, não contra o bucket real. Faça um ensaio numa VM descartável antes de precisar dela.
 - **Atualização do Umami, do Postgres e do Caddy:** só por PR (imagens por digest no `prod.yaml`); não há guia de migração de versão maior do Postgres.
 
@@ -368,8 +408,9 @@ Sem credenciais da Hetzner, de DNS ou de SMTP, foi possível conferir:
 
 - `docker compose -f infra/compose/prod.yaml config` com um `.env` montado a partir do `env.j2` do Ansible (todas as variáveis obrigatórias do Compose vêm de lá);
 - `tofu validate` (contêiner `ghcr.io/opentofu/opentofu:1.13.2`) em `infra/opentofu/`;
-- `ansible-playbook --syntax-check` de `site.yml` e `monitoring.yml` (ansible-core 2.21) com os arquivos de exemplo;
+- `ansible-playbook --syntax-check` de `site.yml`, `monitoring.yml`, `ingest.yml` e `standby.yml` (ansible-core 2.21) com os arquivos de exemplo;
 - os nomes de variáveis, saídas do OpenTofu, scripts (`pnpm umami:service-account`, `operator:create`) e caminhos citados, contra os arquivos do repositório;
-- o roteamento do Caddy, as portas, o backup cifrado e a restauração, pelo job `infra` do CI (`infra/compose/test/prod-stack-test.sh`), e os alertas, pelo job `monitoring`.
+- o roteamento do Caddy, as portas, o backup cifrado e a restauração, pelo job `infra` do CI (`infra/compose/test/prod-stack-test.sh`), e os alertas, pelo job `monitoring`;
+- a replicação, a promoção e a ingestão replicada, em Docker local, por `infra/compose/test/ha-replication-test.sh` (job `infra`).
 
 **Não foi possível conferir** sem credenciais: o `tofu apply` e o `ansible-playbook` de verdade, a emissão do certificado, o envio de e-mail, o `cosign verify` contra imagens reais (ainda não há release publicada) a visibilidade dos pacotes no GHCR e o bloco `backend "s3"` do estado do OpenTofu (`region = "nbg1"` e os `skip_*`). Os passos do console da Hetzner e do GitHub seguem a documentação dessas ferramentas e podem ter mudado de nome na interface.

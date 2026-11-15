@@ -8,6 +8,7 @@ Procedimentos para operar a produção do notify ([#53](https://github.com/romul
 |---|---|
 | [Incidentes](incidentes.md) | Alerta do monitoramento, portal ou ingestão web fora do ar, certificado vencendo |
 | [Backup e restauração](backup-e-restauracao.md) | Backup não rodou, perda de dados ou do disco, ensaio de restauração |
+| [Failover manual do banco](failover-do-banco.md) | Só com a réplica ligada (ADR 0009, degrau 2): primário perdido, promover a réplica |
 | [Rotação de segredos](rotacao-de-segredos.md) | Segredo vazou ou é hora de trocar |
 | [Atualização do Umami](atualizacao-do-umami.md) | PR do Renovate com versão nova do Umami |
 | [Resposta a vulnerabilidades](vulnerabilidades.md) | Relato em `SECURITY.md`, chave vazada, projeto a bloquear, operador comprometido |
