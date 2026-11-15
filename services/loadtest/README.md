@@ -21,7 +21,9 @@ go build -o /tmp/loadtest ./loadtest
   endereço do gerador. A prova de JS é resolvida como o script faz (o pacote
   `internal/proof` não pode ser importado de fora de `services/ingest-web`, por
   isso o algoritmo é repetido em `web.go`). No fim, conta `website_event` no
-  banco do Umami (`-umami-db`) contra os 204 recebidos.
+  banco do Umami (`-umami-db`) contra os 204 recebidos. O relatório traz uma
+  linha extra `event <status>` por código (204, 503, 502...), para separar a
+  latência dos aceitos da das recusas.
 - **api:** simula serviços de API que exportam histogramas delta
   (`-modes metrics`) ou um span de servidor por requisição (`-modes spans`),
   com `Authorization: Bearer` de chaves criadas no `setup`. No fim compara

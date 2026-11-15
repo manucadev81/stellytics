@@ -129,6 +129,7 @@ Perfil `500,2000,5000,10000` requisições/s, 1 min cada, 2 serviços.
 ## Gargalos e pendências
 
 1. **Umami é o teto do web (~200 page views/s por instância) e o gateway não recusa nada quando o Umami fica lento.** O repasse é síncrono e sem limite de requisições em andamento; a 400/s a latência do `POST /e` foi de 5 a 8 s e o gateway foi de 40 MB a 220 MB. Em produção isso significaria navegadores segurando conexões e, com um pico maior, risco de memória. **Nada foi alterado**; a decisão (limitar relays simultâneos e responder 503 ou 204 com descarte, fila limitada, ou mais instâncias do Umami) merece issue própria. Para o alvo do RFP (média 11,6/s, pico 116/s) não é preciso mudar nada.
+   **Atualização:** o gateway ganhou `RELAY_MAX_INFLIGHT` e `RELAY_QUEUE_WAIT` (desligado por padrão; `503` com `Retry-After` quando não há vaga). Medição repetida e decisão no [ADR 0011](../adr/0011-limite-de-repasses-ao-umami.md). O "Nada foi alterado" acima descreve o estado em que este relatório foi medido.
 2. **Dois nomes para a mesma rota em spans:** spans com `http.route` do cliente gravam `/accounts/{account_id}`; sem ele a normalização grava `/accounts/{address}`. É o comportamento especificado (o `http.route` do cliente vale como veio), mas aparece como 12 rotas distintas onde havia 9 endpoints. Vale lembrar na documentação de onboarding; não é defeito.
 3. Ferramenta: a verificação de `api` não descontava linhas já existentes (corrigido, ver acima).
 
