@@ -1,0 +1,225 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"io"
+	"math/bits"
+	"math/rand/v2"
+	"net/http"
+	"strconv"
+	"sync/atomic"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+)
+
+var userAgents = []string{
+	"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+	"Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+	"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36",
+	"Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0",
+}
+
+var (
+	languages = []string{"en-US", "pt-BR", "es-ES", "de-DE", "fr-FR", "ja-JP"}
+	screens   = []string{"1920x1080", "1366x768", "390x844", "1440x900", "412x915", "2560x1440"}
+	pages     = []string{"/", "/docs", "/docs/getting-started", "/pricing", "/blog", "/blog/stellar-soroban", "/about", "/app/swap", "/app/pools", "/app/portfolio"}
+)
+
+// visitor é um navegador simulado: IP, UA, idioma e tela fixos. Cada visitante
+// tem o próprio /24 (o gateway trunca o IPv4 nesse bloco), para o limite por IP
+// truncado e o de fingerprints se comportarem como com visitantes reais.
+type visitor struct {
+	ip, ua, lang, screen string
+}
+
+func newVisitor(i int) visitor {
+	return visitor{
+		ip:     fmt.Sprintf("10.%d.%d.%d", i/256%256, i%256, 1+i%250),
+		ua:     userAgents[i%len(userAgents)],
+		lang:   languages[i/7%len(languages)],
+		screen: screens[i/5%len(screens)],
+	}
+}
+
+// solve acha o nonce da prova de JS (mesmo algoritmo de internal/proof, que o
+// Go não deixa importar de fora de services/ingest-web: SHA-256(token+":"+nonce)
+// com n bits zero no começo). Se divergir do gateway, o teste inteiro vira
+// 204 descartado e a conferência no Umami mostra zero eventos.
+func solve(token string, n int) string {
+	for i := uint64(0); ; i++ {
+		nonce := strconv.FormatUint(i, 10)
+		sum := sha256.Sum256([]byte(token + ":" + nonce))
+		z := 0
+		for _, c := range sum {
+			if c != 0 {
+				z += bits.LeadingZeros8(c)
+				break
+			}
+			z += 8
+		}
+		if z >= n {
+			return nonce
+		}
+	}
+}
+
+func runWeb(args []string) error {
+	fs := flag.NewFlagSet("web", flag.ExitOnError)
+	stateFile := fs.String("state", "state.json", "arquivo de estado do setup")
+	gateway := fs.String("gateway", envOr("GATEWAY_URL", "http://127.0.0.1:3002"), "URL do gateway")
+	umamiDB := fs.String("umami-db", envOr("UMAMI_DATABASE_URL", "postgresql://umami:umami@127.0.0.1:5432/umami"), "banco do Umami, para conferir o que chegou")
+	profile := fs.String("profile", "11.6x2m", "degraus taxaxduração de page views por segundo")
+	visitors := fs.Int("visitors", 20000, "visitantes distintos (IPs /24 e fingerprints)")
+	maxInflight := fs.Int("max-inflight", 2000, "máximo de page views em andamento")
+	settle := fs.Duration("settle", 10*time.Second, "espera antes de contar no Umami")
+	allowRemote := fs.Bool("allow-remote", false, "permite alvos que não sejam loopback")
+	watchSpec := fs.String("watch", "", "processos locais nome=pid,...")
+	dockerSpec := fs.String("docker", "", "contêineres para o docker stats, separados por vírgula")
+	_ = fs.Parse(args)
+
+	steps, err := parseProfile(*profile)
+	if err != nil {
+		return err
+	}
+	st, err := loadState(*stateFile)
+	if err != nil {
+		return err
+	}
+	if err := checkTargets(*allowRemote, map[string]string{"gateway": *gateway, "umami-db": *umamiDB}); err != nil {
+		return err
+	}
+	w, err := newWatcher(*watchSpec, *dockerSpec)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go w.run(ctx, 2*time.Second)
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			MaxIdleConns: 1000, MaxIdleConnsPerHost: 1000, MaxConnsPerHost: 0,
+			IdleConnTimeout: 90 * time.Second,
+		},
+	}
+	rec := newRecorder()
+	var accepted, notAccepted, failed atomic.Int64
+	umamiBefore, err := countUmami(ctx, *umamiDB, st.UmamiWebsiteID)
+	if err != nil {
+		return err
+	}
+
+	fire := func(ctx context.Context, stepIdx int) {
+		v := newVisitor(rand.IntN(*visitors))
+		page := pages[rand.IntN(len(pages))]
+		do := func(op string, req *http.Request) (*http.Response, error) {
+			req.Header.Set("X-Forwarded-For", v.ip)
+			req.Header.Set("User-Agent", v.ua)
+			req.Header.Set("Accept-Language", v.lang)
+			t0 := time.Now()
+			resp, err := client.Do(req)
+			if err != nil {
+				rec.add(stepIdx, op, time.Since(t0), "err")
+				return nil, err
+			}
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			rec.add(stepIdx, op, time.Since(t0), strconv.Itoa(resp.StatusCode))
+			return resp, nil
+		}
+
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, *gateway+"/c?s="+st.UmamiWebsiteID, nil)
+		t0 := time.Now()
+		resp, err := client.Do(withHeaders(req, v))
+		if err != nil {
+			rec.add(stepIdx, "challenge", time.Since(t0), "err")
+			failed.Add(1)
+			return
+		}
+		var ch struct {
+			Token string `json:"t"`
+			Bits  int    `json:"d"`
+		}
+		decErr := json.NewDecoder(resp.Body).Decode(&ch)
+		resp.Body.Close()
+		rec.add(stepIdx, "challenge", time.Since(t0), strconv.Itoa(resp.StatusCode))
+		if resp.StatusCode != 200 || decErr != nil {
+			failed.Add(1)
+			return
+		}
+
+		ts := time.Now()
+		nonce := solve(ch.Token, ch.Bits)
+		rec.add(stepIdx, "pow(client)", time.Since(ts), "200")
+
+		body, _ := json.Marshal(map[string]any{
+			"type": "event",
+			"p":    map[string]string{"t": ch.Token, "n": nonce},
+			"payload": map[string]string{
+				"website": st.UmamiWebsiteID, "hostname": "loadtest.example", "url": page,
+				"title": "loadtest " + page, "language": v.lang, "screen": v.screen,
+			},
+		})
+		post, _ := http.NewRequestWithContext(ctx, http.MethodPost, *gateway+"/e", bytes.NewReader(body))
+		post.Header.Set("Content-Type", "text/plain;charset=UTF-8")
+		r2, err := do("event", post)
+		switch {
+		case err != nil:
+			failed.Add(1)
+		case r2.StatusCode == http.StatusNoContent:
+			accepted.Add(1) // 204: aceito ou descartado; o Umami diz qual
+		default:
+			notAccepted.Add(1)
+		}
+	}
+
+	fmt.Printf("perfil %s, %d visitantes, gateway %s\n", *profile, *visitors, *gateway)
+	var fired, saturated int64
+	var starts []time.Time
+	began := time.Now()
+	fired, saturated, starts = drive(ctx, steps, *maxInflight, func(i int, s step) {
+		fmt.Printf("[%s] degrau %d: %s\n", time.Now().Format("15:04:05"), i, s)
+	}, fire)
+	elapsed := time.Since(began)
+	rec.report(steps)
+	w.report(steps, starts, time.Now())
+
+	fmt.Printf("\npage views iniciados: %d em %s (%.2f/s); saturação do gerador: %d\n", fired, elapsed.Round(time.Second), float64(fired)/elapsed.Seconds(), saturated)
+	fmt.Printf("POST /e com 204: %d; outro status (429 etc.): %d; falha de rede ou desafio: %d\n", accepted.Load(), notAccepted.Load(), failed.Load())
+	time.Sleep(*settle)
+	after, err := countUmami(ctx, *umamiDB, st.UmamiWebsiteID)
+	if err != nil {
+		return err
+	}
+	got := after - umamiBefore
+	fmt.Printf("page views gravados no Umami: %d de %d com 204 (%.3f%%); descartados ou perdidos: %d\n",
+		got, accepted.Load(), 100*float64(got)/float64(max(accepted.Load(), 1)), accepted.Load()-got)
+	return nil
+}
+
+func withHeaders(req *http.Request, v visitor) *http.Request {
+	req.Header.Set("X-Forwarded-For", v.ip)
+	req.Header.Set("User-Agent", v.ua)
+	req.Header.Set("Accept-Language", v.lang)
+	return req
+}
+
+func countUmami(ctx context.Context, dsn, website string) (int64, error) {
+	c, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		return 0, err
+	}
+	defer c.Close(ctx)
+	var n int64
+	err = c.QueryRow(ctx, `SELECT count(*) FROM website_event WHERE website_id = $1`, website).Scan(&n)
+	return n, err
+}
