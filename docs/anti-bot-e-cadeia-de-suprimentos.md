@@ -41,9 +41,9 @@ Falhas das camadas 3, 4 e 5 respondem `204`, igual ao sucesso, para não dar pis
 | `429` | limite de taxa por IP truncado |
 | `503` | falha na consulta à `ingest_site` (o gateway não deixa passar evento sem conferir o site) |
 | `502` | falha no repasse ao Umami |
-| `503` (corpo `overloaded`, com `Retry-After`) | só com `RELAY_MAX_INFLIGHT` ligado: sem vaga de repasse ao Umami dentro de `RELAY_QUEUE_WAIT`; o evento é descartado. Só sai depois da prova de JS e da `ingest_site`, então um site desconhecido não recebe |
+| `503` (corpo `overloaded`, com `Retry-After`) | só com `RELAY_MAX_INFLIGHT` ligado: sem vaga de repasse ao Umami dentro de `RELAY_QUEUE_WAIT`; o evento é descartado. Só sai depois da prova de JS, da `ingest_site` e da cota de fingerprints, então site desconhecido, recusado ou com a cota cheia recebe `204` e não `503`; isso é uma pista (ver o parágrafo abaixo e o ADR 0011) |
 
-Quem testa o endpoint consegue, portanto, distinguir volume excessivo, formato inválido e indisponibilidade; não consegue distinguir prova inválida, site desconhecido e fingerprints demais. `GET /c` (o desafio) passa pelo mesmo limite de taxa da camada 1 e não consulta a `ingest_site`, então não revela se o site existe.
+Quem testa o endpoint consegue, portanto, distinguir volume excessivo, formato inválido e indisponibilidade; com o limite de repasses desligado (o padrão), não consegue distinguir prova inválida, site desconhecido e fingerprints demais. **Com `RELAY_MAX_INFLIGHT` ligado isso deixa de valer durante a saturação do repasse**: o `503` só sai para evento com prova válida, de site aceito e com fingerprint dentro da cota, então revela o status do site (ativo contra removido, pendente ou arquivado) e que a cota do IP não estava cheia. A decisão sobre aceitar isso está pendente com o mantenedor (ver [ADR 0011](adr/0011-limite-de-repasses-ao-umami.md), "Pistas que o `503` dá"). `GET /c` (o desafio) passa pelo mesmo limite de taxa da camada 1 e não consulta a `ingest_site`, então não revela se o site existe.
 
 ### Prova de execução de JS (`internal/proof`)
 
