@@ -233,3 +233,92 @@ func umamiDo(t *testing.T, token, method, path string, in, out any) {
 		}
 	}
 }
+
+// TestCustomEventReachesUmami envia um evento customizado (#50) e confere no
+// banco do Umami o nome e as propriedades, e que o IP completo não foi gravado.
+func TestCustomEventReachesUmami(t *testing.T) {
+	ctx := context.Background()
+	token := umamiLogin(t)
+	websiteID := umamiCreateWebsite(t, token)
+	t.Cleanup(func() { umamiDo(t, token, http.MethodDelete, "/api/websites/"+websiteID, nil, nil) })
+
+	db, err := pgx.Connect(ctx, notifyDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close(ctx)
+	registerSite(t, db, websiteID)
+	time.Sleep(siteCacheTTL + time.Second)
+
+	body := func(extra string) string {
+		tok, nonce := solveChallenge(t, websiteID)
+		return fmt.Sprintf(`{"type":"event","p":{"t":%q,"n":%q},"payload":{"website":%q,"hostname":"e2e.example","url":"/pricing",`+
+			`"title":"e2e","language":"pt-BR","screen":"1920x1080",%s}}`, tok, nonce, websiteID, extra)
+	}
+	post := func(b string) int {
+		req, _ := http.NewRequest(http.MethodPost, gatewayURL+"/e", strings.NewReader(b))
+		req.Header.Set("Content-Type", "text/plain;charset=UTF-8")
+		req.Header.Set("User-Agent", browserUA)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if code := post(body(`"name":"signup_clicked","data":{"plan":"pro","seats":3,"trial":true}`)); code != http.StatusNoContent {
+		t.Fatalf("evento customizado: status = %d, quero 204", code)
+	}
+	if code := post(body(`"name":"bad name"`)); code != http.StatusBadRequest {
+		t.Fatalf("nome inválido: status = %d, quero 400", code)
+	}
+
+	udb, err := pgx.Connect(ctx, umamiDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer udb.Close(ctx)
+
+	deadline := time.Now().Add(90 * time.Second)
+	for {
+		rows, err := udb.Query(ctx, `SELECT e.event_name, d.data_key, d.string_value, d.number_value::text
+			FROM website_event e JOIN event_data d ON d.website_event_id = e.event_id
+			WHERE e.website_id = $1 AND e.event_name IS NOT NULL ORDER BY d.data_key`, websiteID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]string{}
+		for rows.Next() {
+			var name, key string
+			var s, n *string
+			if err := rows.Scan(&name, &key, &s, &n); err != nil {
+				t.Fatal(err)
+			}
+			if name != "signup_clicked" {
+				t.Fatalf("event_name = %q", name)
+			}
+			switch {
+			case s != nil:
+				got[key] = *s
+			case n != nil:
+				got[key] = *n
+			}
+		}
+		rows.Close()
+		if got["plan"] == "pro" && got["seats"] != "" {
+			t.Logf("propriedades no Umami: %v", got)
+			if got["plan"] != "pro" || !strings.HasPrefix(got["seats"], "3") {
+				t.Fatalf("propriedades = %v", got)
+			}
+			var n int
+			if err := udb.QueryRow(ctx, `SELECT count(*) FROM website_event WHERE website_id = $1 AND event_name IS NOT NULL`, websiteID).Scan(&n); err != nil || n != 1 {
+				t.Fatalf("eventos customizados = %d (err %v), quero 1", n, err)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("o evento customizado não apareceu no Umami (visto: %v)", got)
+		}
+		time.Sleep(time.Second)
+	}
+}
