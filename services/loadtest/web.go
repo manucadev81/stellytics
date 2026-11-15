@@ -133,7 +133,11 @@ func runWeb(args []string) error {
 			}
 			_, _ = io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
-			rec.add(stepIdx, op, time.Since(t0), strconv.Itoa(resp.StatusCode))
+			d := time.Since(t0)
+			rec.add(stepIdx, op, d, strconv.Itoa(resp.StatusCode))
+			// Linha à parte por status: com o limite de repasses ligado, as
+			// latências dos aceitos (204) e das recusas (503) não devem se misturar.
+			rec.add(stepIdx, op+" "+strconv.Itoa(resp.StatusCode), d, strconv.Itoa(resp.StatusCode))
 			return resp, nil
 		}
 

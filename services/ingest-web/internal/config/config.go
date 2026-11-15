@@ -48,6 +48,11 @@ type Config struct {
 	// de 1000 limita a varredura feita sob o lock quando uma conta está cheia.
 	FingerprintLimit  int
 	FingerprintWindow time.Duration
+	// RelayMaxInflight é o máximo de repasses ao Umami ao mesmo tempo. Zero (o
+	// padrão) desliga o limite. RelayQueueWait é quanto uma requisição espera
+	// por uma vaga antes de receber 503; 0 recusa na hora.
+	RelayMaxInflight int
+	RelayQueueWait   time.Duration
 }
 
 // Load monta a Config a partir de getenv (normalmente os.Getenv).
@@ -118,6 +123,13 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	if c.FingerprintWindow, err = parseDuration(getenv("FINGERPRINT_WINDOW"), 10*time.Minute); err != nil || c.FingerprintWindow < time.Minute || c.FingerprintWindow > 24*time.Hour {
 		errs = append(errs, fmt.Errorf("FINGERPRINT_WINDOW inválido (1m a 24h): %q", getenv("FINGERPRINT_WINDOW")))
+	}
+
+	if c.RelayMaxInflight, err = parseInt(getenv("RELAY_MAX_INFLIGHT"), 0); err != nil || c.RelayMaxInflight < 0 || c.RelayMaxInflight > 100000 {
+		errs = append(errs, fmt.Errorf("RELAY_MAX_INFLIGHT inválido (0 a 100000): %q", getenv("RELAY_MAX_INFLIGHT")))
+	}
+	if c.RelayQueueWait, err = parseDuration(getenv("RELAY_QUEUE_WAIT"), 250*time.Millisecond); err != nil || c.RelayQueueWait < 0 || c.RelayQueueWait > 10*time.Second {
+		errs = append(errs, fmt.Errorf("RELAY_QUEUE_WAIT inválido (0 a 10s): %q", getenv("RELAY_QUEUE_WAIT")))
 	}
 
 	return c, errors.Join(errs...)

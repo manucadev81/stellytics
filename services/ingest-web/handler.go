@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,14 +23,10 @@ import (
 // maxBody é o tamanho máximo do corpo de um evento.
 const maxBody = 16 << 10
 
-// sender é a parte do relay.Client que o handler usa.
-type sender interface {
-	Send(ctx context.Context, ev relay.Event, userAgent string, truncatedIP netip.Addr) error
-}
-
 // fingerprints é a parte do fingerprint.Counter que o handler usa.
 type fingerprints interface {
-	Allow(ip netip.Addr, site string, fp uint64) bool
+	Admit(ip netip.Addr, site string, fp uint64) (ok, fresh bool)
+	Forget(ip netip.Addr, site string, fp uint64)
 }
 
 // limiter é a parte do limit.Limiter que o handler usa.
@@ -41,7 +36,7 @@ type limiter interface {
 
 type gateway struct {
 	sites   site.Store
-	relay   sender
+	relay   relay.Sender
 	limits  limiter
 	ips     clientip.Resolver
 	proofs  *proof.Issuer
@@ -157,17 +152,50 @@ func (g *gateway) event(w http.ResponseWriter, r *http.Request) {
 	// Muitos navegadores diferentes no mesmo IP truncado e site (#26): as
 	// fingerprints além do limite são descartadas, com a mesma resposta do sucesso.
 	fp := fingerprint.Of(r.UserAgent(), r.Header.Get("Accept-Language"), ev.Payload.Language, ev.Payload.Screen)
-	if !g.fps.Allow(truncated, ev.Payload.Website, fp) {
+	admitted, fresh := g.fps.Admit(truncated, ev.Payload.Website, fp)
+	if !admitted {
 		g.log.Debug("evento descartado", "reason", "fingerprints demais no IP")
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
+	// O evento só conta para a cota de fingerprints se for repassado. Saturação,
+	// cancelamento do cliente, falha do Umami e panic (defer) devolvem a vaga de
+	// fingerprint que este evento acabou de ocupar.
+	//
+	// Limite conhecido: se outro evento do mesmo IP e da mesma fingerprint passou
+	// entre o Admit e o Forget (viu a fingerprint como "não nova" e foi gravado),
+	// o Forget também tira a fingerprint dele da conta. A cota fica subcontada
+	// por uma fingerprint, e só sob concorrência; o efeito é frouxo, não rígido.
+	relayed := false
+	if fresh {
+		defer func() {
+			if !relayed {
+				g.fps.Forget(truncated, ev.Payload.Website, fp)
+			}
+		}()
+	}
+
 	if err := g.relay.Send(r.Context(), ev, r.UserAgent(), truncated); err != nil {
+		if errors.Is(err, relay.ErrSaturated) {
+			// Repasses ao Umami no limite: o evento é perdido (o script não tenta
+			// de novo) e o contador agregado registra. Sem log por evento.
+			w.Header().Set("Retry-After", "1")
+			http.Error(w, "overloaded", http.StatusServiceUnavailable)
+			return
+		}
+		if r.Context().Err() != nil {
+			// O cliente desistiu (ou estourou o prazo dele) durante a espera ou o
+			// repasse: não é falha do Umami nem do gateway, não há quem leia a
+			// resposta. Sem Error e sem 502.
+			g.log.Debug("evento descartado", "reason", "cliente cancelou")
+			return
+		}
 		g.log.Error("repasse ao umami falhou", "err", err)
 		http.Error(w, "bad gateway", http.StatusBadGateway)
 		return
 	}
+	relayed = true
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -137,3 +137,28 @@ func TestConcurrentAllowAndSweep(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestAdmitAndForget(t *testing.T) {
+	c := New(2, time.Minute)
+	ip := netip.MustParseAddr("192.0.2.0")
+	if ok, fresh := c.Admit(ip, "s", 1); !ok || !fresh {
+		t.Fatalf("primeira: ok=%v fresh=%v", ok, fresh)
+	}
+	if ok, fresh := c.Admit(ip, "s", 1); !ok || fresh {
+		t.Fatalf("repetida: ok=%v fresh=%v", ok, fresh)
+	}
+	c.Admit(ip, "s", 2)
+	if ok, _ := c.Admit(ip, "s", 3); ok {
+		t.Fatal("a terceira deveria ser recusada")
+	}
+	c.Forget(ip, "s", 2) // desfaz a admissão de uma fingerprint nova
+	if ok, fresh := c.Admit(ip, "s", 3); !ok || !fresh {
+		t.Fatalf("depois do Forget: ok=%v fresh=%v", ok, fresh)
+	}
+	c.Forget(ip, "s", 1)
+	c.Forget(ip, "s", 3)
+	if c.Len() != 0 {
+		t.Errorf("conta vazia deveria sair da memória: %d", c.Len())
+	}
+	c.Forget(ip, "outro", 9) // conta inexistente não faz nada
+}

@@ -85,9 +85,16 @@ func run(log *slog.Logger) error {
 		go logStale(ctx, log, sites, time.Minute)
 	}
 
+	var sender relay.Sender = relay.NewClient(cfg.UmamiURL, cfg.ClientIPHeader, &http.Client{Timeout: 10 * time.Second})
+	if cfg.RelayMaxInflight > 0 {
+		limited := relay.NewLimited(sender, cfg.RelayMaxInflight, cfg.RelayQueueWait)
+		sender = limited
+		go logSaturated(ctx, log, limited, time.Minute)
+	}
+
 	g := &gateway{
 		sites:   sites,
-		relay:   relay.NewClient(cfg.UmamiURL, cfg.ClientIPHeader, &http.Client{Timeout: 10 * time.Second}),
+		relay:   sender,
 		limits:  limits,
 		ips:     clientip.Resolver{Trusted: cfg.TrustedProxies},
 		proofs:  proof.New(secret, cfg.ProofTTL, cfg.ProofBits),
@@ -136,6 +143,30 @@ func logStale(ctx context.Context, log *slog.Logger, sites *site.Cached, every t
 		case <-t.C:
 			if n := sites.StaleServed(); n != last {
 				log.Warn("ingest_site vencida servida por falha do banco", "respostas", n-last, "total", n)
+				last = n
+			}
+		}
+	}
+}
+
+// logSaturated registra, no máximo uma vez por intervalo e só quando mudar,
+// quantos eventos foram descartados porque os repasses ao Umami estavam no
+// limite. Só totais: nada de IP, User-Agent nem ID de site.
+func logSaturated(ctx context.Context, log *slog.Logger, l *relay.Limited, every time.Duration) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	var last uint64
+	for {
+		select {
+		case <-ctx.Done():
+			// Último minuto parcial antes de desligar.
+			if n := l.Dropped(); n != last {
+				log.Warn("eventos descartados por saturação do repasse ao umami", "descartados", n-last, "total", n, "em_voo", l.InFlight())
+			}
+			return
+		case <-t.C:
+			if n := l.Dropped(); n != last {
+				log.Warn("eventos descartados por saturação do repasse ao umami", "descartados", n-last, "total", n, "em_voo", l.InFlight())
 				last = n
 			}
 		}
