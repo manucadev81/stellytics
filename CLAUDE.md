@@ -89,6 +89,7 @@ O monorepo tem a estrutura do ADR 0002 (issue #11). O código de aplicação at�
 
 ## Onde está o planejamento
 
+- **Visão geral:** `docs/arquitetura.md` (diagramas Mermaid dos fluxos web e API e a stack em linguagem simples; #39). Atualize ao mudar um componente ou a produção.
 - **Decisões de arquitetura:** `docs/adr/` (índice em `docs/adr/README.md`). Leia os ADRs 0001 e 0002 antes de propor mudanças de stack ou de estrutura, e o 0003 antes de mexer em acesso a dados.
 - **Andamento:** `docs/andamento.md` (resumo, commits e próximos passos) e `docs/e2-implementacao.md` (o que foi feito no E2, escolhas e pendências). Atualize os dois ao fechar issues.
 - **Specs:** `docs/specs/`, um por épico que tem contrato entre componentes. O spec fixa o contrato (tabelas, papéis, formatos); decisão com alternativas vai para ADR. Antes de implementar qualquer issue do E2 (#16–#21, #58–#60), leia `docs/specs/e2-tenants-e-controle-de-acesso.md`. Antes de implementar issue do E5 (#30–#36), leia `docs/specs/e5-pipeline-de-api.md` (normalização de rotas, tabelas de métricas, buckets e retenção). O spec do E3 não foi escrito; o contrato do E3 está no `CLAUDE.md` e nos READMEs do gateway e do script.

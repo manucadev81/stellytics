@@ -112,7 +112,7 @@ Contagem conferida em 13/11/2026, no fim do dia:
 - **Done (16):** inclui, do E2, as issues #16, #17, #18, #19, #57, #58, #59 e #60.
 - **In progress (3):** inclui o épico E2 (#2).
 - **Ready (27):** as issues de código do MVP que faltam, entre elas #20 e #21 do E2, e as da proposta (#64 e #65).
-- **Backlog (19):** os épicos E7, E8 e E9 e as issues #39–#54 (documentação, pilotos e pós-MVP).
+- **Backlog (19):** os épicos E7, E8 e E9 e as issues #40–#54 (documentação, pilotos e pós-MVP).
 
 ## 4. Decisões
 
@@ -233,6 +233,7 @@ O portal lê o Umami com uma conta de serviço que enxerga tudo, então o isolam
 
    **E5, [#36](https://github.com/romulospl/notify/issues/36) (14/11/2026):** ponta a ponta do pipeline de API no `compose-check.sh` (job `compose`): rota normalizada, status, latência (buckets somam a contagem) e tenant em `api_metric_1m`; trace e log mandados direto ao coletor alegando outro tenant ficam no tenant da chave, e o marcador não aparece em nenhuma coluna de texto do banco `notify`.
    **E6, [#37](https://github.com/romulospl/notify/issues/37) (14/11/2026):** painel de API do tenant em `/services/[serviceId]`: requisições, erros 5xx, latência p50 e p95, gráficos por balde e tabela por endpoint, lendo 1d, 1h e 1m sem sobreposição. **E6, [#38](https://github.com/romulospl/notify/issues/38) (14/11/2026):** painel de API global do SCF em `/operator/api`, uma linha por projeto ativo com requisições, 5xx, 4xx, p50 e p95, filtro, ordenação e período, com os mesmos números do painel de cada serviço. **Com isso, o E6 está completo.** Detalhes em [`e6-implementacao.md`](e6-implementacao.md).
+   **E7, [#39](https://github.com/romulospl/notify/issues/39) (15/11/2026):** [`arquitetura.md`](arquitetura.md), com o diagrama geral e os fluxos web e API em Mermaid (validados com o mermaid-cli) e a explicação da stack em linguagem simples. Mostra o coletor e o rollup como ainda fora da produção.
 4. **Pode ser feita a qualquer momento:** a [#32 (5.3)](https://github.com/romulospl/notify/issues/32), normalização de rotas, que não depende de nada.
 5. **Fora do código, sem dependência:**
    - buscar o código de indicação e enviar o Interest form ([#64](https://github.com/romulospl/notify/issues/64));
@@ -240,7 +241,7 @@ O portal lê o Umami com uma conta de serviço que enxerga tudo, então o isolam
 6. **Decisões em aberto sobre o quadro:**
    - criar uma label `poc` para marcar, dentro do Ready, o que precisa existir antes da submissão;
    - criar 4 milestones, uma por parcela (10/20/30/40%), depois que a #65 definir os marcos;
-   - mover #39 (diagrama) e #44 (pilotos) para Ready, porque não dependem de código;
+   - mover #44 (pilotos) para Ready, porque não depende de código (a #39 já foi feita);
    - tirar os épicos da coluna Ready ou filtrá-los da visão;
    - dividir a #50 em eventos customizados (o Umami já suporta) e captura do Wallets Kit.
 7. **Idioma:** decidir se a documentação do repositório passa para inglês antes da submissão. Os revisores do SCF leem em inglês, e isso pesa na avaliação da documentação e na transferência para outra equipe.
