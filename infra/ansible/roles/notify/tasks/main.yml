@@ -29,6 +29,18 @@
     - { src: scripts/db-fingerprint.sh, mode: "0755" }
   register: notify_files
 
+# Alta disponibilidade (#52, ADR 0009): só quando ha_replication é true. Com o
+# padrão (false) nenhum arquivo, variável nem comando abaixo muda.
+- name: Arquivos de alta disponibilidade do primário (replicação do Postgres)
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../{{ item.src }}"
+    dest: "{{ notify_root }}/infra/{{ item.src }}"
+    mode: "{{ item.mode | default('0644') }}"
+  loop:
+    - { src: compose/prod-ha-primary.yaml }
+    - { src: compose/postgres/init/03-replication.sh, mode: "0755" }
+  when: ha_replication | default(false) | bool
+
 - name: Segredos e configuração da pilha (.env)
   ansible.builtin.template:
     src: env.j2
@@ -49,16 +61,27 @@
 
 - name: Sobe a pilha
   ansible.builtin.command:
-    cmd: docker compose -f prod.yaml up -d --build --wait --remove-orphans
+    cmd: "docker compose {{ notify_compose_files }} up -d --build --wait --remove-orphans"
     chdir: "{{ notify_root }}/infra/compose"
   tags: [images]
   register: notify_compose_up
   changed_when: "'Started' in notify_compose_up.stderr or 'Recreated' in notify_compose_up.stderr or 'Created' in notify_compose_up.stderr"
 
+# Papel de replicação, slot e pg_hba num volume que já existe (num volume novo o
+# init do Postgres já rodou o mesmo script). Idempotente.
+- name: Prepara o primário para a réplica (papel, slot e pg_hba)
+  ansible.builtin.shell:
+    cmd: "docker compose {{ notify_compose_files }} exec -T postgres sh < {{ notify_root }}/infra/compose/postgres/init/03-replication.sh"
+    chdir: "{{ notify_root }}/infra/compose"
+  when: ha_replication | default(false) | bool
+  changed_when: false
+  no_log: true
+  tags: [images]
+
 # O Caddy não relê o Caddyfile sozinho; recarrega sem derrubar conexões.
 - name: Recarrega o Caddy se o Caddyfile mudou
   ansible.builtin.command:
-    cmd: docker compose -f prod.yaml exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+    cmd: "docker compose {{ notify_compose_files }} exec -T caddy caddy reload --config /etc/caddy/Caddyfile"
     chdir: "{{ notify_root }}/infra/compose"
   when: notify_files.results | selectattr('item.src', 'equalto', 'caddy/Caddyfile') | selectattr('changed') | list | length > 0
   changed_when: true

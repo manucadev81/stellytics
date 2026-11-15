@@ -25,6 +25,16 @@
         - "{{ walg_libsodium_key | default('') }}"
       no_log: true
 
+    - name: Confere o segredo da replicação (alta disponibilidade ligada)
+      ansible.builtin.assert:
+        that:
+          - replicator_db_password | default('') | length > 0
+          - ha_private_ip | default('') | length > 0
+        fail_msg: "ha_replication: true exige replicator_db_password em secrets.yml."
+        quiet: true
+      no_log: true
+      when: ha_replication | default(false) | bool
+
     - name: Confere a chave do backup (32 bytes em hexadecimal)
       ansible.builtin.assert:
         that: walg_libsodium_key is regex('^[0-9a-f]{64}$')
