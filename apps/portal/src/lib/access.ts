@@ -1,8 +1,10 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { createHash, timingSafeEqual } from "node:crypto";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 import { db } from "./db";
-import { tenant, tenantMember } from "./db/schema";
+import { operatorApiKey, tenant, tenantMember, user } from "./db/schema";
+import { READ_KEY_PATTERN } from "./read-key";
 import { requireSession } from "./session";
 
 // Contextos de acesso do spec do E2, seção 4 (ADR 0003). O tenant vem sempre
@@ -84,4 +86,43 @@ export async function requireOperatorContext(): Promise<OperatorContext> {
   const session = await requireSession();
   if (session.user.role !== "operator") notFound();
   return { userId: session.user.id } as OperatorContext;
+}
+
+// Contexto de quem chama a API de leitura com uma chave do SCF (#48, ADR 0006).
+// É um OperatorContext (as funções de data/operator/ valem as mesmas), mais o
+// ID da chave, usado no limite de requisições. `userId` é quem criou a chave.
+export type OperatorKeyContext = OperatorContext & { readonly keyId: string };
+
+// Autentica `Authorization: Bearer nrk_...`. Nulo para qualquer falha (sem
+// header, formato errado, prefixo desconhecido, segredo errado, chave
+// revogada ou criada por quem deixou de ser operador); quem chama responde 401
+// igual em todos os casos. Só a chave de leitura vale: a de ingestão (`ntf_`)
+// não passa do formato. A chave completa nunca vai para log nem para erro.
+export async function authenticateReadKey(authorization: string | null): Promise<OperatorKeyContext | null> {
+  const match = /^Bearer (\S+)$/.exec(authorization ?? "");
+  const parsed = match ? READ_KEY_PATTERN.exec(match[1]!) : null;
+  if (!parsed) return null;
+  const [row] = await db
+    .select({
+      id: operatorApiKey.id,
+      keyHash: operatorApiKey.keyHash,
+      createdBy: operatorApiKey.createdBy,
+      lastUsedOn: operatorApiKey.lastUsedOn,
+    })
+    .from(operatorApiKey)
+    .innerJoin(user, eq(user.id, operatorApiKey.createdBy))
+    .where(and(eq(operatorApiKey.prefix, parsed[1]!), isNull(operatorApiKey.revokedAt), eq(user.role, "operator")))
+    .limit(1);
+  if (!row) return null;
+  const given = createHash("sha256").update(match![1]!, "utf8").digest();
+  if (!timingSafeEqual(given, row.keyHash)) return null;
+  // No máximo uma escrita por dia e chave.
+  const today = new Date().toISOString().slice(0, 10);
+  if (row.lastUsedOn !== today) {
+    await db
+      .update(operatorApiKey)
+      .set({ lastUsedOn: sql`${today}::date` })
+      .where(eq(operatorApiKey.id, row.id));
+  }
+  return { userId: row.createdBy, keyId: row.id } as OperatorKeyContext;
 }

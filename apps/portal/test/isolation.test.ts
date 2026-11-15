@@ -17,11 +17,18 @@ import { and, count, eq, inArray, isNull, like } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadTenantContext, type TenantContext } from "@/lib/access";
 import { auth } from "@/lib/auth";
-import { createApiService, getApiService, listIngestKeys, revokeIngestKey } from "@/lib/data/api-services";
+import { createApiService, createIngestKey, getApiService, listIngestKeys, revokeIngestKey } from "@/lib/data/api-services";
+import { createReadKey, listReadKeys } from "@/lib/data/operator/api-keys";
+import { resetRateLimits } from "@/lib/rate-limit";
+import OperatorKeysPage from "@/app/(private)/operator/keys/page";
+import { createReadKeyAction, revokeReadKeyAction } from "@/app/(private)/operator/keys/actions";
+import { GET as readApiProjects } from "@/app/api/v1/projects/route";
+import { GET as readApiWeb } from "@/app/api/v1/web/route";
+import { GET as readApiApi } from "@/app/api/v1/api/route";
 import { getSite, listSites } from "@/lib/data/sites";
 import { db, sql } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
-import { account, apiService, auditLog, ingestKey, site, tenant, tenantMember, user } from "@/lib/db/schema";
+import { account, apiService, auditLog, ingestKey, operatorApiKey, site, tenant, tenantMember, user } from "@/lib/db/schema";
 import { listActiveTenantSites } from "@/lib/data/operator/sites";
 import { getSiteStats } from "@/lib/umami/stats";
 import DashboardPage from "@/app/(private)/dashboard/page";
@@ -184,6 +191,8 @@ async function cleanup() {
     await db.delete(tenantMember).where(inArray(tenantMember.tenantId, ids));
     await db.delete(tenant).where(inArray(tenant.id, ids));
   }
+  const users = (await db.select({ id: user.id }).from(user).where(like(user.email, `%${DOMAIN}`))).map((u) => u.id);
+  if (users.length > 0) await db.delete(operatorApiKey).where(inArray(operatorApiKey.createdBy, users));
   await db.delete(user).where(like(user.email, `%${DOMAIN}`));
 }
 
@@ -200,6 +209,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  resetRateLimits();
   signIn(null);
   umami.requests.length = 0;
 });
@@ -498,6 +508,95 @@ describe("painel de API do serviço (#37)", () => {
   it("operador abre o painel de um serviço: 404 (D2)", async () => {
     asOperator();
     await expect(servicePage(A.serviceId)).rejects.toMatchObject(NOT_FOUND);
+  });
+});
+
+describe("chaves de leitura do SCF (#48)", () => {
+  const READ_ROUTES = [
+    ["/api/v1/projects", readApiProjects],
+    ["/api/v1/web", readApiWeb],
+    ["/api/v1/api", readApiApi],
+  ] as const;
+  const get = (route: (r: Request) => Promise<Response>, path: string, key: string) =>
+    route(new Request(`http://portal.test${path}`, { headers: { authorization: `Bearer ${key}` } }));
+  const keyRows = async () => (await db.select({ id: operatorApiKey.id }).from(operatorApiKey)).length;
+
+  it("membro de tenant não gera nem revoga chave de leitura: 404, e nada é gravado", async () => {
+    const op = { userId: operatorId } as import("@/lib/access").OperatorContext;
+    const { summary } = await createReadKey(op, { name: "isolation" });
+    const before = await keyRows();
+
+    asMember(A);
+    await expect(OperatorKeysPage()).rejects.toMatchObject(NOT_FOUND);
+    await expect(createReadKeyAction({ status: "idle" }, form({ name: "mine" }))).rejects.toMatchObject(NOT_FOUND);
+    await expect(revokeReadKeyAction(summary.id)).rejects.toMatchObject(NOT_FOUND);
+    signIn({ id: noProjectId, role: "tenant" });
+    await expect(createReadKeyAction({ status: "idle" }, form({ name: "mine" }))).rejects.toMatchObject(NOT_FOUND);
+    signIn(null);
+    await expect(createReadKeyAction({ status: "idle" }, form({ name: "mine" }))).rejects.toMatchObject({
+      digest: "NEXT_REDIRECT;/sign-in",
+    });
+
+    expect(await keyRows()).toBe(before);
+    expect((await listReadKeys(op)).find((k) => k.id === summary.id)?.revokedAt).toBeNull();
+  });
+
+  it("operador cria e revoga pela interface; a chave só aparece no retorno da criação", async () => {
+    asOperator();
+    await expect(OperatorKeysPage()).resolves.toBeTruthy();
+    const created = await createReadKeyAction({ status: "idle" }, form({ name: "from-ui" }));
+    expect(created).toMatchObject({ status: "created", key: expect.stringMatching(/^nrk_/) });
+    const key = (created as { key: string }).key;
+    expect((await get(readApiProjects, "/api/v1/projects", key)).status).toBe(200);
+    const [row] = await db.select().from(operatorApiKey).where(eq(operatorApiKey.prefix, key.split("_")[1]!));
+    await revokeReadKeyAction(row!.id);
+    expect((await get(readApiProjects, "/api/v1/projects", key)).status).toBe(401);
+  });
+
+  it("chave de ingestão (ntf_) de A não lê a API de leitura", async () => {
+    const ingest = await createIngestKey(A.ctx, A.serviceId);
+    expect(ingest!.key).toMatch(/^ntf_/);
+    for (const [path, route] of READ_ROUTES) {
+      expect((await get(route, path, ingest!.key)).status).toBe(401);
+    }
+    expect(umami.requests).toEqual([]);
+  });
+
+  it("chave de leitura não é aceita pelo coletor nem enxergada pelo gateway", async () => {
+    const op = { userId: operatorId } as import("@/lib/access").OperatorContext;
+    const { key, summary } = await createReadKey(op, { name: "not-for-collector" });
+    // O coletor busca na visão pelo prefixo: o prefixo da chave de leitura não está lá.
+    expect(await collectorKey(summary.prefix)).toBeNull();
+    // E nem o coletor nem o gateway têm permissão na tabela das chaves de leitura.
+    await expect(asRole("notify_collector", "select prefix from operator_api_key")).rejects.toThrow(/permission denied/);
+    await expect(asRole("notify_ingest", "select prefix from operator_api_key")).rejects.toThrow(/permission denied/);
+    await expect(asRole("notify_collector", "select key_hash from operator_api_key")).rejects.toThrow(/permission denied/);
+    expect(key).not.toMatch(/^ntf_/);
+  });
+
+  it("a API só mostra projetos ativos: B removido some, A volta ao reativar, sem tocar no Umami de B", async () => {
+    const op = { userId: operatorId } as import("@/lib/access").OperatorContext;
+    const { key } = await createReadKey(op, { name: "tenants" });
+    const ids = async (path: string, route: (r: Request) => Promise<Response>) =>
+      ((await (await get(route, path, key)).json()) as { projects: { id: string }[] }).projects.map((p) => p.id);
+
+    for (const [path, route] of READ_ROUTES) {
+      const seen = await ids(path, route);
+      expect(seen).toContain(A.tenantId);
+      expect(seen).toContain(B.tenantId);
+    }
+    await db.update(tenant).set({ status: "removed" }).where(eq(tenant.id, B.tenantId));
+    try {
+      umami.requests.length = 0;
+      for (const [path, route] of READ_ROUTES) {
+        const seen = await ids(path, route);
+        expect(seen).toContain(A.tenantId);
+        expect(seen).not.toContain(B.tenantId);
+      }
+      expect(umami.requests.some((r) => r.path.includes(B.umamiWebsiteId))).toBe(false);
+    } finally {
+      await db.update(tenant).set({ status: "active" }).where(eq(tenant.id, B.tenantId));
+    }
   });
 });
 

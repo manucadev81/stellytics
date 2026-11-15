@@ -210,6 +210,35 @@ export const ingestKey = pgTable(
   ],
 );
 
+// Chave de leitura do SCF (#48, ADR 0006): dá acesso de leitura às métricas
+// globais pela API `/api/v1`. Só operador cria. Fica fora das visões de
+// notify_ingest e notify_collector, que não têm permissão nesta tabela.
+export const operatorApiKey = pgTable(
+  "operator_api_key",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Rótulo dado por quem criou, para saber de quem é cada chave.
+    name: text("name").notNull(),
+    // Parte pública da chave `nrk_<prefixo>_<segredo>`.
+    prefix: text("prefix").notNull().unique(),
+    // SHA-256 da chave completa. A chave em si nunca é gravada.
+    keyHash: bytea("key_hash").notNull(),
+    // A chave só vale enquanto quem a criou for operador.
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id),
+    createdAt: timestamps.createdAt,
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    // Atualizado no máximo uma vez por dia.
+    lastUsedOn: date("last_used_on"),
+  },
+  (t) => [
+    check("operator_api_key_prefix_format", sql`${t.prefix} ~ '^[a-z2-7]{8}$'`),
+    check("operator_api_key_hash_length", sql`octet_length(${t.keyHash}) = 32`),
+    check("operator_api_key_name_length", sql`char_length(${t.name}) between 1 and 100`),
+  ],
+);
+
 // Só recebe inserções: um gatilho recusa UPDATE e DELETE (0002_ingest_views.sql).
 // Sem chave estrangeira, para o registro sobreviver à exclusão do usuário ou do tenant.
 export const auditLog = pgTable(
