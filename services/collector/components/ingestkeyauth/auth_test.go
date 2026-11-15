@@ -254,7 +254,22 @@ func TestTouchRetriesAfterFailureAndIgnoresRejected(t *testing.T) {
 	if !waitTouch(t, s) {
 		t.Fatal("não gravou")
 	}
-	time.Sleep(50 * time.Millisecond) // deixa a goroutine registrar a falha
+	// A goroutine reagenda a nova tentativa depois da falha: espera, sob o
+	// mutex do autenticador, a data permitida passar a ser now + touchRetry.
+	want := now.Add(touchRetry)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		a.mu.Lock()
+		got := a.nextTouch["abcdefgh"]
+		a.mu.Unlock()
+		if got.Equal(want) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("nova tentativa não foi reagendada: %s, quero %s", got, want)
+		}
+		time.Sleep(time.Millisecond)
+	}
 	now = now.Add(time.Minute)
 	_, _ = a.Authenticate(context.Background(), header("Authorization", "Bearer "+validKey))
 	if waitTouch(t, s, 100*time.Millisecond) {

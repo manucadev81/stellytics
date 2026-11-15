@@ -118,7 +118,7 @@ erDiagram
 | `key_hash` | `bytea` | SHA-256 da chave completa |
 | `created_by` | `text` FK `user.id` | |
 | `created_at`, `revoked_at` | `timestamptz` | |
-| `last_used_on` | `date` | Atualizado no máximo uma vez por dia |
+| `last_used_on` | `date` | Dia (UTC) da última autenticação no coletor; gravado no máximo uma vez por dia (ver D4 e a seção 5) |
 
 ### `audit_log`
 
@@ -169,9 +169,11 @@ Os dois tipos são marcados (*branded*), de modo que nenhum outro código conseg
 |---|---|---|
 | `notify` | Portal | Dono das tabelas |
 | `notify_ingest` | Gateway web (#61) | `SELECT` na visão `ingest_site` (ID do site no Umami e se aceita ingestão) |
-| `notify_collector` | Coletor (#30) | `SELECT` na visão `ingest_key_active`; `INSERT` nas tabelas de métricas |
+| `notify_collector` | Coletor (#30) | `SELECT` na visão `ingest_key_active`; `INSERT` nas tabelas de métricas; `EXECUTE` em `ingest_key_touch(text)` |
 
 Assim, uma falha no gateway ou no coletor não dá acesso a e-mails, sessões nem hashes de senha.
+
+**Último uso da chave.** O coletor registra `ingest_key.last_used_on` chamando `ingest_key_touch(prefixo)` (migração `0008_ingest_key_last_used.sql`), função `SECURITY DEFINER` que só atualiza essa coluna, só de chave presente em `ingest_key_active` e só se a data (UTC) mudou. Não é um `GRANT UPDATE (last_used_on)` porque o `UPDATE ... WHERE prefix = ...` exigiria também `SELECT` em `prefix`, `revoked_at` e demais colunas da tabela, o que abriria a leitura de chaves revogadas e de `key_hash`. Com a função, o `notify_collector` continua sem nenhum privilégio em `ingest_key`; `notify_ingest` não tem `EXECUTE`.
 
 ## 5. Chave de ingestão
 
@@ -187,6 +189,7 @@ Contrato entre o portal (#59) e o coletor (#30).
 - **Cache:** o coletor guarda o resultado por no máximo 60 segundos. Com isso, uma revogação ou a remoção do tenant vale em até 1 minuto (critério da #59).
 - **Limite:** até 5 chaves ativas por serviço, o que permite trocar de chave sem parar a ingestão.
 - **O que a chave define:** o tenant **e** o serviço. O `tenant.id` das métricas vem sempre da chave. **D5.** O serviço também vem da chave: o `service.name` enviado pelo cliente é ignorado, para um cliente não inflar o número de serviços. O detalhe fica para o spec do E5.
+- **Último uso:** depois de autenticar, o coletor grava `last_used_on` em segundo plano, no máximo uma vez por chave e por dia UTC em cada processo (função da D4). A escrita nunca atrasa nem recusa um pedido; falha só gera aviso no log, com o tipo do erro.
 - **Logs:** a chave completa nunca é registrada. Em log aparece só o prefixo.
 
 ## 6. Status do tenant

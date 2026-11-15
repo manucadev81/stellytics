@@ -9,24 +9,24 @@
 -- uma única coluna, e só para uma chave que a visão ingest_key_active considera
 -- ativa (não revogada, serviço não arquivado, tenant ativo). O dia é o dia UTC
 -- do banco, e a função não escreve de novo se a data já é a de hoje.
-CREATE FUNCTION ingest_key_touch(p_prefix text) RETURNS boolean
+CREATE OR REPLACE FUNCTION public.ingest_key_touch(p_prefix text) RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, public
+SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE
   updated integer;
 BEGIN
-  UPDATE ingest_key k
+  UPDATE public.ingest_key k
   SET last_used_on = (now() AT TIME ZONE 'UTC')::date
   WHERE k.prefix = p_prefix
     AND k.last_used_on IS DISTINCT FROM (now() AT TIME ZONE 'UTC')::date
-    AND EXISTS (SELECT 1 FROM ingest_key_active a WHERE a.prefix = k.prefix);
+    AND EXISTS (SELECT 1 FROM public.ingest_key_active a WHERE a.prefix = k.prefix);
   GET DIAGNOSTICS updated = ROW_COUNT;
   RETURN updated > 0;
 END
 $$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION ingest_key_touch(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.ingest_key_touch(text) FROM PUBLIC;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION ingest_key_touch(text) TO notify_collector;
+GRANT EXECUTE ON FUNCTION public.ingest_key_touch(text) TO notify_collector;

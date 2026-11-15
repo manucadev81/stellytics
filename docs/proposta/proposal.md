@@ -130,7 +130,6 @@ Delivered on `main` as of 2026-11-15 (source: [`docs/andamento.md`](../andamento
 - **The API collector and rollup are not in production** (`infra/compose/prod.yaml`, Caddyfile).
 - **No pilot and no letters of interest.**
 - **No load test, no high availability and no handover plan.** Runbooks are in PR [#111](https://github.com/romulospl/notify/pull/111), open and pending merge; they are not on `main`.
-- **The "Last used" column of ingest keys is never updated.** `last_used_on` (planned in the E2 spec) is not written by any code ([`docs/andamento.md`](../andamento.md), item on #42 and #43; [`docs/onboarding-de-tenant.md`](../onboarding-de-tenant.md) warns about it). The RFP asks for revocable keys; revocation works, but a tenant cannot see whether a key is still in use.
 - Privacy gaps listed in [`docs/privacidade.md`](../privacidade.md): no retention configured for web events in Umami, no account deletion, no erasure of a removed project's data.
 - No vulnerability scanning, no license check and no reproducible-build verification in CI ([`docs/anti-bot-e-cadeia-de-suprimentos.md`](../anti-bot-e-cadeia-de-suprimentos.md)).
 
