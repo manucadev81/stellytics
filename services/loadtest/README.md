@@ -28,3 +28,16 @@ go build -o /tmp/loadtest ./loadtest
   `request_count` em `api_metric_1m` com o que foi enviado com sucesso.
 - `-watch nome=pid,...` e `-docker contêiner,...` amostram CPU e memória a cada
   2 s e resumem por degrau (Linux; o docker usa `docker stats`).
+
+## Segurança
+
+- `setup`, `teardown`, `web` e `api` recusam qualquer alvo que não seja
+  loopback (`-notify-db`, `-umami-url`, `-gateway`, `-umami-db`, `-collector`)
+  sem `-allow-remote`, e imprimem host e banco antes de agir. Não aponte para
+  produção.
+- O arquivo de estado (`state.json`, no `.gitignore`) guarda as chaves de
+  ingestão `ntf_...` completas, em modo 0600. Apague-o depois do `teardown`.
+- O `setup` grava o estado a cada passo; se falhar no meio, o `teardown` apaga
+  o que foi criado. O `teardown` só apaga usuário `loadtest-*` e os tenants
+  `<usuário>-web` e `<usuário>-api`, e aborta se o estado não bater com o banco.
+- Os IPs dos visitantes simulados ficam em 10.0.0.0/8.

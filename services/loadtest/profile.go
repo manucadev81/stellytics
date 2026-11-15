@@ -138,7 +138,13 @@ func drive(ctx context.Context, steps []step, maxInflight int, onStep func(i int
 				break
 			}
 			if d := time.Until(next); d > 0 {
-				time.Sleep(d)
+				select {
+				case <-time.After(d):
+				case <-ctx.Done():
+				}
+				if ctx.Err() != nil {
+					break
+				}
 			}
 			select {
 			case sem <- struct{}{}:

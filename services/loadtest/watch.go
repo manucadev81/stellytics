@@ -17,8 +17,9 @@ type watcher struct {
 	procs      map[string]int // nome -> pid
 	containers []string
 
-	mu      sync.Mutex
-	samples []sample
+	mu           sync.Mutex
+	samples      []sample
+	dockerWarned bool
 }
 
 type sample struct {
@@ -115,6 +116,10 @@ func (w *watcher) dockerSample(ctx context.Context, at time.Time) {
 	args := append([]string{"stats", "--no-stream", "--format", "{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}"}, w.containers...)
 	out, err := exec.CommandContext(ctx, "docker", args...).Output()
 	if err != nil {
+		if ctx.Err() == nil && !w.dockerWarned {
+			w.dockerWarned = true
+			fmt.Fprintf(os.Stderr, "aviso: docker stats falhou (%v); sem amostras de contêineres\n", err)
+		}
 		return
 	}
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {

@@ -37,3 +37,7 @@ infra/opentofu/*.secret.tfvars
 infra/ansible/inventory/production.yml
 infra/ansible/secrets.yml
 infra/ansible/.ansible/
+
+# Estado do gerador de carga (guarda chaves ntf_ completas)
+state.json
+services/loadtest/*.json

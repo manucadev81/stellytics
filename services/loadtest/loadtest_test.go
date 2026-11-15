@@ -48,7 +48,7 @@ func TestSolveMeetsDifficulty(t *testing.T) {
 
 func TestVisitorsHaveDistinctTruncatedIPs(t *testing.T) {
 	seen := map[string]int{}
-	for i := 0; i < 20000; i++ {
+	for i := 0; i < 20000; i++ { // até 65.536 visitantes têm /24 próprio
 		v := newVisitor(i)
 		var a, b, c, d int
 		if _, err := sscan(v.ip, &a, &b, &c, &d); err != nil {
@@ -78,3 +78,37 @@ func TestMarshalOTLPRoundTrip(t *testing.T) {
 func sscan(ip string, a, b, c, d *int) (int, error) { return fmt.Sscanf(ip, "%d.%d.%d.%d", a, b, c, d) }
 
 func itoa(n int) string { return strconv.Itoa(n) }
+
+func TestCheckTargetsRefusesRemote(t *testing.T) {
+	local := map[string]string{
+		"a": "postgresql://u:p@127.0.0.1:5432/notify", "b": "http://localhost:3001", "c": "http://[::1]:4318",
+	}
+	for name, u := range local {
+		if err := checkTargets(false, map[string]string{name: u}); err != nil {
+			t.Errorf("%s (%s) devia passar: %v", name, u, err)
+		}
+	}
+	remote := []string{"postgresql://u:p@db.example.com:5432/notify", "http://10.0.0.5:3001", "https://umami.example.org", "http://127.0.0.1.evil.example"}
+	for _, u := range remote {
+		if err := checkTargets(false, map[string]string{"x": u}); err == nil {
+			t.Errorf("%s devia ser recusado sem -allow-remote", u)
+		}
+		if err := checkTargets(true, map[string]string{"x": u}); err != nil {
+			t.Errorf("%s devia passar com -allow-remote: %v", u, err)
+		}
+	}
+	if err := checkTargets(true, map[string]string{"x": "::nope"}); err == nil {
+		t.Error("URL inválida devia falhar")
+	}
+}
+
+func TestValidateState(t *testing.T) {
+	if err := validateState(State{UserID: "loadtest-abc123"}); err != nil {
+		t.Error(err)
+	}
+	for _, id := range []string{"", "loadtest-", "admin", "loadtest-%", "other-loadtest-x"} {
+		if err := validateState(State{UserID: id}); err == nil {
+			t.Errorf("user_id %q devia ser recusado", id)
+		}
+	}
+}

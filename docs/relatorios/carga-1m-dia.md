@@ -6,12 +6,12 @@ extrapolado sem estar marcado como estimativa.
 
 ## Resumo
 
-- **Carga alvo atendida com folga nos dois pipelines**, em máquina local. A média de 1M/dia é 11,6/s; rodamos 10 min nessa taxa, 5 min a 10x (116/s) e 5 min de volta à média, com web e API ao mesmo tempo.
+- **Carga alvo atendida nesta máquina local, sem Caddy, TLS, contêineres nem hardware Hetzner; isto não é prova de produção.** A média de 1M/dia é 11,6/s; rodamos 10 min nessa taxa, 5 min a 10x (116/s) e 5 min de volta à média, com web e API ao mesmo tempo.
 - **Web:** 45.029 page views, 100% gravados no Umami, zero erro, zero 429. Latência do `POST /e` no pico de 10x: p50 8,1 ms, p95 63 ms, p99 244 ms.
 - **API:** 1.051.022 requisições simuladas em 4 minutos (média de 4.379/s, pico de 10.000/s, ou seja, 1M/dia inteiro em 4 min), por spans. Tudo gravado em `api_metric_1m`, contagem exata, coletor a 0,08 núcleo.
 - **Gargalo achado: o Umami**, não o gateway nem o coletor. Ele satura perto de 200 page views/s (um núcleo de Node). Acima disso a latência do `POST /e` passa de 5 s e o gateway acumula requisições na memória, sem recusar (pendência 1).
 - **Disco:** o Umami cresceu cerca de 0,9 KB por page view (estimativa de 0,9 GB/dia a 1M page views/dia; ver "Disco"). As métricas de API são baratas (181 bytes por linha de 1 minuto).
-- Nenhum defeito que mude o resultado foi corrigido no pipeline; as duas pendências estão na seção "Gargalos e pendências".
+- Nada foi alterado no pipeline. A seção "Gargalos e pendências" lista 3 itens: uma pendência de produto (Umami e gateway sob saturação, com texto de issue pronto), um comportamento esperado (nomes de rota duplicados em spans) e um erro corrigido na própria ferramenta de carga.
 
 ## O que significa "1 milhão de requisições por dia"
 
@@ -75,7 +75,7 @@ API: 45.454 requisições simuladas (4 serviços em métricas, 2 em spans), 1.02
 
 **Nota de honestidade:** a saída bruta dessa execução mostrou 45.634 gravadas (+180). Foi a soma de um teste de fumaça de 10 s que rodei antes, com os mesmos serviços (34+28+42+22+28+26 = 180, por serviço exatamente a diferença). A ferramenta contava o total do serviço no banco, sem descontar o que já havia; corrigi para medir a linha de base antes do teste e conferi com uma execução limpa depois (`11.6x2m`: 1.312 simuladas, 1.312 enviadas, 1.312 gravadas). Nenhuma linha duplicada ou perdida.
 
-Em todas as 3.984.673 linhas de `api_metric_1m` do banco (isso inclui o volume semeado, ver abaixo), os buckets somam a contagem e a soma de duração é positiva. Rota `{other}` (teto de 500 rotas): 0.
+Em todas as linhas de `api_metric_1m` do tenant no fim (3.984.673; as 3.983.970 de outros trechos do relatório foram contadas em outro momento, antes da execução limpa de 2 min e da de degraus; isso inclui o volume semeado, ver abaixo), os buckets somam a contagem e a soma de duração é positiva. Rota `{other}` (teto de 500 rotas): 0.
 
 Recursos na execução principal (média / pico em núcleos; memória de pico):
 
@@ -118,12 +118,12 @@ Perfil `500,2000,5000,10000` requisições/s, 1 min cada, 2 serviços.
 ### 4. Consolidação e retenção (`api_metric_maintain`)
 
 - Dados reais (2.370 linhas de 1 min, hora ainda aberta): 13 ms; o serviço `rollup` rodou duas vezes sozinho (24 ms e 7,4 ms). Como só horas fechadas há 5 min entram, nada foi consolidado nessa hora.
-- Para medir uma carga de verdade, **semeei por SQL** 3.981.600 linhas: as 2.370 linhas reais repetidas 1.680 vezes com `bucket_start` deslocado de 30 em 30 min, cobrindo 35 dias (a retenção do 1m). **É volume sintético com a forma dos dados reais**, equivale a cerca de 2,2M requisições/dia e 114 mil linhas/dia (o dobro da carga alvo; o perfil real tinha 6 serviços e 12 rotas). Com 3.983.970 linhas em `api_metric_1m`: `api_metric_maintain(48h)` levou **2,55 s** na primeira vez (inclui mover ~2,3M linhas da partição default para as mensais) e **2,58 s** na seguinte. Resultado: 11.376 linhas em `api_metric_1h` e 711 em `api_metric_1d`, ambas somando 4.380.864 requisições.
+- Para medir uma carga de verdade, **semeei por SQL** 3.981.600 linhas: as 2.370 linhas reais repetidas 1.680 vezes com `bucket_start` deslocado de 30 em 30 min, cobrindo 35 dias (a retenção do 1m). **É volume sintético com a forma dos dados reais**, equivale a cerca de 2,2M requisições/dia e 114 mil linhas/dia (o dobro da carga alvo; o perfil real tinha 6 serviços e 12 rotas). Com 3.983.970 linhas em `api_metric_1m`: `api_metric_maintain(48h)` levou **2,55 s** na primeira vez e **2,58 s** na seguinte, sem nada mais a mover da partição default; os dois tempos são, portanto, o custo de consolidar as 48 h. Resultado: 11.376 linhas em `api_metric_1h` e 711 em `api_metric_1d`, ambas somando 4.380.864 requisições.
 - Isso é bem menor que o intervalo de 15 min do job.
 
 ### 5. Disco
 
-- `api_metric_1m`: 689 MB para 3.981.600 linhas semeadas + as reais (3.983.970) com índices, ≈ 181 bytes por linha. `api_metric_1h`: 7,8 MB para 11.376 linhas. No perfil real, 2.370 linhas (1.496 kB) para 45.634 requisições, ou seja ≈ 5% de linhas por requisição (depende da cardinalidade de rota/status/serviço, não do volume).
+- `api_metric_1m`: 689 MiB (`pg_size_pretty`) para 3.983.970 linhas (3.981.600 semeadas + 2.370 reais) com índices, ≈ 181 bytes por linha. As 2.370 linhas reais sozinhas ocupavam 1.496 KiB, ≈ 646 bytes por linha: em tabela pequena pesa o overhead de página e de índice, então o número de 181 B/linha vale para volume grande, não para o começo do dia. `api_metric_1h`: 7,8 MB para 11.376 linhas. No perfil real, 2.370 linhas (1.496 kB) para 45.634 requisições, ou seja ≈ 5% de linhas por requisição (depende da cardinalidade de rota/status/serviço, não do volume).
 - Umami: 107.197 eventos gravados nas execuções (195 do teste de fumaça + 45.029 + 61.973). O banco `umami` passou de 10,1 MB para 108 MB; `website_event` com índices ocupa 86 MB (≈ 800 bytes por page view) e `session` 12 MB. **Estimativa** (não medida): ~0,9 KB por page view no banco inteiro, ou seja ~0,9 GB por dia a 1M page views/dia, ~330 GB por ano. Os dados são sintéticos (10 caminhos, títulos curtos), então a conta real varia.
 
 ## Gargalos e pendências
@@ -145,6 +145,18 @@ O que foi ajustado: nada no pipeline. Os parâmetros do `dev.yaml` (`RATE_LIMIT`
 - **Leitura.** Os painéis do portal (consultas a `api_metric_*` e ao Umami) não foram medidos sob carga de escrita.
 - O pacote `internal/proof` não pôde ser importado; o algoritmo do gerador foi copiado. Se o gateway mudar o algoritmo, o teste mostraria zero eventos gravados, não um falso positivo.
 
+## Pendência pronta para virar issue
+
+**Título:** `[ingest-web] limitar relays simultâneos ao Umami e definir comportamento sob saturação`
+
+**Texto:**
+
+> Na carga da #51 (docs/relatorios/carga-1m-dia.md) o Umami satura perto de 200 page views/s por instância (um núcleo de Node). O gateway repassa o `POST /e` de forma síncrona e sem limite de requisições em andamento: a 400/s a latência do `POST /e` foi de 5 a 8 s e o gateway foi de 40 MB para 220 MB de memória, sem recusar nada. Para o alvo do RFP (média de 11,6/s, pico de 116/s) não há problema, mas um pico maior seguraria conexões de navegadores e a memória do gateway.
+>
+> O que fazer: limitar os relays simultâneos ao Umami (semáforo) e definir o comportamento quando o limite estoura: responder 503 (o script não tenta de novo), responder 204 descartando o evento (como já fazemos com site não cadastrado), usar uma fila limitada, ou colocar mais instâncias do Umami atrás do gateway. Incluir timeout no repasse e métrica de eventos descartados por saturação.
+>
+> Critérios de aceite: com o gerador de `services/loadtest` a 400 page views/s, a latência do `POST /e` não passa de X s, a memória do gateway fica abaixo de Y MB e o descarte aparece em log ou métrica; o teste do relatório é repetido e anexado.
+
 ## Como reproduzir
 
 ```sh
@@ -159,3 +171,38 @@ go build -o /tmp/ingest-web ./ingest-web && go build -o /tmp/collector ./collect
 /tmp/loadtest api -state state.json -profile "11.6x10m,116x5m,11.6x5m"
 /tmp/loadtest teardown -state state.json
 ```
+
+### Degraus, semeadura, rollup e tamanhos
+
+```sh
+# degraus do web (ceiling) e da API (spans)
+/tmp/loadtest web -state state.json -profile "50x1m,100x1m,200x1m,400x1m,800x1m" -max-inflight 2000 \
+  -watch gateway=<pid>,collector=<pid> -docker notify51-postgres-1,notify51-umami-1 -settle 30s
+/tmp/loadtest api -state state.json -modes spans -profile "500x1m,2000x1m,5000x1m,10000x1m" \
+  -watch gateway=<pid>,collector=<pid> -docker notify51-postgres-1 -settle 30s
+```
+
+Semeadura sintética de 35 dias (repete as linhas reais, uma cópia a cada 30 min para trás; rodar como o usuário `notify`, depois do degrau principal; deu 3.981.600 linhas em 22,4 s):
+
+```sql
+INSERT INTO api_metric_1m (bucket_start, tenant_id, api_service_id, route, method, status_code,
+                           request_count, duration_sum, duration_buckets)
+SELECT m.bucket_start - make_interval(mins => 30 * g), m.tenant_id, m.api_service_id, m.route,
+       m.method, m.status_code, m.request_count, m.duration_sum, m.duration_buckets
+FROM api_metric_1m m, generate_series(1, 1680) g;
+```
+
+Rollup e tamanhos:
+
+```sql
+\timing on
+SELECT api_metric_maintain(interval '48 hours');   -- 2,55 s e 2,58 s
+SELECT count(*), sum(request_count) FROM api_metric_1h;
+SELECT count(*), sum(request_count) FROM api_metric_1d;
+SELECT pg_size_pretty(sum(pg_total_relation_size(c.oid))) FROM pg_class c
+ WHERE relname ~ '^api_metric_1m_p' AND relkind = 'r';          -- 689 MiB
+SELECT pg_size_pretty(pg_database_size('umami'));                -- 108 MiB (banco do Umami)
+-- no banco umami: SELECT pg_size_pretty(pg_total_relation_size('website_event'));  -- 86 MiB
+```
+
+Os tamanhos do Postgres usam `pg_size_pretty` (KiB, MiB). Os IPs dos visitantes simulados ficam em 10.0.0.0/8 (a primeira execução do relatório usou 11.x.x.x, endereços públicos, só como valores de cabeçalho; nenhum pacote saiu da máquina).

@@ -42,7 +42,7 @@ type visitor struct {
 
 func newVisitor(i int) visitor {
 	return visitor{
-		ip:     fmt.Sprintf("%d.%d.%d.%d", 11+i/65536%200, i/256%256, i%256, 1+i%250),
+		ip:     fmt.Sprintf("10.%d.%d.%d", i/256%256, i%256, 1+i%250),
 		ua:     userAgents[i%len(userAgents)],
 		lang:   languages[i/7%len(languages)],
 		screen: screens[i/5%len(screens)],
@@ -80,6 +80,7 @@ func runWeb(args []string) error {
 	visitors := fs.Int("visitors", 20000, "visitantes distintos (IPs /24 e fingerprints)")
 	maxInflight := fs.Int("max-inflight", 2000, "máximo de page views em andamento")
 	settle := fs.Duration("settle", 10*time.Second, "espera antes de contar no Umami")
+	allowRemote := fs.Bool("allow-remote", false, "permite alvos que não sejam loopback")
 	watchSpec := fs.String("watch", "", "processos locais nome=pid,...")
 	dockerSpec := fs.String("docker", "", "contêineres para o docker stats, separados por vírgula")
 	_ = fs.Parse(args)
@@ -90,6 +91,9 @@ func runWeb(args []string) error {
 	}
 	st, err := loadState(*stateFile)
 	if err != nil {
+		return err
+	}
+	if err := checkTargets(*allowRemote, map[string]string{"gateway": *gateway, "umami-db": *umamiDB}); err != nil {
 		return err
 	}
 	w, err := newWatcher(*watchSpec, *dockerSpec)

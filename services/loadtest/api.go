@@ -126,6 +126,7 @@ func runAPI(args []string) error {
 	spanBatch := fs.Int("span-batch", 512, "spans por lote (padrão do BatchSpanProcessor)")
 	spanFlush := fs.Duration("span-flush", time.Second, "intervalo máximo entre lotes de spans (o padrão do SDK é 5 s)")
 	settle := fs.Duration("settle", 15*time.Second, "espera antes de contar em api_metric_1m")
+	allowRemote := fs.Bool("allow-remote", false, "permite alvos que não sejam loopback")
 	watchSpec := fs.String("watch", "", "processos locais nome=pid,...")
 	dockerSpec := fs.String("docker", "", "contêineres para o docker stats, separados por vírgula")
 	_ = fs.Parse(args)
@@ -136,6 +137,9 @@ func runAPI(args []string) error {
 	}
 	st, err := loadState(*stateFile)
 	if err != nil {
+		return err
+	}
+	if err := checkTargets(*allowRemote, map[string]string{"collector": *collector, "notify-db": *notifyDB}); err != nil {
 		return err
 	}
 	var svcs []*svc
