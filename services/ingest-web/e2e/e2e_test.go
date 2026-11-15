@@ -322,3 +322,77 @@ func TestCustomEventReachesUmami(t *testing.T) {
 		time.Sleep(time.Second)
 	}
 }
+
+// TestWalletEventsReachUmami envia os dois eventos que window.notify.wallets
+// (script v1.3.0, #50) produz e confere no banco do Umami que wallet_selected
+// leva só wallet=freighter e que wallet_disconnected não leva propriedade.
+func TestWalletEventsReachUmami(t *testing.T) {
+	ctx := context.Background()
+	token := umamiLogin(t)
+	websiteID := umamiCreateWebsite(t, token)
+	t.Cleanup(func() { umamiDo(t, token, http.MethodDelete, "/api/websites/"+websiteID, nil, nil) })
+
+	db, err := pgx.Connect(ctx, notifyDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close(ctx)
+	registerSite(t, db, websiteID)
+	time.Sleep(siteCacheTTL + time.Second)
+
+	for _, extra := range []string{
+		`"name":"wallet_selected","data":{"wallet":"freighter"}`,
+		`"name":"wallet_disconnected"`,
+	} {
+		tok, nonce := solveChallenge(t, websiteID)
+		b := fmt.Sprintf(`{"type":"event","p":{"t":%q,"n":%q},"payload":{"website":%q,"hostname":"e2e.example","url":"/connect",`+
+			`"title":"e2e","language":"pt-BR","screen":"1920x1080",%s}}`, tok, nonce, websiteID, extra)
+		req, _ := http.NewRequest(http.MethodPost, gatewayURL+"/e", strings.NewReader(b))
+		req.Header.Set("Content-Type", "text/plain")
+		req.Header.Set("User-Agent", browserUA)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNoContent {
+			t.Fatalf("%s: status = %d, quero 204", extra, resp.StatusCode)
+		}
+	}
+
+	udb, err := pgx.Connect(ctx, umamiDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer udb.Close(ctx)
+
+	deadline := time.Now().Add(90 * time.Second)
+	for {
+		rows, err := udb.Query(ctx, `SELECT e.event_name, coalesce(d.data_key, ''), coalesce(d.string_value, '')
+			FROM website_event e LEFT JOIN event_data d ON d.website_event_id = e.event_id
+			WHERE e.website_id = $1 AND e.event_name IS NOT NULL ORDER BY e.event_name, d.data_key`, websiteID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for rows.Next() {
+			var name, key, val string
+			if err := rows.Scan(&name, &key, &val); err != nil {
+				t.Fatal(err)
+			}
+			got = append(got, name+"|"+key+"="+val)
+		}
+		rows.Close()
+		if len(got) == 2 {
+			t.Logf("eventos no Umami: %v", got)
+			if got[0] != "wallet_disconnected|=" || got[1] != "wallet_selected|wallet=freighter" {
+				t.Fatalf("eventos = %v", got)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("os eventos de carteira não apareceram no Umami (visto: %v)", got)
+		}
+		time.Sleep(time.Second)
+	}
+}
