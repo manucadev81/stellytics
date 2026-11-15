@@ -112,7 +112,7 @@ Contagem conferida em 13/11/2026, no fim do dia:
 - **Done (16):** inclui, do E2, as issues #16, #17, #18, #19, #57, #58, #59 e #60.
 - **In progress (3):** inclui o épico E2 (#2).
 - **Ready (27):** as issues de código do MVP que faltam, entre elas #20 e #21 do E2, e as da proposta (#64 e #65).
-- **Backlog (19):** os épicos E7, E8 e E9 e as issues #39–#54 (documentação, pilotos e pós-MVP).
+- **Backlog (19):** os épicos E7, E8 e E9 e as issues #40–#54 (documentação, pilotos e pós-MVP).
 
 ## 4. Decisões
 
@@ -241,7 +241,7 @@ O portal lê o Umami com uma conta de serviço que enxerga tudo, então o isolam
 6. **Decisões em aberto sobre o quadro:**
    - criar uma label `poc` para marcar, dentro do Ready, o que precisa existir antes da submissão;
    - criar 4 milestones, uma por parcela (10/20/30/40%), depois que a #65 definir os marcos;
-   - mover #39 (diagrama) e #44 (pilotos) para Ready, porque não dependem de código;
+   - mover #44 (pilotos) para Ready, porque não depende de código (a #39 já foi feita);
    - tirar os épicos da coluna Ready ou filtrá-los da visão;
    - dividir a #50 em eventos customizados (o Umami já suporta) e captura do Wallets Kit.
 7. **Idioma:** decidir se a documentação do repositório passa para inglês antes da submissão. Os revisores do SCF leem em inglês, e isso pesa na avaliação da documentação e na transferência para outra equipe.

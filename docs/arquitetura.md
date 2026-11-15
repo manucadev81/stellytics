@@ -32,7 +32,7 @@ flowchart LR
     end
   end
 
-  nav -->|"evento + prova de JS"| caddy
+  nav -->|"script, desafio e evento"| caddy
   api -->|"OTLP + chave de ingestão"| col
   api -.->|"OTLP (dual-export)"| apm
   pessoa -->|"HTTPS"| caddy
@@ -45,6 +45,9 @@ flowchart LR
   portal -->|"API do Umami"| umami
   portal -->|"tenants, chaves, métricas de API"| dbn
 ```
+
+> **Siglas deste diagrama:** *tenant* é um projeto cliente com dados isolados dos demais; *OTLP* é o formato aberto de envio de medições (OpenTelemetry, ou OTel); *dual-export* é mandar a mesma medição para dois destinos; *APM* é a ferramenta de monitoramento que o projeto cliente já usa; *TLS* é o cadeado HTTPS.
+
 
 Linha pontilhada: envio que o projeto já faz hoje para o próprio APM, sem passar pelo notify. Na produção, o Caddy só encaminha ao portal e ao gateway web; o coletor e o rollup ainda não estão no `infra/compose/prod.yaml` (ver [Estado atual](#estado-atual)), por isso o coletor aparece sem passar pelo Caddy neste desenho.
 
@@ -139,7 +142,7 @@ Por que duas linguagens: TypeScript para tudo que tem tela e para o script do na
 - O IP completo nunca é gravado; a localização aproximada usa o IP truncado.
 - Sem cookies e sem armazenamento no navegador.
 - Gravação de sessão e mapas de calor do Umami ficam desligados.
-- Nenhum log do gateway ou do Caddy guarda IP, `User-Agent` ou a URL dos pedidos.
+- Nenhum log do gateway ou do Caddy guarda IP ou `User-Agent`. O Caddy também não guarda a URL dos pedidos; o gateway só registra o caminho das próprias rotas (`/e`, `/c`), nunca a página visitada.
 
 ## Infraestrutura
 
