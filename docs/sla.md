@@ -65,11 +65,11 @@ Até o 5º dia útil do mês seguinte, uma nota pública em `docs/` ou issue, co
 
 ## 4. O que é preciso para cada meta
 
-- **99,9% na ingestão:** degrau 1 do ADR 0009 (2 ou mais VMs de ingestão atrás de balanceador ou IP flutuante), cache de `ingest_site` servido vencido quando o banco falha, deploy rotativo, pager além do e-mail.
+- **99,9% na ingestão:** degrau 1 do ADR 0009 (2 ou mais VMs de ingestão atrás de balanceador ou IP flutuante), deploy rotativo, pager além do e-mail.
 - **99,9% nos painéis:** degrau 2 (réplica do Postgres e promoção ensaiada, portal replicado com uma só instância migrando).
 - **99,99%:** degraus 1 e 2 mais banco com três nós, failover medido em segundos, ponto de vista de monitoramento múltiplo, 12 meses de experiência de medição. **Não é prometido.**
 
-Variáveis do OpenTofu que preparam o provisionamento, desligadas por padrão: `ha_ingest_replicas`, `ha_floating_ip`, `ha_db_standby` (e `ha_ingest_location`, `ha_db_standby_location`). Ligar cria recursos pagos. O Ansible que configura a réplica do Postgres (replicação em streaming) e as VMs de ingestão extras existe, desligado por padrão, e foi testado em Docker local (`docs/deploy.md`, "Alta disponibilidade"); o **failover é manual** ([runbook](runbooks/failover-do-banco.md), RPO de frações de segundo a poucos segundos e RTO de 30 a 90 minutos, ambos estimativas sem medição em produção). Continuam fora: balanceador, IP flutuante na VM, TLS das réplicas de ingestão atrás de balanceador, failover automático, cache vencido no gateway, monitoramento da réplica. Isso **não** muda o compromisso: nenhum número é prometido.
+Variáveis do OpenTofu que preparam o provisionamento, desligadas por padrão: `ha_ingest_replicas`, `ha_floating_ip`, `ha_db_standby` (e `ha_ingest_location`, `ha_db_standby_location`). Ligar cria recursos pagos. O Ansible que configura a réplica do Postgres (replicação em streaming) e as VMs de ingestão extras existe, desligado por padrão, e foi testado em Docker local (`docs/deploy.md`, "Alta disponibilidade"); o **failover é manual** ([runbook](runbooks/failover-do-banco.md), RPO de frações de segundo a poucos segundos e RTO de 30 a 90 minutos, ambos estimativas sem medição em produção). Continuam fora: balanceador, IP flutuante na VM, TLS das réplicas de ingestão atrás de balanceador, failover automático, monitoramento da réplica. O gateway já pode servir a `ingest_site` vencida quando o banco falha (`SITE_STALE_TTL`, desligado por padrão e não repassado pelo `prod.yaml` nem pelo `prod-ingest.yaml`, então ligar exige editar os dois; ver ADR 0009 para a janela de recusa tardia). Isso **não** muda o compromisso: nenhum número é prometido.
 
 ## 5. Correção de vulnerabilidades críticas e altas em 24 h
 
@@ -97,7 +97,7 @@ Linha do tempo alvo para crítica ou alta (**meta, não compromisso**), contada 
 ## 6. Pendências e decisões em aberto
 
 - Decisão do mantenedor (Romulo): prazo de correção prometido no RFP versus 14/30 dias do `SECURITY.md` (seção 2).
-- Plantão, sondagem de ponta a ponta, relato mensal. Degraus 1 e 2 do ADR 0009: a configuração das réplicas existe (desligada), faltam balanceador ou IP flutuante, cache vencido no gateway, portal replicado, alertas de atraso de replicação e um ensaio de failover numa conta real.
+- Plantão, sondagem de ponta a ponta, relato mensal. Degraus 1 e 2 do ADR 0009: a configuração das réplicas existe (desligada), faltam balanceador ou IP flutuante, portal replicado, alertas de atraso de replicação e um ensaio de failover numa conta real.
 
 ## 7. O que este documento ainda não faz
 

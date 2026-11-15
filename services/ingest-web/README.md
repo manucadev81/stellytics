@@ -76,6 +76,10 @@ O padrão é generoso (50 em 10 minutos) porque o IP truncado junta um /24 intei
 
 O gateway conecta no banco `notify` com o usuário `notify_ingest` e só lê a visão `ingest_site(umami_website_id uuid, accepts_ingest boolean)` (spec do E2, seções 4 e 6). `accepts_ingest` é verdadeiro para site não arquivado de tenant ativo. As respostas, positivas e negativas, ficam em memória por `SITE_CACHE_TTL` (no máximo 1 minuto).
 
+**Cache vencido quando o banco cai (`SITE_STALE_TTL`, desligado por padrão).** Com `SITE_STALE_TTL` maior que zero (no máximo `1h`), se a consulta à `ingest_site` falha, o gateway usa a última resposta **aceita** do mesmo site por até esse tempo **depois** de ela vencer, em vez de responder `503`. Regras: site nunca visto, desconhecido ou recusado não ganha stale e continua com `503` (nunca "aceita por padrão"); passado o `SITE_STALE_TTL`, volta o `503`. Os sites aceitos e os recusados ficam em mapas separados, cada um com teto de 10.000 entradas, então quem testa IDs inventados só enche o mapa dos recusados e não expulsa um site aceito. Depois de uma falha, um circuit breaker simples evita novas consultas por 2 s: a resposta vencida sai na hora e uma única sonda em segundo plano testa o banco (sem ele, com o banco pendurado, cada requisição esperaria o teto de 5 s da consulta). O contador de respostas vencidas vai ao log como um aviso agregado por minuto (`respostas`, `total`), sem IP, `User-Agent` nem ID de site. **Janela de risco:** um site arquivado ou um tenant removido durante a queda do banco continua aceitando eventos até `SITE_CACHE_TTL` + `SITE_STALE_TTL` depois da última consulta bem-sucedida; a recusa só passa a valer quando o banco volta. Escolha `SITE_STALE_TTL` pensando nessa janela.
+
+**Com `SITE_STALE_TTL=0`** nada vencido é servido e o erro do banco continua virando `503`. O que mudou, mesmo desligado: a consulta passou a ser compartilhada por site (uma só em voo, com o erro repartido entre quem espera), roda com contexto próprio e teto de 5 s, e cancelar a requisição devolve o erro do contexto (também `503`). O circuit breaker só age com o stale ligado.
+
 - Site desconhecido ou que não aceita ingestão recebe `204`, como um evento aceito, e o evento é descartado. Assim, quem testa IDs não descobre quais existem.
 - O usuário `notify_ingest` vem de `infra/compose/postgres/init/02-ingest-roles.sh`, e a visão e o `GRANT` vêm da migração `apps/portal/drizzle/0002_ingest_views.sql`.
 - O teste de integração (`internal/site/pg_test.go`) aplica as migrações do portal quando a visão não existe, e cria tenants e sites nas tabelas reais.
@@ -105,6 +109,7 @@ Vem do `RemoteAddr`. O `X-Forwarded-For` só é lido quando a conexão chega de 
 | `RATE_LIMIT` | `20` | Eventos por segundo por IP truncado |
 | `RATE_BURST` | `40` | Rajada do token bucket |
 | `SITE_CACHE_TTL` | `1m` (`5s` no Compose) | Cache das respostas da `ingest_site` |
+| `SITE_STALE_TTL` | `0` (desligado) | Por quanto tempo uma resposta vencida da `ingest_site` ainda vale quando o banco falha (0 a 1h) |
 | `PROOF_SECRET` | sorteada ao subir | Chave dos desafios, com 32+ caracteres. Defina em produção: a chave sorteada não vale entre reinícios nem entre réplicas |
 | `PROOF_BITS` | `12` | Dificuldade da prova (0 a 24) |
 | `PROOF_TTL` | `10m` | Validade de um desafio (1m a 1h) |
