@@ -40,7 +40,10 @@ permissions:
 jobs:
   # Vulnerabilidades alcançáveis (govulncheck só falha quando o código chama o
   # símbolo vulnerável). Roda com o Go das imagens (FROM golang:X.Y.Z nos
-  # Dockerfiles), porque é a biblioteca padrão dele que vai para produção.
+  # Dockerfiles), porque é a biblioteca padrão dele que vai para produção. Fica
+  # vermelho quando a imagem usa um Go com vulnerabilidade já corrigida, até os
+  # Dockerfiles subirem; é esperado e curto. (O job licenses usa go-version-file:
+  # a licença não depende da versão do Go, só das dependências do go.mod.)
   govulncheck:
     name: govulncheck
     runs-on: ubuntu-24.04
