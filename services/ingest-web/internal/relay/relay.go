@@ -13,9 +13,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/netip"
 	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -27,6 +29,13 @@ const (
 	MaxHostname = 253
 	MaxLanguage = 35
 	MaxScreen   = 16
+
+	// Limites do evento customizado (#50).
+	MaxName       = 50
+	MaxDataKeys   = 10
+	MaxDataKey    = 40
+	MaxDataString = 100
+	MaxDataNumber = 32 // caracteres do literal
 )
 
 // Payload são os campos permitidos de um page view.
@@ -38,6 +47,11 @@ type Payload struct {
 	Title    string `json:"title,omitempty"`
 	Language string `json:"language,omitempty"`
 	Screen   string `json:"screen,omitempty"`
+
+	// Evento customizado (#50): Name e Data só são repassados depois de validados
+	// em validate. Data guarda só string, número (json.Number) e booleano.
+	Name string         `json:"name,omitempty"`
+	Data map[string]any `json:"data,omitempty"`
 }
 
 // Proof é a prova de execução de JS que vem com o evento (#25). Nunca é
@@ -62,6 +76,8 @@ var ErrInvalid = errors.New("relay: evento inválido")
 func Decode(r io.Reader) (Event, error) {
 	var ev Event
 	dec := json.NewDecoder(r)
+	// Números ficam como json.Number: o valor repassado é o enviado, sem arredondar.
+	dec.UseNumber()
 	if err := dec.Decode(&ev); err != nil {
 		return Event{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
@@ -99,6 +115,50 @@ func (ev Event) validate() error {
 	for _, l := range limits {
 		if len(l.v) > l.max {
 			return fmt.Errorf("%w: %s passa de %d bytes", ErrInvalid, l.name, l.max)
+		}
+	}
+	return validateCustom(p)
+}
+
+var (
+	namePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]*$`)
+	keyPattern  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
+)
+
+// validateCustom confere o nome e as propriedades de um evento customizado.
+// Nome curto de charset restrito; até MaxDataKeys propriedades com valor string
+// (até MaxDataString bytes), número ou booleano. Aninhado, nulo e lista são recusados.
+func validateCustom(p Payload) error {
+	if p.Name == "" {
+		if len(p.Data) > 0 {
+			return fmt.Errorf("%w: data exige name", ErrInvalid)
+		}
+		return nil
+	}
+	if len(p.Name) > MaxName || !namePattern.MatchString(p.Name) {
+		return fmt.Errorf("%w: name fora do formato", ErrInvalid)
+	}
+	if len(p.Data) > MaxDataKeys {
+		return fmt.Errorf("%w: data passa de %d propriedades", ErrInvalid, MaxDataKeys)
+	}
+	for k, v := range p.Data {
+		if len(k) > MaxDataKey || !keyPattern.MatchString(k) {
+			return fmt.Errorf("%w: chave de data fora do formato", ErrInvalid)
+		}
+		switch x := v.(type) {
+		case string:
+			if len(x) > MaxDataString {
+				return fmt.Errorf("%w: valor de data passa de %d bytes", ErrInvalid, MaxDataString)
+			}
+		case json.Number:
+			// Literal curto e finito: o Umami pode recusar o resto e o 502 gastaria vaga.
+			f, err := x.Float64()
+			if len(x) > MaxDataNumber || err != nil || math.IsInf(f, 0) || math.IsNaN(f) {
+				return fmt.Errorf("%w: número de data fora do formato", ErrInvalid)
+			}
+		case bool:
+		default:
+			return fmt.Errorf("%w: valor de data deve ser string, número ou booleano", ErrInvalid)
 		}
 	}
 	return nil

@@ -49,6 +49,7 @@ O monorepo tem a estrutura do ADR 0002 (issue #11). O código de aplicação at�
 - Desde a v1.1.0 o script pede o desafio em `GET /c` e resolve a prova com `crypto.subtle` antes de enviar (só em HTTPS ou `localhost`); a v1.0.0 não tem prova e o gateway descarta os eventos dela.
 - O gateway (#61) serve `published/` em `/s/`. O script manda `POST /e` para a origem de onde foi carregado, com `Content-Type: text/plain` (para evitar o preflight de CORS; o corpo é JSON) e `credentials: "omit"`.
 - Da query string saem só os `utm_*`, e o referenciador vai sem query nem fragmento.
+- **Eventos customizados (#50, ADR 0008):** desde a v1.2.0, `window.notify.event(nome, propriedades?)` manda `name` e `data` em `payload`; o gateway valida de novo (`relay.validateCustom`) e só repassa esses dois campos. Sem endereço de carteira, hash ou valor. A captura automática do Wallets Kit **não foi feita** (kit só avisa por callbacks no módulo do tenant; ver o ADR); o painel web ainda não lista eventos.
 - **Ad blockers (#23):** `pnpm --filter @notify/tracker check:adblock [host...]` baixa EasyList, EasyPrivacy, as listas padrão do uBlock Origin e a de Peter Lowe e falha se alguma bloquear `/s/vX.Y.Z/n.js`, `/e` ou `/c`. Roda no workflow próprio `.github/workflows/adblock.yml` (PRs que mexem no script ou nas rotas, `main` e todo dia), fora do agregador `ci`, porque as listas mudam sem mudança no código. Resultado e recomendação de host neutro em `packages/tracker/docs/ad-blockers.md`.
 
 ## Gateway web (`services/ingest-web`)
