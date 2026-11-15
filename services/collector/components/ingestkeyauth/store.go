@@ -27,3 +27,11 @@ func (s pgStore) Lookup(ctx context.Context, prefix string) (Key, bool, error) {
 	}
 	return k, true, nil
 }
+
+// Touch chama ingest_key_touch (migração 0008), a única escrita que o
+// notify_collector pode fazer em ingest_key: grava o dia de hoje (UTC) em
+// last_used_on, só para chave ativa e só se a data mudou.
+func (s pgStore) Touch(ctx context.Context, prefix string) error {
+	var updated bool
+	return s.pool.QueryRow(ctx, `SELECT ingest_key_touch($1)`, prefix).Scan(&updated)
+}

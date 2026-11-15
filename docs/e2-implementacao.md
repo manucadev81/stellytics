@@ -216,12 +216,12 @@ O job `compose` do CI, além de subir o ambiente, confere as permissões dos usu
 
 **Ficou para outros épicos:**
 
-- `ingest_key.last_used_on` ainda não é atualizado; quem atualiza (o coletor precisaria de permissão de escrita) fica para o spec do E5.
 - O `INSERT` do `notify_collector` nas tabelas de métricas entra no E5, junto com as tabelas.
 - O SMTP de produção depende da IaC (#14, E1).
 
 **Limites conhecidos:**
 
+- `ingest_key.last_used_on` é gravado pelo coletor (migração `0008_ingest_key_last_used.sql`): a extensão `ingestkeyauth` chama, em segundo plano, a função `ingest_key_touch(prefixo)` na primeira autenticação do dia (UTC) de cada chave, uma vez por chave e dia por processo. A função é `SECURITY DEFINER`, só atualiza essa coluna e só de chave que está em `ingest_key_active`; o `notify_collector` tem apenas `EXECUTE` nela e continua sem acesso à tabela. Falha só gera um aviso no log, com o nome do tipo do erro.
 - Os limites de tentativa ficam em memória e usam o IP de `X-Forwarded-For`. Em produção, o portal precisa de uma instância só e do Caddy na frente.
 - O domínio de um site é único por tenant mesmo depois de arquivado, como diz o spec: um domínio arquivado não pode ser cadastrado de novo sem desarquivar.
 - A chave de API do Umami consegue criar equipes; só o código do portal impede isso.
