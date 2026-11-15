@@ -25,3 +25,7 @@ Na produção ([#14](https://github.com/romulospl/notify/issues/14)) valem mais 
 
 - **O Caddy não tem rota para o Umami**, nem para a interface nem para a API. Publica só o gateway `ingest-web` (`/e`, `/c`, `/s/` e `/healthz`) e o portal.
 - O firewall da VM (`opentofu/main.tf`) abre só 22 (redes de administração), 80 e 443. Para administrar o Umami, use o túnel SSH (`scripts/admin-tunnel.sh`).
+
+## Alta disponibilidade (opt-in)
+
+As variáveis `ha_*` de [`opentofu/variables.tf`](opentofu/variables.tf) (VMs extras de ingestão, IP flutuante, réplica do Postgres) vêm **desligadas**: com os padrões o plano não muda. Só provisionam; replicação, balanceamento e IP flutuante dentro da VM ainda não têm Ansible. O que isso entrega e o que não entrega: [ADR 0009](../docs/adr/0009-alta-disponibilidade.md) e [`docs/sla.md`](../docs/sla.md).
