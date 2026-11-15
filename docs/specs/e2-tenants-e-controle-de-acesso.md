@@ -257,7 +257,7 @@ Cada painel novo (#28 e #37) acrescenta os próprios casos a esta suíte.
 - **Convite de membros.** O modelo aceita vários usuários por tenant, mas não há issue para o fluxo de convite. Hoje só quem cria o projeto tem acesso. Se for necessário para os pilotos, criar a issue.
 - **Exclusão da própria conta e do projeto pelo tenant.** O e-mail do membro é dado pessoal, então o documento de privacidade (#40) precisa prever como a pessoa pede a exclusão.
 - **Apagar os dados de um tenant removido.**
-- **Chaves de API do SCF para leitura das métricas** (#48) e **cadastro com aprovação** (#49), que são pós-MVP. O modelo já prevê o status `pending`.
+- **Chaves de API do SCF para leitura das métricas** (#48, decidido no [ADR 0006](../adr/0006-api-de-leitura-do-scf.md)) e **cadastro com aprovação** (#49), que são pós-MVP. O modelo já prevê o status `pending`.
 - **Esquema das métricas de API**, que fica no spec do E5.
 
 ## 11. Efeito nas issues

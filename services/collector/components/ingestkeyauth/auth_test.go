@@ -60,13 +60,14 @@ func TestAuthenticateValidKey(t *testing.T) {
 func TestAuthenticateRejects(t *testing.T) {
 	wrongSecret := validKey[:len(validKey)-1] + "H"
 	cases := map[string]map[string][]string{
-		"sem header":           {},
-		"sem Bearer":           header("Authorization", validKey),
-		"outro esquema":        header("Authorization", "Basic "+validKey),
-		"formato errado":       header("Authorization", "Bearer ntf_ABCDEFGH_x"),
-		"segredo errado":       header("Authorization", "Bearer "+wrongSecret),
-		"prefixo desconhecido": header("Authorization", "Bearer ntf_zzzzzzzz_0123456789abcdefghijklmnopqrstuvwxyzABCDEFG"),
-		"dois valores":         {"Authorization": {"Bearer " + validKey, "Bearer " + validKey}},
+		"sem header":              {},
+		"sem Bearer":              header("Authorization", validKey),
+		"outro esquema":           header("Authorization", "Basic "+validKey),
+		"formato errado":          header("Authorization", "Bearer ntf_ABCDEFGH_x"),
+		"segredo errado":          header("Authorization", "Bearer "+wrongSecret),
+		"prefixo desconhecido":    header("Authorization", "Bearer ntf_zzzzzzzz_0123456789abcdefghijklmnopqrstuvwxyzABCDEFG"),
+		"chave de leitura do SCF": header("Authorization", "Bearer nrk_abcdefgh_0123456789abcdefghijklmnopqrstuvwxyzABCDEFG"),
+		"dois valores":            {"Authorization": {"Bearer " + validKey, "Bearer " + validKey}},
 	}
 	for name, h := range cases {
 		t.Run(name, func(t *testing.T) {
