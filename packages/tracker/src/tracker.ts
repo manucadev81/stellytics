@@ -82,6 +82,20 @@ export function validateCustomEvent(name: unknown, data?: unknown): Record<strin
 // API pública do script, em window.notify.
 export interface NotifyApi {
   event(name: string, data?: Record<string, EventValue>): void;
+  wallets(kit: unknown, types: unknown): () => void;
+}
+
+// ID genérico de módulo de carteira (freighter, albedo...). Mesmo charset das
+// chaves de propriedade do gateway e no máximo 32 caracteres: um endereço
+// Stellar (56) ou hash (64) nunca passa, nem hex de 40 caracteres (formato EVM).
+const WALLET_ID = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,31}$/;
+
+// Lê o id de WALLET_SELECTED. Formato da documentação do kit (consulta de
+// 15/11/2026): { eventType, payload: { id } }. Só o id sai; o resto é ignorado.
+export function walletId(event: unknown): string | null {
+  const payload = (event as { payload?: { id?: unknown } } | null | undefined)?.payload;
+  const id = payload?.id;
+  return typeof id === "string" && WALLET_ID.test(id) ? id : null;
 }
 
 export function pageUrl(location: Location | URL): string {
@@ -202,6 +216,72 @@ export function start(script: HTMLScriptElement | null): () => void {
       if (!clean) return;
       send(pageUrl(location), "", { name, data: clean });
     },
+    wallets: () => () => {},
+  };
+  // window.notify.wallets(kit, KitEventType) (opt-in, #50): o tenant chama uma vez,
+  // passando o kit e o enum. Assina só WALLET_SELECTED e DISCONNECT, nunca
+  // STATE_UPDATED (traz o endereço). Manda só o nome do evento e o id do módulo.
+  // Idempotente por kit; devolve a função que cancela. Nunca lança.
+  const subscriptions = new WeakMap<object, () => void>();
+  const noop = () => {};
+  api.wallets = (kit, types) => {
+    try {
+      if ((typeof kit !== "object" && typeof kit !== "function") || kit === null) return noop;
+      const existing = subscriptions.get(kit);
+      if (existing) return existing;
+      const on = (kit as { on?: unknown }).on;
+      const t = types as { WALLET_SELECTED?: unknown; DISCONNECT?: unknown } | null | undefined;
+      const selected = t?.WALLET_SELECTED;
+      const disconnect = t?.DISCONNECT;
+      if (typeof on !== "function" || typeof selected !== "string" || typeof disconnect !== "string") return noop;
+      if (selected === disconnect) return noop;
+      // Depois de cancelar, handlers antigos ainda vivos (o kit pode não ter
+      // desassinado, se `on` não devolveu função) não enviam mais nada.
+      let cancelled = false;
+      const subscribe = (type: string, handler: (event: unknown) => void): (() => void) => {
+        const off: unknown = on.call(kit, type, (event: unknown) => {
+          if (cancelled) return;
+          try {
+            handler(event);
+          } catch {
+            // Falha do evento não pode afetar a página do tenant.
+          }
+        });
+        return typeof off === "function" ? (off as () => void) : noop;
+      };
+      const offSelected = subscribe(selected, (event) => {
+        const id = walletId(event);
+        if (id) api.event("wallet_selected", { wallet: id });
+      });
+      let offDisconnect = noop;
+      try {
+        offDisconnect = subscribe(disconnect, () => api.event("wallet_disconnected"));
+      } catch {
+        cancelled = true;
+        try {
+          offSelected();
+        } catch {
+          // Já falhou; só garante que o handler antigo não envia mais.
+        }
+        return noop;
+      }
+      const cancel = () => {
+        if (cancelled) return;
+        cancelled = true;
+        subscriptions.delete(kit);
+        for (const off of [offSelected, offDisconnect]) {
+          try {
+            off();
+          } catch {
+            // Cancelar duas vezes ou com kit quebrado não deve lançar.
+          }
+        }
+      };
+      subscriptions.set(kit, cancel);
+      return cancel;
+    } catch {
+      return noop;
+    }
   };
   (window as unknown as { notify?: NotifyApi }).notify = api;
 

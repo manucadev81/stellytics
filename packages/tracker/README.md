@@ -9,10 +9,16 @@ Script de rastreamento em TypeScript, empacotado com esbuild. Criado na [#22](ht
 - Em SPA, conta cada mudança de rota (`pushState`, `replaceState` e `popstate`).
 - Antes de enviar, pede um desafio em `GET /c` e resolve a prova de execução de JS com `crypto.subtle` (#25). Por isso só funciona em página HTTPS (ou `localhost`).
 - Nomes de arquivo e de endpoint não podem conter termos bloqueados por ad blockers (`umami`, `analytics`, `track`, `collect`). O check `check:adblock` confere isso contra EasyList, EasyPrivacy e as listas padrão do uBlock Origin; resultado, recomendação de host e roteiro manual em [`docs/ad-blockers.md`](docs/ad-blockers.md).
-- Evento customizado (v1.2.0, #50): `window.notify.event(nome, propriedades?)`. Nome de 1 a 50 caracteres `[A-Za-z0-9_.:-]`; até 10 propriedades com valor string (até 100 bytes), número ou booleano. Fora disso o evento é ignorado em silêncio. **Nunca** mande endereço de carteira, hash de transação, valor ou dado pessoal. A captura automática do Stellar Wallets Kit não foi feita; ver [ADR 0008](../../docs/adr/0008-eventos-customizados-e-wallets-kit.md).
+- Evento customizado (v1.2.0, #50): `window.notify.event(nome, propriedades?)`. Nome de 1 a 50 caracteres `[A-Za-z0-9_.:-]`; até 10 propriedades com valor string (até 100 bytes), número ou booleano. Fora disso o evento é ignorado em silêncio. **Nunca** mande endereço de carteira, hash de transação, valor ou dado pessoal.
 
 ```js
 window.notify?.event("wallet_connected", { wallet: "freighter" });
+```
+
+- Stellar Wallets Kit (v1.3.0, **opt-in**, #50): `window.notify.wallets(kit, KitEventType)`. **Não é automático**: o tenant precisa chamar uma vez, passando o kit e o enum, porque o script não alcança o módulo do kit sozinho ([ADR 0010](../../docs/adr/0010-adaptador-opt-in-do-wallets-kit.md)). Assina só `WALLET_SELECTED` (`wallet_selected` com `{ wallet: id }`) e `DISCONNECT` (`wallet_disconnected`); nunca `STATE_UPDATED`, endereço, chave pública, `networkPassphrase`, hash ou valor. Idempotente por kit, devolve a função que cancela e nunca lança.
+
+```js
+window.notify?.wallets(StellarWalletsKit, KitEventType);
 ```
 
 ## Instalação no site do tenant
