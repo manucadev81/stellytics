@@ -57,6 +57,13 @@
       "when": 1794752879497,
       "tag": "0007_operator_api_key_privileges",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794770324668,
+      "tag": "0008_ingest_key_last_used",
+      "breakpoints": true
     }
   ]
 }

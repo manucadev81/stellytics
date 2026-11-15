@@ -74,6 +74,99 @@ func TestPGStoreIntegration(t *testing.T) {
 	pgtest.AssertDenied(t, "SELECT na ingest_key", err)
 }
 
+// Último uso (migração 0008): a função grava o dia, uma vez por dia, só para
+// chave ativa, e o notify_collector não ganha mais nada na tabela.
+func TestPGStoreTouch(t *testing.T) {
+	adminURL := os.Getenv("DATABASE_URL")
+	if adminURL == "" {
+		t.Skip("DATABASE_URL não definida")
+	}
+	ctx := context.Background()
+	adminURL = pgtest.Database(t, adminURL)
+	admin, err := pgx.Connect(ctx, adminURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { admin.Close(context.Background()) })
+
+	userID := createUser(t, admin)
+	active := createTenant(t, admin, "active")
+	removed := createTenant(t, admin, "removed")
+	svc := createService(t, admin, active, false)
+	svcOfRemoved := createService(t, admin, removed, false)
+	good := createKey(t, admin, userID, active, svc, false)
+	revoked := createKey(t, admin, userID, active, svc, true)
+	ofRemoved := createKey(t, admin, userID, removed, svcOfRemoved, false)
+	prefix := func(key string) string { return key[4:12] }
+
+	pool, err := pgxpool.New(ctx, pgtest.RoleURL(t, adminURL, "notify_collector", "COLLECTOR_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	store := pgStore{pool: pool}
+
+	lastUsed := func(key string) (d *string, xmin string) {
+		t.Helper()
+		if err := admin.QueryRow(ctx,
+			`SELECT last_used_on::text, xmin::text FROM ingest_key WHERE prefix = $1`, prefix(key),
+		).Scan(&d, &xmin); err != nil {
+			t.Fatal(err)
+		}
+		return d, xmin
+	}
+	var today string
+	if err := admin.QueryRow(ctx, `SELECT (now() AT TIME ZONE 'UTC')::date::text`).Scan(&today); err != nil {
+		t.Fatal(err)
+	}
+
+	if d, _ := lastUsed(good); d != nil {
+		t.Fatalf("last_used_on já preenchida: %s", *d)
+	}
+	if err := store.Touch(ctx, prefix(good)); err != nil {
+		t.Fatal(err)
+	}
+	d, xmin := lastUsed(good)
+	if d == nil || *d != today {
+		t.Fatalf("last_used_on = %v, quero %s", d, today)
+	}
+	// Segunda chamada no mesmo dia: a linha não é reescrita.
+	if err := store.Touch(ctx, prefix(good)); err != nil {
+		t.Fatal(err)
+	}
+	if _, xmin2 := lastUsed(good); xmin2 != xmin {
+		t.Errorf("a linha foi reescrita no mesmo dia (xmin %s -> %s)", xmin, xmin2)
+	}
+
+	// Revogada, de tenant removido e prefixo desconhecido: nada é gravado.
+	for name, key := range map[string]string{"revogada": revoked, "de tenant removido": ofRemoved} {
+		if err := store.Touch(ctx, prefix(key)); err != nil {
+			t.Fatal(err)
+		}
+		if d, _ := lastUsed(key); d != nil {
+			t.Errorf("chave %s foi atualizada: %s", name, *d)
+		}
+	}
+	if err := store.Touch(ctx, "zzzzzzzz"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Menor privilégio: nenhuma outra escrita ou leitura na tabela ou fora dela.
+	for what, q := range map[string]string{
+		"UPDATE de last_used_on":     `UPDATE ingest_key SET last_used_on = NULL`,
+		"UPDATE de revoked_at":       `UPDATE ingest_key SET revoked_at = NULL`,
+		"UPDATE de key_hash":         `UPDATE ingest_key SET key_hash = key_hash`,
+		"DELETE":                     `DELETE FROM ingest_key`,
+		"SELECT de key_hash":         `SELECT key_hash FROM ingest_key`,
+		"UPDATE em tenant":           `UPDATE tenant SET status = 'active'`,
+		"SELECT em operator_api_key": `SELECT 1 FROM operator_api_key`,
+		"UPDATE em api_service":      `UPDATE api_service SET name = name`,
+	} {
+		_, err := pool.Exec(ctx, q)
+		pgtest.AssertDenied(t, what, err)
+	}
+}
+
 func attr(ctx context.Context, name string) string {
 	v, _ := clientAuth(ctx).GetAttribute(name).(string)
 	return v

@@ -132,7 +132,7 @@ O script e os endpoints usam `/s/`, `/e` e `/c`, sem os termos que as listas pad
 
 1. Em `/services`, informe **Service name** (por exemplo `horizon-proxy`) e crie. O portal cria o serviço **e a primeira chave de ingestão**.
 2. A chave aparece **uma única vez**, num aviso "Copy your ingest key now. It won't be shown again". Copie e guarde num gerenciador de segredos. Ela tem o formato `ntf_<8 caracteres>_<segredo>`. O portal guarda só o hash; se você perder a chave, crie outra.
-3. Em `/services/[serviceId]/keys` (aba **Ingest keys**) você vê o prefixo, a data de criação e o status de cada chave (a coluna **Last used** existe, mas hoje nada a preenche e ela mostra "Never" mesmo com a chave em uso), cria novas e revoga as antigas. Cada serviço pode ter até **5 chaves ativas**. Para trocar a chave sem perder dados: crie a nova, atualize a sua API e só então revogue a antiga.
+3. Em `/services/[serviceId]/keys` (aba **Ingest keys**) você vê o prefixo, a data de criação e o status de cada chave (a coluna **Last used** mostra o dia, em UTC, da última autenticação da chave no coletor; "Never" quer dizer que ela ainda não foi usada), cria novas e revoga as antigas. Cada serviço pode ter até **5 chaves ativas**. Para trocar a chave sem perder dados: crie a nova, atualize a sua API e só então revogue a antiga.
 
 **Uma chave por serviço.** A chave define o projeto e o serviço de cada métrica. O `service.name` e qualquer atributo de tenant que a sua API mandar são **ignorados**: o coletor apaga os atributos `notify.*` que vierem do cliente.
 
@@ -194,7 +194,7 @@ Funciona com o Collector core (`otel/opentelemetry-collector`) a partir da v0.16
 
 ### 4.5 Conferir que chegou
 
-A coluna **Last used** das chaves não serve de sinal: hoje ela mostra "Never" mesmo com a chave em uso. O sinal de que chegou é o painel do serviço (seção 5.2), que passa a mostrar requisições em 1 a 2 minutos, dependendo do intervalo de exportação do SDK. Se aparecer "No requests in this period yet", confira: endpoint, header `Authorization`, o nome da métrica e se a sua API realmente recebeu tráfego depois de configurar o exporter.
+A coluna **Last used** das chaves tem granularidade de um dia e é gravada em segundo plano na primeira autenticação do dia, então pode demorar alguns instantes. O sinal mais direto de que os dados chegaram é o painel do serviço (seção 5.2), que passa a mostrar requisições em 1 a 2 minutos, dependendo do intervalo de exportação do SDK. Se aparecer "No requests in this period yet", confira: endpoint, header `Authorization`, o nome da métrica e se a sua API realmente recebeu tráfego depois de configurar o exporter.
 
 ## 5. Ler os painéis
 

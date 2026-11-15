@@ -1,15 +1,19 @@
 package ingestkeyauth
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"errors"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"go.opentelemetry.io/collector/client"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 const (
@@ -152,4 +156,119 @@ func clientAuth(ctx context.Context) client.AuthData {
 		return a
 	}
 	return authData{}
+}
+
+// touchStore soma o fakeStore com o registro de último uso.
+type touchStore struct {
+	*fakeStore
+	touched chan string
+	err     error
+}
+
+func (s *touchStore) Touch(_ context.Context, prefix string) error {
+	s.touched <- prefix
+	return s.err
+}
+
+func waitTouch(t *testing.T, s *touchStore, wait ...time.Duration) bool {
+	t.Helper()
+	d := 2 * time.Second
+	if len(wait) > 0 {
+		d = wait[0]
+	}
+	select {
+	case <-s.touched:
+		return true
+	case <-time.After(d):
+		return false
+	}
+}
+
+func TestTouchOncePerDay(t *testing.T) {
+	s := &touchStore{fakeStore: newStore(), touched: make(chan string, 10)}
+	a := newAuthenticator(s, time.Nanosecond, zap.NewNop())
+	now := time.Date(2026, 11, 15, 23, 0, 0, 0, time.UTC)
+	a.now = func() time.Time { return now }
+	auth := func() {
+		t.Helper()
+		if _, err := a.Authenticate(context.Background(), header("Authorization", "Bearer "+validKey)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	auth()
+	if !waitTouch(t, s) {
+		t.Fatal("primeira autenticação do dia não gravou")
+	}
+	now = now.Add(30 * time.Minute) // ainda dia 15
+	auth()
+	auth()
+	if waitTouch(t, s, 100*time.Millisecond) {
+		t.Fatal("gravou de novo no mesmo dia")
+	}
+	now = now.Add(time.Hour) // dia 16
+	auth()
+	if !waitTouch(t, s) {
+		t.Fatal("não gravou no dia seguinte")
+	}
+}
+
+// lockedBuffer deixa a goroutine do registro e o teste usarem o mesmo buffer.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
+}
+
+func TestTouchRetriesAfterFailureAndIgnoresRejected(t *testing.T) {
+	s := &touchStore{fakeStore: newStore(), touched: make(chan string, 10), err: errors.New("boom com ntf_secreto")}
+	var logs lockedBuffer
+	core := zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), zapcore.AddSync(&logs), zapcore.WarnLevel)
+	a := newAuthenticator(s, time.Nanosecond, zap.New(core))
+	now := time.Date(2026, 11, 15, 10, 0, 0, 0, time.UTC)
+	a.now = func() time.Time { return now }
+
+	// Chave recusada nunca grava.
+	bad := "ntf_abcdefgh_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	if _, err := a.Authenticate(context.Background(), header("Authorization", "Bearer "+bad)); err == nil {
+		t.Fatal("chave errada aceita")
+	}
+	if waitTouch(t, s, 100*time.Millisecond) {
+		t.Fatal("chave recusada gravou")
+	}
+
+	if _, err := a.Authenticate(context.Background(), header("Authorization", "Bearer "+validKey)); err != nil {
+		t.Fatal(err)
+	}
+	if !waitTouch(t, s) {
+		t.Fatal("não gravou")
+	}
+	time.Sleep(50 * time.Millisecond) // deixa a goroutine registrar a falha
+	now = now.Add(time.Minute)
+	_, _ = a.Authenticate(context.Background(), header("Authorization", "Bearer "+validKey))
+	if waitTouch(t, s, 100*time.Millisecond) {
+		t.Fatal("tentou de novo antes do intervalo")
+	}
+	now = now.Add(6 * time.Minute)
+	_, _ = a.Authenticate(context.Background(), header("Authorization", "Bearer "+validKey))
+	if !waitTouch(t, s) {
+		t.Fatal("não tentou de novo depois do intervalo")
+	}
+	if strings.Contains(logs.String(), "ntf_") || strings.Contains(logs.String(), "secreto") {
+		t.Fatalf("log vazou a chave ou a mensagem do erro: %s", logs.String())
+	}
+	if !strings.Contains(logs.String(), "*errors.errorString") {
+		t.Fatalf("log sem o nome do erro: %s", logs.String())
+	}
 }

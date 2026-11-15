@@ -15,6 +15,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"sync"
@@ -55,6 +56,19 @@ type Store interface {
 	Lookup(ctx context.Context, prefix string) (key Key, ok bool, err error)
 }
 
+// Toucher registra o último uso de uma chave ativa (ingest_key.last_used_on).
+// O Store do Postgres o implementa; um Store sem Touch simplesmente não grava.
+type Toucher interface {
+	Touch(ctx context.Context, prefix string) error
+}
+
+const (
+	// touchTimeout limita a escrita em segundo plano.
+	touchTimeout = 5 * time.Second
+	// touchRetry é quanto esperar antes de tentar de novo depois de uma falha.
+	touchRetry = 5 * time.Minute
+)
+
 // authenticator implementa extensionauth.Server.
 type authenticator struct {
 	store  Store
@@ -64,6 +78,11 @@ type authenticator struct {
 
 	mu    sync.Mutex
 	cache map[[sha256.Size]byte]entry
+	// nextTouch guarda, por prefixo, quando o próximo registro de último uso é
+	// permitido: o começo do dia UTC seguinte depois de um sucesso, ou
+	// touchRetry depois de uma falha. Só chaves autenticadas entram aqui, então
+	// o mapa não cresce com tráfego inválido.
+	nextTouch map[string]time.Time
 }
 
 type entry struct {
@@ -79,7 +98,7 @@ func NewAuthenticator(store Store, ttl time.Duration, logger *zap.Logger) extens
 }
 
 func newAuthenticator(store Store, ttl time.Duration, logger *zap.Logger) *authenticator {
-	return &authenticator{store: store, ttl: ttl, now: time.Now, logger: logger, cache: make(map[[sha256.Size]byte]entry)}
+	return &authenticator{store: store, ttl: ttl, now: time.Now, logger: logger, cache: make(map[[sha256.Size]byte]entry), nextTouch: make(map[string]time.Time)}
 }
 
 // Authenticate valida a chave e devolve o contexto com o tenant e o serviço.
@@ -105,9 +124,50 @@ func (a *authenticator) Authenticate(ctx context.Context, headers map[string][]s
 		return ctx, errUnauthenticated
 	}
 
+	a.touch(prefix)
+
 	info := client.FromContext(ctx)
 	info.Auth = authData{tenantID: key.TenantID, serviceID: key.ServiceID, prefix: prefix}
 	return client.NewContext(ctx, info), nil
+}
+
+// touch registra o último uso da chave em segundo plano, no máximo uma vez por
+// chave e por dia UTC neste processo. Fora do caminho do pedido: o pedido não
+// espera nem vê o resultado. Falha só vira log com o nome do erro (nunca a
+// chave, nem a mensagem do driver) e uma nova tentativa depois de touchRetry.
+func (a *authenticator) touch(prefix string) {
+	toucher, ok := a.store.(Toucher)
+	if !ok {
+		return
+	}
+	now := a.now()
+	a.mu.Lock()
+	if next, seen := a.nextTouch[prefix]; seen && now.Before(next) {
+		a.mu.Unlock()
+		return
+	}
+	if len(a.nextTouch) >= maxCached {
+		clear(a.nextTouch)
+	}
+	a.nextTouch[prefix] = nextUTCDay(now)
+	a.mu.Unlock()
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), touchTimeout)
+		defer cancel()
+		if err := toucher.Touch(ctx, prefix); err != nil {
+			a.logger.Warn("registro do último uso da chave falhou", zap.String("prefix", prefix), zap.String("erro", fmt.Sprintf("%T", err)))
+			a.mu.Lock()
+			a.nextTouch[prefix] = now.Add(touchRetry)
+			a.mu.Unlock()
+		}
+	}()
+}
+
+// nextUTCDay é o começo do dia UTC depois de t.
+func nextUTCDay(t time.Time) time.Time {
+	y, m, d := t.UTC().Date()
+	return time.Date(y, m, d+1, 0, 0, 0, 0, time.UTC)
 }
 
 // lookup consulta o cache pelo hash da chave completa e, sem resposta válida

@@ -218,6 +218,106 @@ describe("isolamento e status do tenant", () => {
   });
 });
 
+describe("último uso pelo coletor", () => {
+  // Roda como notify_collector numa transação desfeita; `check` roda de novo
+  // como dono, ainda dentro da transação, para ler o efeito.
+  async function asCollector<T>(
+    run: (tx: typeof sql) => Promise<unknown>,
+    check?: (tx: typeof sql) => Promise<T>,
+  ): Promise<{ result?: unknown; error?: Error; checked?: T }> {
+    const out: { result?: unknown; error?: Error; checked?: T } = {};
+    await sql
+      .begin(async (tx) => {
+        await tx.unsafe("SET LOCAL ROLE notify_collector");
+        try {
+          await tx.unsafe("SAVEPOINT s");
+          out.result = await run(tx as unknown as typeof sql);
+        } catch (error) {
+          out.error = error as Error;
+          await tx.unsafe("ROLLBACK TO SAVEPOINT s");
+        }
+        await tx.unsafe("RESET ROLE");
+        if (check) out.checked = await check(tx as unknown as typeof sql);
+        throw new Rollback();
+      })
+      .catch((error) => {
+        if (!(error instanceof Rollback)) throw error;
+      });
+    return out;
+  }
+
+  const lastUsed = (prefix: string) => (tx: typeof sql) =>
+    tx`select last_used_on::text as d from ingest_key where prefix = ${prefix}`.then((r) => r[0]!.d as string | null);
+
+  it("grava o dia (UTC) de uma chave ativa e não escreve de novo no mesmo dia", async () => {
+    const ctx = await createMember();
+    const { firstKey } = await createApiService(ctx, { name: "touched" });
+    const prefix = firstKey.summary.prefix;
+    const today = new Date().toISOString().slice(0, 10);
+
+    const first = await asCollector((tx) => tx`select ingest_key_touch(${prefix}) as updated`, lastUsed(prefix));
+    expect(first.error).toBeUndefined();
+    expect((first.result as { updated: boolean }[])[0]!.updated).toBe(true);
+    expect(first.checked).toBe(today);
+
+    // Segunda chamada no mesmo dia: nada a escrever.
+    await sql`update ingest_key set last_used_on = (now() at time zone 'utc')::date where prefix = ${prefix}`;
+    const second = await asCollector((tx) => tx`select ingest_key_touch(${prefix}) as updated`);
+    expect((second.result as { updated: boolean }[])[0]!.updated).toBe(false);
+    await sql`update ingest_key set last_used_on = null where prefix = ${prefix}`;
+  });
+
+  it("não atualiza chave revogada, de tenant removido nem prefixo inexistente", async () => {
+    const ctx = await createMember();
+    const { firstKey } = await createApiService(ctx, { name: "revoked" });
+    await revokeIngestKey(ctx, firstKey.summary.id);
+    const gone = await createMember();
+    const goneKey = (await createApiService(gone, { name: "gone" })).firstKey;
+    await sql`update tenant set status = 'removed' where id = ${gone.tenantId}`;
+    for (const prefix of [firstKey.summary.prefix, goneKey.summary.prefix]) {
+      const r = await asCollector((tx) => tx`select ingest_key_touch(${prefix}) as updated`, lastUsed(prefix));
+      expect((r.result as { updated: boolean }[])[0]!.updated).toBe(false);
+      expect(r.checked).toBeNull();
+    }
+    const unknown = await asCollector((tx) => tx`select ingest_key_touch('zzzzzzzz') as updated`);
+    expect((unknown.result as { updated: boolean }[])[0]!.updated).toBe(false);
+  });
+
+  it("o coletor não lê nem altera a tabela ingest_key, só chama a função", async () => {
+    const ctx = await createMember();
+    const { firstKey } = await createApiService(ctx, { name: "privileges" });
+    const prefix = firstKey.summary.prefix;
+    for (const statement of [
+      `update ingest_key set last_used_on = now()::date where prefix = '${prefix}'`,
+      `update ingest_key set revoked_at = null where prefix = '${prefix}'`,
+      `update ingest_key set key_hash = key_hash where prefix = '${prefix}'`,
+      `select last_used_on from ingest_key`,
+      `select key_hash from ingest_key`,
+      `delete from ingest_key where prefix = '${prefix}'`,
+      `update tenant set status = 'active'`,
+    ]) {
+      const r = await asCollector((tx) => tx.unsafe(statement));
+      expect(r.error?.message, statement).toMatch(/permission denied/);
+    }
+    // O gateway web não tem acesso à função.
+    let denied: Error | undefined;
+    await sql
+      .begin(async (tx) => {
+        await tx.unsafe("SET LOCAL ROLE notify_ingest");
+        try {
+          await tx.unsafe(`select ingest_key_touch('${prefix}')`);
+        } catch (error) {
+          denied = error as Error;
+        }
+        throw new Rollback();
+      })
+      .catch((error) => {
+        if (!(error instanceof Rollback)) throw error;
+      });
+    expect(denied?.message).toMatch(/permission denied/);
+  });
+});
+
 describe("logs", () => {
   it("nenhum fluxo escreve a chave no console", async () => {
     const spies = (["log", "info", "warn", "error", "debug"] as const).map((m) =>
