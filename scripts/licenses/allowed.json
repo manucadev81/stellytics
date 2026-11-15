@@ -1,13 +1,11 @@
 {
-  "comment": "Allowlist de licencas das dependencias de producao (regra do projeto: toda dependencia precisa de licenca aprovada pela OSI). Veja CONTRIBUTING.md, secao Dependencias. Ids SPDX; expressoes com OR passam se uma alternativa estiver aqui, com AND exigem todas.",
+  "comment": "Allowlist de licencas das dependencias de producao (regra do projeto: toda dependencia precisa de licenca aprovada pela OSI). Veja CONTRIBUTING.md, secao Dependencias. Ids SPDX; expressoes com OR passam se uma alternativa estiver aqui, com AND exigem todas. Excecoes: date e expires em AAAA-MM-DD, prazo de no maximo 183 dias; package de npm pode terminar em * (prefixo).",
   "allowed": [
     "0BSD",
     "Apache-2.0",
     "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
-    "LGPL-3.0-only",
-    "LGPL-3.0-or-later",
     "MIT",
     "MIT-0",
     "MPL-2.0",
@@ -18,7 +16,15 @@
       "ecosystem": "npm",
       "package": "caniuse-lite",
       "license": "CC-BY-4.0",
-      "reason": "CC-BY-4.0 nao e aprovada pela OSI, mas cobre so dados (tabelas de suporte de navegadores do Can I Use), nao codigo. Chega por next/browserslist e so e lida no build para escolher o alvo do CSS e do JS; nao vai para o runtime nem para o script de rastreamento. Nao ha substituto: o Next.js a exige.",
+      "reason": "CC-BY-4.0 nao e aprovada pela OSI, mas cobre so dados (tabelas de suporte de navegadores do Can I Use), nao codigo. Chega por next/browserslist. Verificado em 2026-11-15: o build standalone do portal (next build, base da imagem) nao contem caniuse-lite (so aparece como texto no package.json do next), entao nao vai para a imagem do portal; o script de rastreamento e empacotado com esbuild e nao a usa. Nao ha substituto: o Next.js a exige no build. A aceitacao da licenca e decisao do mantenedor.",
+      "date": "2026-11-15",
+      "expires": "2027-05-15"
+    },
+    {
+      "ecosystem": "npm",
+      "package": "@img/sharp-libvips-*",
+      "license": "LGPL-3.0-or-later",
+      "reason": "LGPL-3.0-or-later (libvips, binario nativo do sharp, que e Apache-2.0) e aprovada pela OSI, mas e copyleft: fica fora da allowlist geral. Verificado em 2026-11-15: o build standalone do portal inclui @img/sharp-libvips-<plataforma> (via next, otimizacao de imagens), como biblioteca compartilhada separada e substituivel, sem alteracao. A obrigacao e manter o texto da licenca e o acesso ao codigo-fonte (ver CONTRIBUTING.md). A aceitacao e decisao do mantenedor.",
       "date": "2026-11-15",
       "expires": "2027-05-15"
     }

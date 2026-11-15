@@ -56,7 +56,7 @@ test("expressao invalida falha em vez de passar", () => {
 test("excecao libera so a licenca e o pacote exatos", () => {
   const al = {
     ...allowlist,
-    exceptions: [{ ecosystem: "npm", package: "dados", license: "CC-BY-4.0", reason: "x", date: "2026-01-01", expires: "2027-01-01" }],
+    exceptions: [{ ecosystem: "npm", package: "dados", license: "CC-BY-4.0", reason: "x", date: "2026-01-01", expires: "2026-07-01" }],
   };
   const now = new Date("2026-06-01T00:00:00Z");
   assert.equal(check([dep("CC-BY-4.0", "dados")], al, now).violations.length, 0);
@@ -73,8 +73,31 @@ test("excecao vencida ou incompleta falha", () => {
   assert.match(inc.violations[0].reason, /incompleta/);
 });
 
+test("excecao com data invalida ou prazo longo falha (nunca vale para sempre)", () => {
+  const base = { ecosystem: "npm", package: "dados", license: "CC-BY-4.0", reason: "x", date: "2026-01-01", expires: "2026-03-01" };
+  const now = new Date("2026-02-01T00:00:00Z");
+  const run = (ex) => check([dep("CC-BY-4.0", "dados")], { ...allowlist, exceptions: [{ ...base, ...ex }] }, now);
+  assert.equal(run({}).violations.length, 0, "controle: a excecao valida passa");
+  for (const expires of ["soon", "2026-1-1x", "2026-02-30", "2026-03-01T00:00:00Z", undefined]) {
+    assert.match(run({ expires }).violations[0]?.reason ?? "passou", /invalid/, `expires ${expires}`);
+  }
+  assert.match(run({ date: "ontem" }).violations[0]?.reason ?? "passou", /invalid/);
+  assert.match(run({ expires: "2026-08-01" }).violations[0]?.reason ?? "passou", /prazo maior que 183/, "mais de seis meses");
+  assert.equal(run({ expires: "2026-07-02" }).violations.length, 0, "183 dias passa");
+  assert.match(run({ date: "2026-03-01", expires: "2026-01-01" }).violations[0]?.reason ?? "passou", /anterior/);
+});
+
+test("prefixo por barra so vale para Go; npm so com asterisco", () => {
+  const ex = (ecosystem, pkg) => ({ ...allowlist, exceptions: [{ ecosystem, package: pkg, license: "MPL-2.0", reason: "x", date: "2026-01-01", expires: "2026-03-01" }] });
+  const now = new Date("2026-02-01T00:00:00Z");
+  const n = (name) => ({ ecosystem: "npm", name, version: "1", license: "MPL-2.0" });
+  assert.equal(check([n("@escopo/x")], ex("npm", "@escopo"), now).violations.length, 1);
+  assert.equal(check([n("@escopo/x")], ex("npm", "@escopo/*"), now).violations.length, 0);
+  assert.equal(check([n("@escopo/y")], ex("npm", "@escopo/x"), now).violations.length, 1);
+});
+
 test("excecao de Go vale para subpacotes do modulo", () => {
-  const al = { ...allowlist, exceptions: [{ ecosystem: "go", package: "example.com/m", license: "MPL-2.0", reason: "x", date: "2026-01-01", expires: "2027-01-01" }] };
+  const al = { ...allowlist, exceptions: [{ ecosystem: "go", package: "example.com/m", license: "MPL-2.0", reason: "x", date: "2026-01-01", expires: "2026-07-01" }] };
   const d = { ecosystem: "go", name: "example.com/m/internal", version: "v1", license: "MPL-2.0" };
   assert.equal(check([d], al, new Date("2026-06-01T00:00:00Z")).violations.length, 0);
 });

@@ -79,13 +79,36 @@ const NOT_A_LICENSE = /^(unknown|unlicensed|none|n\/a)$|^see license|^custom|^\(
 
 // --- verificacao ----------------------------------------------------------
 
+// npm: nome exato, ou prefixo quando "package" termina em "*" (ex.: "@img/sharp-libvips-*",
+// um binario por plataforma). go: modulo exato ou subpacote dele ("modulo/..."); o
+// prefixo por "/" nao vale para npm, onde "@escopo" nao pode casar com "@escopo/x".
 function exceptionFor(exceptions, ecosystem, name, license) {
-  return exceptions.find(
-    (e) =>
-      e.ecosystem === ecosystem &&
-      e.license === license &&
-      (name === e.package || name.startsWith(`${e.package}/`)),
-  );
+  return exceptions.find((e) => {
+    if (e.ecosystem !== ecosystem || e.license !== license) return false;
+    if (name === e.package) return true;
+    if (ecosystem === "go") return name.startsWith(`${e.package}/`);
+    return e.package.endsWith("*") && name.startsWith(e.package.slice(0, -1));
+  });
+}
+
+const MAX_EXCEPTION_DAYS = 183; // "no maximo seis meses" (CONTRIBUTING.md)
+
+// Devolve o motivo se date/expires forem invalidos, ou null. Data invalida
+// nunca pode "vencer" (Invalid Date < now e falso), por isso e checada antes.
+function exceptionProblem(ex) {
+  const parse = (v) => {
+    if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+    const d = new Date(`${v}T00:00:00Z`);
+    return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== v ? null : d;
+  };
+  if (typeof ex.reason !== "string" || ex.reason.trim() === "") return "falta reason";
+  const from = parse(ex.date);
+  const to = parse(ex.expires);
+  if (!from) return `date invalida ("${ex.date}", use AAAA-MM-DD)`;
+  if (!to) return `expires invalido ("${ex.expires}", use AAAA-MM-DD)`;
+  if ((to - from) / 86400000 > MAX_EXCEPTION_DAYS) return `prazo maior que ${MAX_EXCEPTION_DAYS} dias (date ${ex.date}, expires ${ex.expires})`;
+  if (to < from) return "expires anterior a date";
+  return null;
 }
 
 // deps: [{ ecosystem, name, version, license }]
@@ -113,8 +136,9 @@ export function check(deps, allowlist, now = new Date()) {
 
     const ex = exceptionFor(exceptions, d.ecosystem, d.name, license);
     if (ex) {
-      if (!ex.reason || !ex.date || !ex.expires) {
-        violations.push({ ...d, license, reason: `excecao incompleta (precisa de reason, date e expires): ${reason}` });
+      const problem = exceptionProblem(ex);
+      if (problem) {
+        violations.push({ ...d, license, reason: `excecao incompleta ou invalida (${problem}): ${reason}` });
       } else if (new Date(`${ex.expires}T23:59:59Z`) < now) {
         violations.push({ ...d, license, reason: `excecao vencida em ${ex.expires}: ${reason}` });
       } else {
