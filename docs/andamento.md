@@ -112,7 +112,7 @@ Contagem conferida em 13/11/2026, no fim do dia:
 - **Done (16):** inclui, do E2, as issues #16, #17, #18, #19, #57, #58, #59 e #60.
 - **In progress (3):** inclui o épico E2 (#2).
 - **Ready (27):** as issues de código do MVP que faltam, entre elas #20 e #21 do E2, e as da proposta (#64 e #65).
-- **Backlog (19):** os épicos E7, E8 e E9 e as issues #40–#54 (documentação, pilotos e pós-MVP).
+- **Backlog:** os épicos E7, E8 e E9 e o que ainda resta das issues #42–#54 (guias aguardando teste de fora, pilotos e pós-MVP).
 
 ## 4. Decisões
 
@@ -243,6 +243,10 @@ O portal lê o Umami com uma conta de serviço que enxerga tudo, então o isolam
    **E9, [#49](https://github.com/romulospl/notify/issues/49) (15/11/2026):** cadastro com aprovação prévia opcional ([ADR 0007](adr/0007-cadastro-com-aprovacao.md)). `SIGNUP_APPROVAL` (e `signup_approval` no Ansible) faz o projeto novo nascer `pending`, com tela de espera e sem painéis, sites, serviços nem chaves; a ingestão já o recusava pelas visões. O operador aprova ou rejeita em `/operator/approvals`, com `audit_log`. Sem migração (o estado já existia) e sem e-mail de notificação. Testado com Postgres 17 (213 testes do portal, lint, typecheck e build). Não verificado: as telas num navegador, o Ansible e o `prod.yaml` com o modo ligado.
 
    **E9, [#50](https://github.com/romulospl/notify/issues/50) (15/11/2026), parcial:** eventos customizados (script v1.2.0 com `window.notify.event`, gateway repassa só `name` e `data` validados, [ADR 0008](adr/0008-eventos-customizados-e-wallets-kit.md)). Confirmado no banco do Umami (nome e propriedades). **Pendente:** captura automática do Wallets Kit (o kit só avisa por callbacks no módulo do tenant; sem configuração do tenant exigiria monkey patching) e listagem de eventos no painel web.
+   **E9, [#51](https://github.com/romulospl/notify/issues/51) (15/11/2026):** teste de carga com ferramenta própria em `services/loadtest/` e relatório em [`relatorios/carga-1m-dia.md`](relatorios/carga-1m-dia.md) (PR #120). Medido numa máquina local, sem Caddy, TLS, imagens nem hardware da Hetzner, então **não prova a produção**. A média de 1 milhão por dia (11,6 por segundo) e picos de 10x passaram sem perda. **Gargalo achado:** o Umami satura perto de 200 page views por segundo e o relay do gateway é síncrono e sem limite de requisições em voo. Texto de issue pronto no relatório, ainda não aberta.
+   **E9, [#52](https://github.com/romulospl/notify/issues/52) (15/11/2026), parcial:** [ADR 0009](adr/0009-alta-disponibilidade.md) e [`sla.md`](sla.md) (PR #118), com o orçamento de erro (99,99% são 4,32 min por mês) e os pontos únicos de falha. A arquitetura atual **não sustenta 99,99%**. Na IaC só há primitivas de provisionamento, desligadas por padrão: o plano com os padrões é idêntico ao anterior. Falta o Ansible das réplicas, a replicação do Postgres, o balanceador e o gateway tolerar o banco fora. **Decisão do Romulo:** o `SECURITY.md` promete 14 dias para críticas e 30 para altas, e o RFP tem como meta 24 horas.
+   **E9, [#54](https://github.com/romulospl/notify/issues/54) (15/11/2026), parcial:** [`transferencia.md`](transferencia.md) (PR #119) e scripts `infra/scripts/db-export.sh`, `db-import.sh` e `db-fingerprint.sh`, com teste ponta a ponta em `infra/compose/test/data-migration-test.sh`. A migração de dados foi testada de verdade (lógica e física com WAL-G, 27 tabelas por banco idênticas). **Não testado:** transferência real de repositório, domínio e contas, restauração contra o Object Storage real, volumes grandes e reversão. O teste não roda no CI (leva minutos e precisa da imagem do portal). A issue só fecha quando o novo operador roda sozinho.
+   **Pendências abertas pelos PRs deste lote (sem issue ainda):** (a) varredura de vulnerabilidades e licenças no CI; (b) builds reproduzíveis; (c) limitar relays simultâneos do gateway ao Umami; (d) gravar `last_used_on` das chaves de ingestão; (e) o teste `api-metrics.test.ts` falha numa segunda execução no mesmo banco. A criação de issues foi bloqueada pelo classificador de permissões e fica para o Romulo ou para uma liberação do `gh issue create`.
 4. **Pode ser feita a qualquer momento:** a [#32 (5.3)](https://github.com/romulospl/notify/issues/32), normalização de rotas, que não depende de nada.
 5. **Fora do código, sem dependência:**
    - buscar o código de indicação e enviar o Interest form ([#64](https://github.com/romulospl/notify/issues/64));
@@ -252,7 +256,6 @@ O portal lê o Umami com uma conta de serviço que enxerga tudo, então o isolam
    - criar 4 milestones, uma por parcela (10/20/30/40%), depois que a #65 definir os marcos;
    - mover #44 (pilotos) para Ready, porque não depende de código (a #39 já foi feita);
    - tirar os épicos da coluna Ready ou filtrá-los da visão;
-   - dividir a #50 em eventos customizados (o Umami já suporta) e captura do Wallets Kit.
 7. **Idioma:** decidir se a documentação do repositório passa para inglês antes da submissão. Os revisores do SCF leem em inglês, e isso pesa na avaliação da documentação e na transferência para outra equipe.
 8. **Concluído:** o ADR 0003 registra que o isolamento é do portal, e o spec do E2 fixa o contrato. A pendência do ADR 0001 sobre a chave de API do Umami foi resolvida na #58: a chave de um usuário comum do Umami basta, sem a senha de administrador.
 9. **Lacunas sem issue, apontadas pelo spec do E2:**
