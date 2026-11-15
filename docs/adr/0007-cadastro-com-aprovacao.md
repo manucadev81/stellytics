@@ -37,5 +37,8 @@ O enum `tenant_status` já tem o valor `pending` desde a #16, e as visões `inge
 
 - Com o modo desligado nada muda; ligar afeta só cadastros novos. Projetos já `active` seguem ativos, e os `pending` continuam na fila se o modo for desligado depois (o operador ainda os resolve).
 - O portal passa a ter dois lugares que tratam `pending` (`requireTenantContext` e as funções de escrita de `data/`), de modo que uma página nova do tenant já nasce coberta.
+- Desligar o modo com tenants ainda `pending` mantém a fila cheia: eles continuam pendentes até o operador decidir, e `/operator/approvals` avisa que o modo está desligado.
+- Um projeto rejeitado fica preso: cada usuário tem um projeto só (D1) e só o operador reativa. Reativar um rejeitado o torna `active` sem nova aprovação.
+- `removeTenant` continua aceitando `pending` (comportamento anterior). A interface só mostra aprovar e rejeitar para pendentes, de propósito.
 - A mudança de modo exige reiniciar o portal (variável de ambiente).
 - Sem notificação, o SCF precisa olhar `/operator/approvals` (o `/operator` mostra a contagem). Um e-mail é a evolução natural, mas fica fora desta issue.

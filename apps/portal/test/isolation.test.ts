@@ -630,6 +630,14 @@ describe("leitura do Umami", () => {
   });
 });
 
+// Textos de uma árvore de elementos React (sem renderizar): só strings e filhos.
+function textOf(node: unknown): string {
+  if (typeof node === "string") return node;
+  if (Array.isArray(node)) return node.map(textOf).join("");
+  const props = (node as { props?: { children?: unknown } } | null)?.props;
+  return props ? textOf(props.children) : "";
+}
+
 describe("cadastro com aprovação (#49)", () => {
   // Projeto pendente com site, serviço e chave. As linhas são criadas com o
   // projeto ativo (as funções de data/ recusam pendente) e o status muda depois,
@@ -694,6 +702,12 @@ describe("cadastro com aprovação (#49)", () => {
   it("o operador vê a fila, aprova, e a ingestão passa a aceitar; tudo no audit_log", async () => {
     asOperator();
     await expect(ApprovalsPage()).resolves.toBeTruthy();
+    // Modo desligado com pendentes na fila: a tela explica; ligado, não.
+    delete process.env.SIGNUP_APPROVAL;
+    expect(textOf(await ApprovalsPage())).toContain("currently turned off");
+    process.env.SIGNUP_APPROVAL = "true";
+    expect(textOf(await ApprovalsPage())).not.toContain("currently turned off");
+    delete process.env.SIGNUP_APPROVAL;
     expect(await approveTenantAction(P.tenantId, idle, form({ reason: "Looks good" }))).toEqual({ status: "done" });
     expect(await tenantStatus(P.tenantId)).toBe("active");
     expect(await acceptsWeb(P.umamiWebsiteId)).toBe(true);

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireOperatorContext } from "@/lib/access";
+import { env } from "@/lib/env";
 import { listPendingTenants, REASON_MAX } from "@/lib/data/operator/tenants";
 import { ApprovalForm } from "../tenants/[tenantId]/approval-form";
 
@@ -23,6 +24,12 @@ export default async function ApprovalsPage() {
           ? "No projects are waiting for approval."
           : `${pending.length} project${pending.length === 1 ? " is" : "s are"} waiting for approval.`}
       </p>
+      {pending.length > 0 && !env.signupApproval && (
+        <p className="mt-2 text-sm text-zinc-500">
+          Sign-up approval is currently turned off, so new projects are active right away. The projects below signed up
+          while it was on and stay pending until you approve or reject them.
+        </p>
+      )}
       <ul className="mt-6 space-y-8">
         {pending.map((t) => (
           <li key={t.id} className="border-t border-zinc-200 pt-4 dark:border-zinc-800">
