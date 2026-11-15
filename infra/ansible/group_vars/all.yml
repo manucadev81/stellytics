@@ -11,6 +11,9 @@ portal_host: app.example.org
 ingest_host: e.example.org
 acme_email: ops@example.org
 mail_from: "notify <no-reply@example.org>"
+# Cadastro com aprovação prévia (#49): true deixa projetos novos pendentes até
+# um operador SCF aprovar em /operator/approvals.
+signup_approval: false
 
 # Imagens publicadas pelo workflow de release, SEMPRE por digest. O deploy
 # confere a assinatura de cada uma com cosign antes de subir.

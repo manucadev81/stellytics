@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireOperatorContext } from "@/lib/access";
 import { getTenantDetail, REASON_MAX } from "@/lib/data/operator/tenants";
+import { ApprovalForm } from "./approval-form";
 import { TenantStatusForm } from "./status-form";
 
 export const metadata: Metadata = { title: "Project details" };
@@ -14,6 +15,8 @@ const HISTORY_LABEL: Record<string, string> = {
   "tenant.created": "Created",
   "tenant.removed": "Removed",
   "tenant.reactivated": "Reactivated",
+  "tenant.approved": "Approved",
+  "tenant.rejected": "Rejected",
 };
 
 // Detalhe de um projeto para o operador SCF (#19). Das chaves de ingestão
@@ -40,9 +43,18 @@ export default async function OperatorTenantPage({ params }: { params: Promise<{
       </p>
       {tenant.statusReason && <p className="mt-1 text-sm text-zinc-500">Reason: {tenant.statusReason}</p>}
 
-      <h2 className="mt-8 text-lg font-semibold">{tenant.status === "removed" ? "Reactivate" : "Remove"} project</h2>
-      {/* key: o formulário recomeça vazio depois de mudar o status. */}
-      <TenantStatusForm key={tenant.status} tenantId={tenant.id} status={tenant.status} reasonMax={REASON_MAX} />
+      {tenant.status === "pending" ? (
+        <>
+          <h2 className="mt-8 text-lg font-semibold">Approve or reject sign-up</h2>
+          <ApprovalForm tenantId={tenant.id} reasonMax={REASON_MAX} />
+        </>
+      ) : (
+        <>
+          <h2 className="mt-8 text-lg font-semibold">{tenant.status === "removed" ? "Reactivate" : "Remove"} project</h2>
+          {/* key: o formulário recomeça vazio depois de mudar o status. */}
+          <TenantStatusForm key={tenant.status} tenantId={tenant.id} status={tenant.status} reasonMax={REASON_MAX} />
+        </>
+      )}
 
       <h2 className="mt-8 text-lg font-semibold">Members</h2>
       <ul className="mt-2 divide-y divide-zinc-200 border-y border-zinc-200 text-sm dark:divide-zinc-800 dark:border-zinc-800">

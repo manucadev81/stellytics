@@ -129,7 +129,7 @@ O spec do E2 e o ADR 0003 entraram junto, no commit `75658a7`.
 - **Escolhas:**
   - o motivo da remoção é obrigatório (3 a 500 caracteres), porque o projeto o vê no painel; o da reativação é opcional e fica só no `audit_log` (a coluna `status_reason` volta a nulo);
   - remover o que já está removido, ou reativar o que não está, não grava nada (devolve `"unchanged"`); dois operadores ao mesmo tempo geram um registro só;
-  - reativar vale só para `removed`. Um tenant `pending` não é aprovado por aqui: isso fica para o cadastro com aprovação (#49).
+  - reativar vale só para `removed`. Um tenant `pending` não é aprovado por aqui: isso é feito por `approveTenant` e `rejectTenant` (#49, [ADR 0007](adr/0007-cadastro-com-aprovacao.md)).
 - **Telas:** formulário e histórico de status em `/operator/tenants/[tenantId]` (`status-form.tsx`, ações em `actions.ts`). As ações chamam `requireOperatorContext()` antes de tudo, então membro de tenant recebe 404.
 - **Ingestão:** nada mudou no gateway nem nas visões. `ingest_site` e `ingest_key_active` (migração 0002) já exigem `tenant.status = 'active'`, então o gateway web passa a descartar os eventos em até 1 minuto (o cache dele). O teste `services/ingest-web/e2e/tenant_status_test.go` confere isso de ponta a ponta, com o Umami de verdade.
 - **O que já existia e continua valendo:** o membro de projeto removido ainda entra, vê o aviso com o motivo em `/dashboard` e não cadastra site, serviço nem chave (só revoga chave).

@@ -56,10 +56,14 @@ export async function getTenantContext(): Promise<TenantContext | null> {
   return loadTenantContext(session.user.id);
 }
 
-// Quem ainda não tem projeto vai para a criação do projeto (#17).
-export async function requireTenantContext(): Promise<TenantContext> {
+// Quem ainda não tem projeto vai para a criação do projeto (#17). Projeto
+// `pending` (cadastro com aprovação, #49) só vê a tela de espera em /dashboard,
+// que pede `allowPending`; qualquer outra página ou ação do tenant redireciona
+// para lá, então nenhuma delas chega à camada de dados.
+export async function requireTenantContext(options: { allowPending?: boolean } = {}): Promise<TenantContext> {
   const ctx = await getTenantContext();
   if (!ctx) redirect("/onboarding");
+  if (ctx.tenantStatus === "pending" && !options.allowPending) redirect("/dashboard");
   return ctx;
 }
 

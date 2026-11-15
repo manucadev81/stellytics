@@ -30,6 +30,12 @@ export const env = {
   get umamiUrl() {
     return (process.env.UMAMI_URL ?? "http://127.0.0.1:3001").replace(/\/$/, "");
   },
+  // Cadastro com aprovação prévia (#49, ADR 0007): com `true` ou `1`, projeto
+  // novo nasce `pending` até um operador aprovar. Desligado por padrão. Lido a
+  // cada cadastro; mudar o valor exige reiniciar o portal.
+  get signupApproval() {
+    return ["1", "true"].includes((process.env.SIGNUP_APPROVAL ?? "").trim().toLowerCase());
+  },
   // SMTP para os e-mails de confirmação e de redefinição de senha (#60), ex.:
   // smtp://mailpit:1025 no Compose ou smtps://usuario:senha@host:465 em produção.
   // Lido só ao enviar, então o portal sobe sem ele.

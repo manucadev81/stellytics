@@ -17,8 +17,21 @@ export default async function DashboardPage() {
   if (user.role === "operator") redirect("/operator");
 
   // Sem projeto, vai para a criação do projeto (#17).
-  const ctx = await requireTenantContext();
+  const ctx = await requireTenantContext({ allowPending: true });
   const project = await getProject(ctx);
+
+  // Cadastro com aprovação (#49): espera, sem painéis nem cadastro.
+  if (project.status === "pending") {
+    return (
+      <section>
+        <h1 className="text-2xl font-semibold">{project.name}</h1>
+        <p className="mt-2 text-zinc-500">
+          Your project is awaiting approval by the SCF operators. Websites, API services and ingest keys become
+          available once it is approved; sign in again later to check.
+        </p>
+      </section>
+    );
+  }
 
   if (project.status === "removed") {
     return (

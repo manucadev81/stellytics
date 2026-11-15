@@ -3,11 +3,13 @@ import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import type { OnboardingContext, TenantContext } from "../access";
 import { db } from "../db";
+import { env } from "../env";
 import { auditLog, tenant, tenantMember } from "../db/schema";
 
 // Criação do projeto no cadastro self-service (#17, spec do E2, seção 7):
 // o tenant nasce `active` e quem o criou vira `owner`, na mesma transação.
-// Quando o cadastro com aprovação existir (#49), o status passa a `pending`.
+// Com SIGNUP_APPROVAL ligado (#49, ADR 0007) ele nasce `pending` até um
+// operador aprovar.
 
 export class ProjectError extends Error {
   constructor(
@@ -46,6 +48,7 @@ export async function createProject(
     throw new ProjectError("invalid_name", "Project name must have between 2 and 100 characters.");
   }
   const base = slugify(name);
+  const status = env.signupApproval ? "pending" : "active";
 
   // Slug repetido: tenta de novo com um sufixo aleatório.
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -54,14 +57,14 @@ export async function createProject(
       return await db.transaction(async (tx) => {
         const [created] = await tx
           .insert(tenant)
-          .values({ name, slug })
+          .values({ name, slug, status })
           .returning({ id: tenant.id, name: tenant.name, slug: tenant.slug });
         await tx.insert(tenantMember).values({ tenantId: created!.id, userId: ctx.userId, role: "owner" });
         await tx.insert(auditLog).values({
           actorUserId: ctx.userId,
           action: "tenant.created",
           tenantId: created!.id,
-          details: { slug },
+          details: { slug, status },
         });
         return created!;
       });

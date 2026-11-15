@@ -24,6 +24,9 @@ export default async function PrivateLayout({ children }: { children: React.Reac
                 <Link href="/operator/api" className="hover:underline">
                   API analytics
                 </Link>
+                <Link href="/operator/approvals" className="hover:underline">
+                  Approvals
+                </Link>
                 <Link href="/operator/keys" className="hover:underline">
                   API keys
                 </Link>

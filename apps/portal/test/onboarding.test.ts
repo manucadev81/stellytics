@@ -2,7 +2,7 @@
 // A sessão é simulada.
 import { randomUUID } from "node:crypto";
 import { eq, inArray, like } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { requireOnboardingContext, requireTenantContext } from "@/lib/access";
 import { createProject, getProject, ProjectError, slugify } from "@/lib/data/tenants";
 import { db, sql } from "@/lib/db";
@@ -109,6 +109,18 @@ describe("criação do projeto", () => {
     expect(audit).toMatchObject([{ action: "tenant.created", actorUserId: userId }]);
   });
 
+  it("com SIGNUP_APPROVAL desligado (padrão ou `false`) o tenant nasce active, como sempre", async () => {
+    for (const value of [undefined, "", "false", "0", "no"]) {
+      if (value === undefined) delete process.env.SIGNUP_APPROVAL;
+      else process.env.SIGNUP_APPROVAL = value;
+      await login();
+      const created = await createProject(await requireOnboardingContext(), { name: `${NAME} Off ${value ?? "unset"}` });
+      expect(await requireTenantContext()).toMatchObject({ tenantId: created.id, tenantStatus: "active" });
+      const [audit] = await db.select().from(auditLog).where(eq(auditLog.tenantId, created.id));
+      expect(audit).toMatchObject({ action: "tenant.created", details: { status: "active" } });
+    }
+  });
+
   it("nome repetido em outro usuário ganha slug com sufixo", async () => {
     await login();
     const first = await createProject(await requireOnboardingContext(), { name: `${NAME} Same` });
@@ -136,5 +148,36 @@ describe("criação do projeto", () => {
     const rejected = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
     expect(rejected.reason).toMatchObject({ code: "already_member" });
     expect(await db.select().from(tenantMember).where(eq(tenantMember.userId, userId))).toHaveLength(1);
+  });
+});
+
+describe("cadastro com aprovação (#49)", () => {
+  afterEach(() => {
+    delete process.env.SIGNUP_APPROVAL;
+  });
+
+  it("com SIGNUP_APPROVAL ligado o tenant nasce pending, com owner e audit_log", async () => {
+    for (const value of ["true", "1", " TRUE "]) {
+      process.env.SIGNUP_APPROVAL = value;
+      const userId = await login();
+      const created = await createProject(await requireOnboardingContext(), { name: `${NAME} On ${value.trim()}` });
+      expect(await getProject((await requireTenantContext({ allowPending: true })))).toMatchObject({
+        name: `${NAME} On ${value.trim()}`,
+        status: "pending",
+      });
+      expect(await db.select().from(tenantMember).where(eq(tenantMember.tenantId, created.id))).toMatchObject([
+        { userId, role: "owner" },
+      ]);
+      const [audit] = await db.select().from(auditLog).where(eq(auditLog.tenantId, created.id));
+      expect(audit).toMatchObject({ action: "tenant.created", actorUserId: userId, details: { status: "pending" } });
+    }
+  });
+
+  it("projeto pendente só passa por requireTenantContext com allowPending; o resto vai para /dashboard", async () => {
+    process.env.SIGNUP_APPROVAL = "true";
+    await login();
+    await createProject(await requireOnboardingContext(), { name: `${NAME} Waiting` });
+    await expect(requireTenantContext()).rejects.toMatchObject({ digest: expect.stringContaining("/dashboard") });
+    expect(await requireTenantContext({ allowPending: true })).toMatchObject({ tenantStatus: "pending" });
   });
 });

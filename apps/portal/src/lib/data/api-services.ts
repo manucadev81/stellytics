@@ -28,7 +28,7 @@ export type CreatedIngestKey = { key: string; summary: IngestKeySummary };
 
 export class ApiServiceError extends Error {
   constructor(
-    readonly code: "tenant_removed" | "invalid_name" | "duplicate_name" | "archived" | "key_limit",
+    readonly code: "tenant_removed" | "tenant_pending" | "invalid_name" | "duplicate_name" | "archived" | "key_limit",
     message: string,
   ) {
     super(message);
@@ -50,6 +50,10 @@ function assertCanWrite(ctx: TenantContext) {
   // Spec do E2, seção 6: tenant removido não cadastra serviço nem chave.
   if (ctx.tenantStatus === "removed") {
     throw new ApiServiceError("tenant_removed", "This project was removed.");
+  }
+  // Cadastro com aprovação (#49): projeto pendente não cadastra serviço nem chave.
+  if (ctx.tenantStatus === "pending") {
+    throw new ApiServiceError("tenant_pending", "This project is awaiting approval.");
   }
 }
 

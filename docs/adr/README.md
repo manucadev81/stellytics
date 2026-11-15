@@ -12,6 +12,7 @@ Registro das decisões de arquitetura do projeto. Cada ADR descreve o contexto, 
 | [0004](0004-hospedagem-e-backup.md) | Hospedagem na Hetzner, OpenTofu e backup com WAL-G | Aceito | 14/11/2026 |
 | [0005](0005-monitoramento-externo.md) | Monitoramento externo com Prometheus, numa VM separada | Aceito | 14/11/2026 |
 | [0006](0006-api-de-leitura-do-scf.md) | API de leitura do SCF com chaves de operador | Aceito | 15/11/2026 |
+| [0007](0007-cadastro-com-aprovacao.md) | Cadastro com aprovação prévia | Aceito | 15/11/2026 |
 
 ## Como escrever um novo ADR
 

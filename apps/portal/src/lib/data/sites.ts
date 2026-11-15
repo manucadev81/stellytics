@@ -45,6 +45,10 @@ export async function createSite(
   if (ctx.tenantStatus === "removed") {
     throw new SiteInputError("tenant", "This project was removed.");
   }
+  // Cadastro com aprovação (#49): projeto pendente não cadastra site.
+  if (ctx.tenantStatus === "pending") {
+    throw new SiteInputError("tenant", "This project is awaiting approval.");
+  }
   const name = input.name.trim();
   if (name.length < 1 || name.length > 100) {
     throw new SiteInputError("name", "Name must have between 1 and 100 characters.");
