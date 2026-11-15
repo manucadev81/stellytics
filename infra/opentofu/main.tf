@@ -177,3 +177,144 @@ resource "hcloud_server" "monitor" {
     ignore_changes = [user_data, image, ssh_keys]
   }
 }
+
+# ---------------------------------------------------------------------------
+# Alta disponibilidade (#52, ADR 0009). Opt-in: com os padrões (0, false,
+# false) nada abaixo é criado e o plano não muda. Só provisiona; não configura
+# replicação, balanceamento nem o IP flutuante dentro da VM (Ansible, futuro).
+# ---------------------------------------------------------------------------
+locals {
+  ha_enabled = var.ha_ingest_replicas > 0 || var.ha_db_standby
+}
+
+# Rede privada entre as VMs de HA, para o tráfego de replicação e de ingestão
+# ao Postgres não passar pela internet.
+resource "hcloud_network" "ha" {
+  count    = local.ha_enabled ? 1 : 0
+  name     = "notify-ha"
+  ip_range = "10.50.0.0/16"
+  labels   = local.labels
+}
+
+resource "hcloud_network_subnet" "ha" {
+  count        = local.ha_enabled ? 1 : 0
+  network_id   = hcloud_network.ha[0].id
+  type         = "cloud"
+  network_zone = "eu-central"
+  ip_range     = "10.50.0.0/24"
+}
+
+resource "hcloud_server_network" "primary" {
+  count     = local.ha_enabled ? 1 : 0
+  server_id = hcloud_server.notify.id
+  subnet_id = hcloud_network_subnet.ha[0].id
+  ip        = "10.50.0.10"
+}
+
+# VMs extras de ingestão: mesmo firewall (só 80 e 443 abertos) da principal.
+resource "hcloud_server" "ingest" {
+  count        = var.ha_ingest_replicas
+  name         = "notify-ingest-${count.index + 1}"
+  server_type  = var.server_type
+  image        = var.server_image
+  location     = var.ha_ingest_location
+  ssh_keys     = [hcloud_ssh_key.admin.id]
+  firewall_ids = [hcloud_firewall.notify.id]
+  labels       = merge(local.labels, { role = "ingest" })
+  user_data    = file("${path.module}/cloud-init.yaml")
+
+  public_net {
+    ipv4_enabled = true
+    ipv6_enabled = true
+  }
+
+  lifecycle {
+    precondition {
+      condition     = var.ha_ingest_location != var.location
+      error_message = "As VMs extras de ingestão precisam ficar em outro local que a principal."
+    }
+    ignore_changes = [user_data, image, ssh_keys]
+  }
+}
+
+resource "hcloud_server_network" "ingest" {
+  count     = var.ha_ingest_replicas
+  server_id = hcloud_server.ingest[count.index].id
+  subnet_id = hcloud_network_subnet.ha[0].id
+  ip        = "10.50.0.${20 + count.index}"
+}
+
+# Réplica do Postgres: VM e volume próprios, sem dados até o Ansible (futuro)
+# configurar o standby com pg_basebackup a partir da principal.
+resource "hcloud_volume" "standby" {
+  count             = var.ha_db_standby ? 1 : 0
+  name              = "notify-data-standby"
+  size              = var.data_volume_size
+  location          = var.ha_db_standby_location
+  format            = "ext4"
+  delete_protection = true
+  labels            = local.labels
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "hcloud_server" "standby" {
+  count        = var.ha_db_standby ? 1 : 0
+  name         = "notify-db-standby"
+  server_type  = var.server_type
+  image        = var.server_image
+  location     = var.ha_db_standby_location
+  ssh_keys     = [hcloud_ssh_key.admin.id]
+  firewall_ids = [hcloud_firewall.monitor.id] # só SSH e ping: o standby não atende a internet
+  labels       = merge(local.labels, { role = "db-standby" })
+  user_data    = file("${path.module}/cloud-init.yaml")
+
+  public_net {
+    ipv4_enabled = true
+    ipv6_enabled = true
+  }
+
+  delete_protection  = true
+  rebuild_protection = true
+
+  lifecycle {
+    ignore_changes = [user_data, image, ssh_keys]
+  }
+}
+
+resource "hcloud_volume_attachment" "standby" {
+  count     = var.ha_db_standby ? 1 : 0
+  volume_id = hcloud_volume.standby[0].id
+  server_id = hcloud_server.standby[0].id
+  automount = false
+}
+
+resource "hcloud_server_network" "standby" {
+  count     = var.ha_db_standby ? 1 : 0
+  server_id = hcloud_server.standby[0].id
+  subnet_id = hcloud_network_subnet.ha[0].id
+  ip        = "10.50.0.30"
+}
+
+# IP flutuante: o DNS aponta para ele e, numa falha da VM principal, a
+# atribuição passa para outra VM (manual ou por script; sem failover
+# automático aqui). Não vale para o DNS atual, que usa o IP da VM.
+resource "hcloud_floating_ip" "ingest" {
+  count         = var.ha_floating_ip ? 1 : 0
+  type          = "ipv4"
+  home_location = var.location
+  name          = "notify-ingest"
+  labels        = local.labels
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "hcloud_floating_ip_assignment" "ingest" {
+  count          = var.ha_floating_ip ? 1 : 0
+  floating_ip_id = hcloud_floating_ip.ingest[0].id
+  server_id      = hcloud_server.notify.id
+}
