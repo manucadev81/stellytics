@@ -1,7 +1,9 @@
 import "server-only";
 import { authenticateReadKey, type OperatorKeyContext } from "./access";
 import { parsePeriodKey, PERIODS, type Period, resolvePeriod } from "./period";
+import { truncatedClientIp } from "./client-ip";
 import { takeToken } from "./rate-limit";
+import { readKeyFromHeader } from "./read-key";
 
 // Base das rotas da API de leitura do SCF (#48, ADR 0006): autenticação por
 // chave, limite por chave e respostas JSON sem cache. Erros não dizem por que
@@ -25,15 +27,32 @@ function periodOf(url: URL): Period | null {
   return Object.hasOwn(PERIODS, raw) ? resolvePeriod(parsePeriodKey(raw)) : null;
 }
 
+// Consultas ao banco por minuto e por IP truncado, antes de saber se a chave é
+// válida. Quem usa uma chave boa faz no máximo READ_API_LIMIT (60) por minuto;
+// o resto é folga para vários clientes atrás do mesmo IP.
+export const LOOKUP_LIMIT_PER_IP = 120;
+
+const UNAUTHORIZED = () =>
+  error(401, "unauthorized", "Missing or invalid API key.", { "WWW-Authenticate": 'Bearer realm="notify"' });
+
 export async function handleRead(
   request: Request,
   handler: (ctx: OperatorKeyContext, period: Period) => Promise<unknown>,
 ): Promise<Response> {
-  const ctx = await authenticateReadKey(request.headers.get("authorization"));
-  if (!ctx) {
-    return error(401, "unauthorized", "Missing or invalid API key.", { "WWW-Authenticate": 'Bearer realm="notify"' });
+  const authorization = request.headers.get("authorization");
+  // Header sem o formato de chave: 401 sem tocar no banco nem no limite.
+  if (!readKeyFromHeader(authorization)) return UNAUTHORIZED();
+  // Limite por IP ANTES da consulta, para chutes de chave não custarem um
+  // join por requisição sem freio.
+  const ip = takeToken(`ip:${truncatedClientIp(request.headers.get("x-forwarded-for"))}`, Date.now(), LOOKUP_LIMIT_PER_IP);
+  if (!ip.ok) {
+    return error(429, "rate_limited", "Too many requests. Try again later.", {
+      "Retry-After": String(ip.retryAfterSeconds),
+    });
   }
-  const rate = takeToken(ctx.keyId);
+  const ctx = await authenticateReadKey(authorization);
+  if (!ctx) return UNAUTHORIZED();
+  const rate = takeToken(`key:${ctx.keyId}`);
   if (!rate.ok) {
     return error(429, "rate_limited", "Too many requests. Try again later.", {
       "Retry-After": String(rate.retryAfterSeconds),

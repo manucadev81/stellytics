@@ -18,6 +18,8 @@ import { auditLog, operatorApiKey, site, tenant, user } from "@/lib/db/schema";
 import { generateIngestKey } from "@/lib/ingest-key";
 import { generateReadKey, hashReadKey, READ_KEY_PATTERN } from "@/lib/read-key";
 import { READ_API_LIMIT, resetRateLimits, takeToken } from "@/lib/rate-limit";
+import { truncatedClientIp } from "@/lib/client-ip";
+import { LOOKUP_LIMIT_PER_IP } from "@/lib/read-api";
 import { GET as getApi } from "@/app/api/v1/api/route";
 import { GET as getProjects } from "@/app/api/v1/projects/route";
 import { GET as getWeb } from "@/app/api/v1/web/route";
@@ -32,10 +34,10 @@ let op: OperatorContext;
 let activeTenantId: string;
 let removedTenantId: string;
 
-const call = (route: typeof getWeb, path: string, key?: string, header?: string) =>
+const call = (route: typeof getWeb, path: string, key?: string, header?: string, extra: Record<string, string> = {}) =>
   route(
     new Request(`http://portal.test${path}`, {
-      headers: key || header ? { authorization: header ?? `Bearer ${key}` } : {},
+      headers: { ...(key || header ? { authorization: header ?? `Bearer ${key}` } : {}), ...extra },
     }),
   );
 
@@ -155,18 +157,67 @@ describe("gerar, listar e revogar", () => {
 });
 
 describe("autenticação da API", () => {
-  it.each([
-    ["sem header", undefined, undefined],
-    ["esquema errado", undefined, "Basic abc"],
-    ["bearer sem chave", undefined, "Bearer "],
-    ["formato errado", "nrk_ABCDEFGH_x", undefined],
-    ["prefixo desconhecido", `nrk_zzzzzzzz_${"A".repeat(43)}`, undefined],
-  ])("%s: 401 sem pista", async (_name, key, header) => {
-    const res = await call(getProjects, "/api/v1/projects", key, header);
-    expect(res.status).toBe(401);
-    expect(res.headers.get("www-authenticate")).toMatch(/^Bearer/);
-    expect(res.headers.get("cache-control")).toBe("no-store");
-    expect(await res.json()).toEqual({ error: { code: "unauthorized", message: "Missing or invalid API key." } });
+  async function snapshot(res: Response) {
+    return { status: res.status, body: await res.text(), headers: [...res.headers].sort() };
+  }
+
+  it("toda recusa tem status, corpo e cabeçalhos idênticos, sem pista do motivo", async () => {
+    const good = await newKey("good");
+    const revoked = await newKey("revoked-401");
+    await revokeReadKey(op, revoked.summary.id);
+    const exId = randomUUID();
+    await db.insert(user).values({ id: exId, name: "Ex", email: `${exId}${DOMAIN}`, role: "operator" });
+    const ex = await createReadKey({ userId: exId } as OperatorContext, { name: "ex" });
+    await sql`UPDATE "user" SET role = 'tenant' WHERE id = ${exId}`;
+    const wrongSecret = `${good.key.slice(0, -1)}${good.key.endsWith("A") ? "B" : "A"}`;
+
+    const attempts: [string, string | undefined, string | undefined][] = [
+      ["sem header", undefined, undefined],
+      ["esquema errado", undefined, "Basic abc"],
+      ["bearer sem chave", undefined, "Bearer "],
+      ["formato errado", "nrk_ABCDEFGH_x", undefined],
+      ["chave de ingestão", `ntf_abcdefgh_${"A".repeat(43)}`, undefined],
+      ["prefixo desconhecido", `nrk_zzzzzzzz_${"A".repeat(43)}`, undefined],
+      ["segredo errado", wrongSecret, undefined],
+      ["chave revogada", revoked.key, undefined],
+      ["ex-operador", ex.key, undefined],
+    ];
+    const results = [];
+    for (const [name, key, header] of attempts) {
+      const res = await call(getProjects, "/api/v1/projects", key, header);
+      expect(res.status, name).toBe(401);
+      expect(res.headers.get("www-authenticate"), name).toMatch(/^Bearer/);
+      expect(res.headers.get("cache-control"), name).toBe("no-store");
+      results.push(await snapshot(res));
+    }
+    expect(JSON.parse(results[0]!.body)).toEqual({
+      error: { code: "unauthorized", message: "Missing or invalid API key." },
+    });
+    for (const r of results) expect(r).toEqual(results[0]);
+    await sql`UPDATE "user" SET role = 'operator' WHERE id = ${exId}`;
+  });
+
+  it("aceita o esquema Bearer sem diferenciar maiúsculas (RFC 7235)", async () => {
+    const { key } = await newKey("case");
+    for (const scheme of ["bearer", "BEARER", "BeArEr"]) {
+      expect((await call(getProjects, "/api/v1/projects", undefined, `${scheme} ${key}`)).status, scheme).toBe(200);
+    }
+  });
+
+  it("falha ao gravar o último uso não derruba uma chave válida e não vaza a chave", async () => {
+    const { key, summary } = await newKey("write-fails");
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const update = vi.spyOn(db, "update").mockImplementationOnce(() => {
+      throw new Error(`falha com ${key}`);
+    });
+    const res = await call(getProjects, "/api/v1/projects", key);
+    expect(res.status).toBe(200);
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith("Falha ao gravar o último uso da chave de leitura", "Error");
+    expect(JSON.stringify(spy.mock.calls)).not.toContain(key.split("_")[2]);
+    expect((await listReadKeys(op)).find((k) => k.id === summary.id)?.lastUsedOn).toBeNull();
+    update.mockRestore();
+    spy.mockRestore();
   });
 
   it("segredo errado com prefixo certo: 401", async () => {
@@ -228,6 +279,43 @@ describe("limite de requisições", () => {
     for (let i = 0; i < 3; i++) expect(takeToken("w", t0, 3).ok).toBe(true);
     expect(takeToken("w", t0 + 1000, 3)).toMatchObject({ ok: false });
     expect(takeToken("w", t0 + 60_000, 3).ok).toBe(true);
+  });
+});
+
+describe("limite por IP antes da consulta", () => {
+  const withIp = (ip: string, key: string) => call(getProjects, "/api/v1/projects", key, undefined, { "x-forwarded-for": ip });
+  const unknown = `nrk_zzzzzzzz_${"A".repeat(43)}`;
+
+  it("depois do limite, chutes de chave dão 429 sem consultar o banco; outro IP segue", async () => {
+    const select = vi.spyOn(db, "select");
+    for (let i = 0; i < LOOKUP_LIMIT_PER_IP; i++) expect((await withIp("203.0.113.7", unknown)).status).toBe(401);
+    expect(select).toHaveBeenCalledTimes(LOOKUP_LIMIT_PER_IP);
+    const limited = await withIp("203.0.113.7", unknown);
+    expect(limited.status).toBe(429);
+    expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
+    expect(select).toHaveBeenCalledTimes(LOOKUP_LIMIT_PER_IP);
+    // Mesmo /24 conta junto; outro IP não.
+    expect((await withIp("203.0.113.200", unknown)).status).toBe(429);
+    expect((await withIp("198.51.100.9", unknown)).status).toBe(401);
+    select.mockRestore();
+  });
+
+  it("header sem o formato de chave não gasta o limite nem toca no banco", async () => {
+    const select = vi.spyOn(db, "select");
+    for (let i = 0; i < LOOKUP_LIMIT_PER_IP + 5; i++) {
+      expect((await call(getProjects, "/api/v1/projects", "lixo", undefined, { "x-forwarded-for": "192.0.2.1" })).status).toBe(401);
+    }
+    expect(select).not.toHaveBeenCalled();
+    select.mockRestore();
+  });
+
+  it("vale a última entrada do X-Forwarded-For (a do Caddy), não a que o cliente escreve", () => {
+    expect(truncatedClientIp("1.2.3.4, 203.0.113.7")).toBe("203.0.113.0");
+    expect(truncatedClientIp("203.0.113.7")).toBe("203.0.113.0");
+    expect(truncatedClientIp("2001:db8:abcd:12:1:2:3:4")).toBe("2001:db8:abcd::/48");
+    expect(truncatedClientIp("2001:db8::1")).toBe("2001:db8:0::/48");
+    expect(truncatedClientIp("não é ip")).toBe("unknown");
+    expect(truncatedClientIp(null)).toBe("unknown");
   });
 });
 

@@ -11,8 +11,9 @@ const entries = new Map<string, Entry>();
 export type RateResult = { ok: true } | { ok: false; retryAfterSeconds: number };
 
 export function takeToken(key: string, now: number = Date.now(), limit: number = READ_API_LIMIT): RateResult {
-  // Descarta janelas vencidas de vez em quando, para o mapa não crescer.
-  if (entries.size > 1000) {
+  // Descarta janelas vencidas quando o mapa cresce (há uma entrada por chave e
+  // por IP truncado), para a memória não aumentar sem limite.
+  if (entries.size > 10_000) {
     for (const [k, e] of entries) if (now - e.windowStart >= WINDOW_MS) entries.delete(k);
   }
   const current = entries.get(key);

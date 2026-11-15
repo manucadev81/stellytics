@@ -4,7 +4,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 import { db } from "./db";
 import { operatorApiKey, tenant, tenantMember, user } from "./db/schema";
-import { READ_KEY_PATTERN } from "./read-key";
+import { READ_KEY_PATTERN, readKeyFromHeader } from "./read-key";
 import { requireSession } from "./session";
 
 // Contextos de acesso do spec do E2, seção 4 (ADR 0003). O tenant vem sempre
@@ -99,9 +99,9 @@ export type OperatorKeyContext = OperatorContext & { readonly keyId: string };
 // igual em todos os casos. Só a chave de leitura vale: a de ingestão (`ntf_`)
 // não passa do formato. A chave completa nunca vai para log nem para erro.
 export async function authenticateReadKey(authorization: string | null): Promise<OperatorKeyContext | null> {
-  const match = /^Bearer (\S+)$/.exec(authorization ?? "");
-  const parsed = match ? READ_KEY_PATTERN.exec(match[1]!) : null;
-  if (!parsed) return null;
+  const key = readKeyFromHeader(authorization);
+  const parsed = key ? READ_KEY_PATTERN.exec(key) : null;
+  if (!key || !parsed) return null;
   const [row] = await db
     .select({
       id: operatorApiKey.id,
@@ -114,15 +114,21 @@ export async function authenticateReadKey(authorization: string | null): Promise
     .where(and(eq(operatorApiKey.prefix, parsed[1]!), isNull(operatorApiKey.revokedAt), eq(user.role, "operator")))
     .limit(1);
   if (!row) return null;
-  const given = createHash("sha256").update(match![1]!, "utf8").digest();
+  const given = createHash("sha256").update(key, "utf8").digest();
   if (!timingSafeEqual(given, row.keyHash)) return null;
   // No máximo uma escrita por dia e chave.
   const today = new Date().toISOString().slice(0, 10);
   if (row.lastUsedOn !== today) {
-    await db
-      .update(operatorApiKey)
-      .set({ lastUsedOn: sql`${today}::date` })
-      .where(eq(operatorApiKey.id, row.id));
+    // Melhor esforço: falhar em gravar o último uso não pode derrubar uma
+    // chave válida. O log leva só o nome do erro.
+    try {
+      await db
+        .update(operatorApiKey)
+        .set({ lastUsedOn: sql`${today}::date` })
+        .where(eq(operatorApiKey.id, row.id));
+    } catch (error) {
+      console.error("Falha ao gravar o último uso da chave de leitura", (error as Error).name);
+    }
   }
   return { userId: row.createdBy, keyId: row.id } as OperatorKeyContext;
 }

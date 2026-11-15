@@ -34,3 +34,12 @@ export function generateReadKey(): { key: string; prefix: string; keyHash: Buffe
   const key = `nrk_${prefix}_${randomBytes(32).toString("base64url")}`;
   return { key, prefix, keyHash: hashReadKey(key) };
 }
+
+// Chave do header `Authorization: Bearer <chave>`. O esquema não diferencia
+// maiúsculas (RFC 7235). Nulo se não houver Bearer ou a chave não tiver o
+// formato `nrk_...` (inclui a chave de ingestão `ntf_`): nesses casos nem se
+// consulta o banco.
+export function readKeyFromHeader(authorization: string | null): string | null {
+  const match = /^Bearer (\S+)$/i.exec(authorization ?? "");
+  return match && READ_KEY_PATTERN.test(match[1]!) ? match[1]! : null;
+}

@@ -19,8 +19,12 @@ O ADR 0003 faz do portal o dono do isolamento: o acesso a dados passa por funç�
 - **Onde roda:** no próprio portal, em rotas `/api/v1/*` (Route Handlers do Next.js). `authenticateReadKey` (em `src/lib/access.ts`, o único lugar que cria contextos) devolve um `OperatorContext`, e as rotas usam as mesmas funções de `src/lib/data/operator/` e `src/lib/umami/overview.ts` dos painéis. O lint de fronteiras continua valendo.
 - **Rotas (v1), só `GET`:** `/api/v1/projects` (projetos ativos com contagens), `/api/v1/web?period=` (visualizações, visitantes, visitas, rejeições e tempo, com o período anterior) e `/api/v1/api?period=` (requisições, 4xx, 5xx, p50 e p95 em segundos). `period` aceita `24h`, `7d` (padrão), `30d`, `90d` e `12m`, em UTC; valor desconhecido responde 400 (diferente da tela, que volta ao padrão).
 - **Sem paginação na v1.** As respostas têm uma linha por projeto ativo, e o número de projetos do ecossistema é pequeno (dezenas a poucas centenas). Se passar disso, a v2 ganha paginação por cursor; o prefixo `/v1` existe para isso.
-- **Limite de requisições:** 60 por minuto por chave, janela fixa em memória, 429 com `Retry-After`. O `/web` faz uma chamada ao Umami por site, então o limite protege o Umami. Com mais de uma instância o limite vale por instância.
-- **Respostas de erro** não dizem por que a chave foi recusada: 401 igual para ausente, malformada, desconhecida, errada, revogada ou de ex-operador. Todas levam `Cache-Control: no-store`.
+- **Limite de requisições, em memória, por instância:**
+  - por chave: 60 por minuto depois de autenticada (janela fixa), 429 com `Retry-After`. O `/web` faz uma chamada ao Umami por site, então o limite protege o Umami;
+  - por IP truncado, **antes** da consulta ao banco: 120 consultas de chave por minuto (IPv4 /24, IPv6 /48). Só conta header com o formato `nrk_<8>_<43>`; o resto leva 401 sem tocar no banco nem no limite. O IP vem da última entrada do `X-Forwarded-For`, a que o Caddy escreve (ele não tem `trusted_proxies`, então descarta a que o cliente mandou, e o portal não publica porta em `prod.yaml`). Fora do Caddy, sem o cabeçalho, todos caem num balde só.
+- **Respostas de erro** não dizem por que a chave foi recusada: 401 com o mesmo status, corpo e cabeçalhos para ausente, malformada, desconhecida, errada, revogada ou de ex-operador (testado). O esquema `Bearer` não diferencia maiúsculas (RFC 7235). Todas levam `Cache-Control: no-store`.
+- **Sem CORS, de propósito:** a API é servidor a servidor. O portal não responde ao preflight nem manda `Access-Control-Allow-Origin`, então um navegador de outra origem não lê as respostas, e a chave nunca deve ir para código de navegador.
+- **Último uso** (`last_used_on`) é gravado em melhor esforço: se a escrita falhar, a chamada segue com 200 e o log leva só o nome do erro.
 
 ## Alternativas consideradas
 
@@ -35,7 +39,19 @@ O ADR 0003 faz do portal o dono do isolamento: o acesso a dados passa por funç�
 ## Consequências
 
 - Mais fácil: o SCF alimenta outros sistemas sem acessar o Umami nem o banco, e cada chave é revogável sem afetar as outras. Os números da API são os mesmos dos painéis.
-- A chave de leitura é uma credencial de alto alcance: dá visão global. Fica fora de qualquer visão acessível ao gateway e ao coletor, e o hash nunca sai do banco.
 - Revogação vale na próxima chamada (sem cache de chave).
-- Sem proteção contra tentativas de adivinhar chaves além do formato e da entropia (40 bits de prefixo e 256 do segredo); limitar por IP fica para o Caddy.
-- Testes: `apps/portal/test/read-api.test.ts` (ciclo da chave, autenticação, limite, respostas) e casos novos em `test/isolation.test.ts` (tenant não gera nem usa chave, chave de ingestão não lê a API, chave de leitura não vale no coletor, tenant removido some). O coletor tem o caso `nrk_` em `ingestkeyauth/auth_test.go`.
+- A chave de leitura é uma credencial de alto alcance: dá visão global. Fica fora de qualquer visão acessível ao gateway e ao coletor, e o hash nunca sai do banco.
+
+### Riscos e pendências
+
+- **Pendência: o Caddy não limita por IP.** O `Caddyfile` e a imagem do Caddy de `prod.yaml` não têm módulo de limite de requisições, e esta decisão não mudou nenhum dos dois. O Caddy faz só duas coisas aqui: encaminhar `/api/v1` para o portal (a rota do host do portal cobre tudo) e escrever o IP real no `X-Forwarded-For`. O limite por IP é do portal, em memória e por instância: ele se perde ao reiniciar e não soma entre instâncias. Um ataque distribuído (muitos IPs) não é contido por ele. Se isso virar problema, o passo seguinte é um limite no proxy (imagem do Caddy com módulo de rate limit, ou firewall) ou um limite compartilhado; não foi feito.
+- **O que a recusa revela.** O caminho de prefixo inexistente, chave revogada ou de ex-operador responde sem calcular o SHA-256, então um atacante com medida de tempo fina consegue distinguir "prefixo ativo" de "prefixo inexistente ou inativo". Isso revela só se o prefixo existe e está ativo, e o prefixo já é público (aparece na tela `/operator/keys` para todo operador). O segredo é comparado em tempo constante.
+- **Escopo único e global:** vazar uma chave expõe as métricas de todos os projetos ativos até a revogação. Mitigação: revogação imediata, 20 chaves no máximo, auditoria de criação e revogação. Não há auditoria de leitura (só `last_used_on`, diário).
+- O limite por chave também é por instância.
+- O `/web` depende do Umami: com o Umami fora, o projeto vem com `totals` nulo e `unavailable` maior que zero, em vez de erro.
+
+### Testes
+
+- `apps/portal/test/read-api.test.ts`: formato, ciclo da chave, hash e audit_log, 401 idêntico em todos os casos, Bearer sem diferenciar caixa, falha na escrita do último uso, limite por chave e por IP (sem consulta ao banco depois do limite), respostas e período inválido.
+- `apps/portal/test/isolation.test.ts`: tenant e usuário sem projeto não geram nem revogam chave, chave de ingestão não lê a API, chave de leitura não existe para o coletor e os papéis `notify_ingest` e `notify_collector` não leem a tabela, tenant removido some.
+- `services/collector/components/ingestkeyauth/auth_test.go`: o coletor recusa `nrk_`.
