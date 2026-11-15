@@ -31,13 +31,37 @@ function upsert(table: string, at: string, route: string, status: number, count:
       duration_buckets = api_metric_add_buckets(m.duration_buckets, EXCLUDED.duration_buckets)`;
 }
 
+const tables = ["api_metric_1m", "api_metric_1h", "api_metric_1d"];
+
+async function partitionNames(): Promise<string[]> {
+  const rows = await sql<{ child: string }[]>`
+    SELECT c.relname AS child
+    FROM pg_inherits i
+    JOIN pg_class p ON p.oid = i.inhparent
+    JOIN pg_class c ON c.oid = i.inhrelid
+    WHERE p.relname IN ('api_metric_1m', 'api_metric_1h', 'api_metric_1d')`;
+  return rows.map((r) => r.child);
+}
+
+// Partições que existiam antes do teste. O teste da default cria partições
+// futuras; sem removê-las, a segunda execução no mesmo banco acharia o mês
+// distante já coberto e o ponto nunca passaria pela default.
+let baseline: string[] = [];
+
 beforeAll(async () => {
   await runMigrations();
+  baseline = await partitionNames();
 });
 
 afterAll(async () => {
-  for (const t of ["api_metric_1m", "api_metric_1h", "api_metric_1d"]) {
+  for (const t of tables) {
     await sql.unsafe(`DELETE FROM ${t} WHERE tenant_id = $1`, [tenantId]);
+  }
+  for (const name of await partitionNames()) {
+    if (baseline.includes(name)) continue;
+    // Só as criadas por este teste, e só se já estiverem vazias.
+    const rows = await sql.unsafe(`SELECT count(*)::int AS n FROM ${name}`);
+    if (rows[0]!.n === 0) await sql.unsafe(`DROP TABLE ${name}`);
   }
   await sql.end();
 });
@@ -63,17 +87,26 @@ describe("tabelas e partições", () => {
   });
 
   it("guarda na default um ponto sem partição e o move quando ela é criada", async () => {
-    const far = new Date();
-    far.setUTCDate(1);
-    far.setUTCMonth(far.getUTCMonth() + 4);
+    // Um mês depois da última partição que já existe, para o ponto cair na
+    // default mesmo que outra execução tenha criado partições à frente.
+    const now = new Date();
+    const lastPartition = baseline
+      .filter((n) => /^api_metric_1m_p\d{6}$/.test(n))
+      .map((n) => n.slice(-6))
+      .sort()
+      .at(-1)!;
+    const lastMonths = Number(lastPartition.slice(0, 4)) * 12 + Number(lastPartition.slice(4)) - 1;
+    const nowMonths = now.getUTCFullYear() * 12 + now.getUTCMonth();
+    const ahead = lastMonths - nowMonths + 1;
+    const far = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + ahead, 1));
     const at = far.toISOString();
     await sql.unsafe(upsert("api_metric_1m", at, "/atrasado", 200, 1, 0.01, buckets({ 1: 1 })));
 
     const where = `tenant_id = '${tenantId}' AND route = '/atrasado'`;
     expect(await sql.unsafe(`SELECT 1 FROM api_metric_1m_default WHERE ${where}`)).toHaveLength(1);
 
-    await sql`SELECT api_metric_ensure_partitions(4)`;
-    await sql`SELECT api_metric_ensure_partitions(4)`; // idempotente
+    await sql`SELECT api_metric_ensure_partitions(${ahead})`;
+    await sql`SELECT api_metric_ensure_partitions(${ahead})`; // idempotente
 
     expect(await sql.unsafe(`SELECT 1 FROM api_metric_1m_default WHERE ${where}`)).toHaveLength(0);
     const [moved] = await sql.unsafe(`SELECT tableoid::regclass::text AS part FROM api_metric_1m WHERE ${where}`);
