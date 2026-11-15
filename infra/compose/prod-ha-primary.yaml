@@ -12,10 +12,21 @@
 # - recebe a senha do papel de replicação, que o init/03-replication.sh usa
 #   (volume novo) ou que se aplica a um volume existente, ver docs/deploy.md.
 #
-# A rede privada da Hetzner só leva tráfego entre as VMs do projeto; o firewall
-# da Hetzner não filtra esse tráfego, então as portas só valem pela rede e
-# pelos papéis do banco (notify_ingest só lê a visão ingest_site; replicator só
-# replica, e só da faixa REPLICATION_ALLOWED_CIDR no pg_hba.conf).
+# Proteção real (não é só "os papéis"): o pg_hba.conf da imagem termina em
+# `host all all all scram-sha-256`, que deixaria todos os papéis (postgres,
+# umami, notify, notify_collector) alcançáveis pela rede privada só com senha.
+# O init/03-replication.sh insere ANTES dela, para cada faixa de
+# REPLICATION_ALLOWED_CIDR: notify_ingest só no banco notify, replicator só em
+# replicação e `reject` para o resto. O tráfego do próprio Compose (portal,
+# Umami, gateway local) vem de 172.30.0.0/24, fora dessas faixas.
+#
+# RISCO que continua: o Umami publicado no IP privado (3000) é alcançável por
+# qualquer host da rede privada, sem autenticação em /api/send, e aceita o
+# cabeçalho de IP do cliente (CLIENT_IP_HEADER). Quem controlar uma VM da rede
+# privada pode injetar eventos com IP falso. Mitigação: o firewall da Hetzner
+# deve liberar a 3000 e a 5432 só entre os IPs privados conhecidos (primário,
+# réplica e VMs de ingestão); o firewall do projeto não filtra a rede privada
+# por padrão (infra/opentofu não faz isso hoje).
 
 services:
   postgres:

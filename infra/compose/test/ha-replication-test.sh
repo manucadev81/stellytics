@@ -30,7 +30,7 @@ fail() { echo "FALHOU: $*" >&2; exit 1; }
 ok() { stamp "ok: $*"; }
 
 POSTGRES_PASSWORD=$(rand); NOTIFY_DB_PASSWORD=$(rand); NOTIFY_INGEST_DB_PASSWORD=$(rand)
-REPL_PW=$(rand); PROOF_SECRET=$(rand)
+REPL_PW=$(rand); PROOF_SECRET=$(rand); UMAMI_PW=$(rand); COLLECTOR_PW=$(rand)
 S3_KEY=$(rand 10); S3_SECRET=$(rand); LIBSODIUM=$(rand 32)
 INGEST_IMG=${INGEST_WEB_IMAGE:-notify-ingest-web:dev}
 PG_IMG=notify-postgres-walg:17.11-walg3.0.9
@@ -50,10 +50,10 @@ mkdir -p "$work/prim" "$work/stby" "$work/umami"
 write_env() { # $1 arquivo, $2 diretório de dados
   cat > "$1" <<EOT
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
-UMAMI_DB_PASSWORD=$(rand)
+UMAMI_DB_PASSWORD=$UMAMI_PW
 NOTIFY_DB_PASSWORD=$NOTIFY_DB_PASSWORD
 NOTIFY_INGEST_DB_PASSWORD=$NOTIFY_INGEST_DB_PASSWORD
-NOTIFY_COLLECTOR_DB_PASSWORD=$(rand)
+NOTIFY_COLLECTOR_DB_PASSWORD=$COLLECTOR_PW
 UMAMI_APP_SECRET=$(rand)
 PORTAL_AUTH_SECRET=$(rand)
 INGEST_PROOF_SECRET=$PROOF_SECRET
@@ -140,21 +140,37 @@ ok "migrações do portal aplicadas ($(ls "$root"/apps/portal/drizzle/*.sql | wc
 
 # O init rodou 03-replication.sh? (volume novo)
 [ "$(psql_at "$PRIM" "SELECT count(*) FROM pg_roles WHERE rolname='replicator' AND NOT rolsuper AND rolreplication")" = 1 ] || fail "papel replicator"
-[ "$(docker exec "$PRIM" grep -c '^host replication replicator ' /var/lib/postgresql/data/pg_hba.conf)" = 2 ] || fail "linha de replicação no pg_hba"
+hba_rules() { docker exec "$1" grep -nE '^host (notify notify_ingest|replication replicator|all all [^ ]+ reject)|^host all all all ' /var/lib/postgresql/data/pg_hba.conf; }
+[ "$(hba_rules "$PRIM" | grep -c -E 'notify_ingest|replicator|reject')" = 6 ] || fail "esperava 3 regras por faixa (2 faixas) no pg_hba"
+# Ordem: as regras da faixa vêm ANTES da regra genérica (primeira que casa).
+gen=$(hba_rules "$PRIM" | grep 'host all all all ' | cut -d: -f1)
+[ "$(hba_rules "$PRIM" | grep -E 'notify_ingest|replicator|reject' | cut -d: -f1 | sort -n | tail -1)" -lt "$gen" ] || fail "regras da faixa depois da regra genérica"
 [ "$(psql_at "$PRIM" "SHOW max_slot_wal_keep_size")" = 10GB ] || fail "max_slot_wal_keep_size"
-ok "primário: papel replicator, pg_hba restrito à faixa e max_slot_wal_keep_size=10GB"
+ok "primário: papel replicator, pg_hba (notify_ingest, replicator e reject por faixa, antes da regra genérica) e max_slot_wal_keep_size=10GB"
 # O primário não guarda WAL para uma réplica que ainda não existe.
 [ "$(psql_at "$PRIM" "SELECT count(*) FROM pg_replication_slots")" = 0 ] || fail "slot criado cedo demais"
 
 # Idempotência do script em volume existente.
-prim_c "$work/env.prim" exec -T postgres sh < "$root/infra/compose/postgres/init/03-replication.sh" >/dev/null
-[ "$(docker exec "$PRIM" grep -c '^host replication replicator' /var/lib/postgresql/data/pg_hba.conf)" = 2 ] || fail "03 duplicou o pg_hba"
-ok "03-replication.sh reaplicado sem duplicar nada"
+hba_before=$(docker exec "$PRIM" cat /var/lib/postgresql/data/pg_hba.conf | md5sum)
+out=$(prim_c "$work/env.prim" exec -T postgres sh < "$root/infra/compose/postgres/init/03-replication.sh")
+echo "$out" | grep -q '03-replication: changed' && fail "reaplicar disse que mudou algo"
+[ "$(docker exec "$PRIM" cat /var/lib/postgresql/data/pg_hba.conf | md5sum)" = "$hba_before" ] || fail "03 mudou o pg_hba ao reaplicar"
+[ "$(hba_rules "$PRIM" | grep -c -E 'notify_ingest|replicator|reject')" = 6 ] || fail "03 duplicou linhas do pg_hba"
+ok "03-replication.sh reaplicado: pg_hba idêntico byte a byte, sem duplicar nada, sem reportar mudança"
 
 # Papéis: replicator não entra em banco de aplicação; notify_ingest não replica.
 if cpsql "$REPL_PW" pg-primary replicator notify 'select 1' >/dev/null 2>&1; then fail "replicator abriu o banco notify"; fi
-if cpsql "$NOTIFY_INGEST_DB_PASSWORD" pg-primary notify_ingest "postgres replication=true" 'IDENTIFY_SYSTEM' >/dev/null 2>&1; then fail "notify_ingest abriu replicação"; fi
+if cpsql "$NOTIFY_INGEST_DB_PASSWORD" pg-primary notify_ingest "dbname=postgres replication=true" 'IDENTIFY_SYSTEM' >/dev/null 2>&1; then fail "notify_ingest abriu replicação"; fi
 ok "replicator não abre o banco notify; notify_ingest não abre conexão de replicação"
+# pg_hba da faixa: de um cliente na rede, tudo fora notify_ingest e replicator é rejeitado.
+for pair in "postgres:$POSTGRES_PASSWORD:postgres" "umami:$UMAMI_PW:umami" "notify:$NOTIFY_DB_PASSWORD:notify" "notify_collector:$COLLECTOR_PW:notify"; do
+  IFS=: read -r u pw db <<<"$pair"
+  if err=$(cpsql "$pw" pg-primary "$u" "$db" 'select 1' 2>&1); then fail "$u abriu $db pela rede da faixa"; fi
+  echo "$err" | grep -q 'pg_hba.conf rejects connection' || fail "$u: erro inesperado (esperava rejeição do pg_hba): $err"
+done
+[ "$(cpsql "$NOTIFY_INGEST_DB_PASSWORD" pg-primary notify_ingest notify 'select 1')" = 1 ] || fail "notify_ingest não conectou"
+[ -n "$(cpsql "$REPL_PW" pg-primary replicator "dbname=postgres replication=true" 'IDENTIFY_SYSTEM')" ] || fail "replicator não replicou"
+ok "pela faixa da rede: postgres, umami, notify e notify_collector rejeitados pelo pg_hba; notify_ingest e replicator funcionam"
 
 stamp "dados no primário"
 docker exec -i "$PRIM" psql -U postgres -d notify -v ON_ERROR_STOP=1 -q <<'SQL'

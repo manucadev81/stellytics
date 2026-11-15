@@ -6,9 +6,16 @@
 # O que faz, quando ligado:
 # - cria (ou atualiza a senha do) papel `replicator`, só com LOGIN e
 #   REPLICATION (sem acesso a nenhum banco);
-# - libera a conexão de replicação só das faixas REPLICATION_ALLOWED_CIDR (a rede
-#   privada 10.50.0.0/16 do OpenTofu) no pg_hba.conf; o pg_hba padrão da imagem
-#   não tem nenhuma regra `replication` para a rede, então o resto é recusado;
+# - para cada faixa de REPLICATION_ALLOWED_CIDR (a rede privada 10.50.0.0/16 do
+#   OpenTofu) insere no pg_hba.conf, ANTES da regra genérica da imagem
+#   (`host all all all scram-sha-256`; o pg_hba é "primeira que casa"):
+#     host notify      notify_ingest <faixa> scram-sha-256   (gateways das réplicas)
+#     host replication replicator    <faixa> scram-sha-256   (a réplica)
+#     host all         all           <faixa> reject          (todo o resto)
+#   Sem isso, publicar o 5432 no IP privado deixaria postgres, umami, notify e
+#   notify_collector acessíveis pela rede privada só com senha. O tráfego do
+#   próprio Compose (portal, Umami, gateway local) vem da rede 172.30.0.0/24,
+#   fora destas faixas, e não é afetado;
 # - limita em max_slot_wal_keep_size o WAL que o slot da réplica pode reter,
 #   para uma réplica parada não encher o disco do primário (o slot em si é
 #   criado pela réplica, em standby-entrypoint.sh, quando ela é montada: sem
@@ -37,7 +44,10 @@ case "$keep" in *[!0-9A-Za-z]* | "") echo "REPLICATION_MAX_SLOT_WAL_KEEP inváli
 
 psql() { command psql -v ON_ERROR_STOP=1 --username "${POSTGRES_USER:-postgres}" --dbname postgres "$@"; }
 
-psql -v repl_pw="$REPLICATION_DB_PASSWORD" -v keep="$keep" <<'SQL'
+# A senha entra pelo ambiente (\getenv), não por argumento do psql (que apareceria
+# na lista de processos do contêiner).
+psql -v keep="$keep" <<'SQL'
+\getenv repl_pw REPLICATION_DB_PASSWORD
 SELECT 'CREATE ROLE replicator LOGIN REPLICATION'
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'replicator')
 \gexec
@@ -62,12 +72,34 @@ SQL
 
 hba=$(psql -Atc 'SHOW hba_file')
 # REPLICATION_ALLOWED_CIDR aceita uma lista separada por vírgulas (faixas IPv4
-# e IPv6); cada uma vira uma linha.
+# e IPv6). Idempotente: tira as linhas nossas da faixa e reinsere o bloco antes
+# da regra genérica (ou no fim, se ela não existir).
+# Monta o bloco de todas as faixas e a lista das linhas nossas a retirar.
+want=""
+set --
 for range in $(echo "$cidr" | tr ',' ' '); do
-  line="host replication replicator $range scram-sha-256"
-  if ! grep -qxF "$line" "$hba"; then
-    echo "$line" >> "$hba"
-  fi
+  l1="host notify notify_ingest $range scram-sha-256"
+  l2="host replication replicator $range scram-sha-256"
+  l3="host all all $range reject"
+  want="$want$l1
+$l2
+$l3
+"
+  set -- "$@" -e "$l1" -e "$l2" -e "$l3"
 done
+tmp=$(mktemp)
+grep -vxF "$@" "$hba" > "$tmp" || true
+awk -v block="$want" '
+  !done && $0 == "host all all all scram-sha-256" { printf "%s", block; done = 1 }
+  { print }
+  END { if (!done) printf "%s", block }
+' "$tmp" > "$tmp.new"
+changed=0
+if ! cmp -s "$tmp.new" "$hba"; then
+  cat "$tmp.new" > "$hba"
+  changed=1
+fi
+rm -f "$tmp" "$tmp.new"
 psql -Atc 'SELECT pg_reload_conf()' >/dev/null
+[ "$changed" = 0 ] || echo "03-replication: changed"
 echo "03-replication: papel replicator e pg_hba ($cidr) prontos."
