@@ -1,6 +1,6 @@
 # Anti-bot e cadeia de suprimentos
 
-Este documento descreve duas defesas do notify e, para cada uma, o que ela impede e o que **não** impede. Tudo o que está aqui foi lido no código da `main`; onde um controle depende de uma ação fora do repositório, isso está dito. Mudou o código? Atualize o documento junto.
+Este documento descreve duas defesas do notify e, para cada uma, o que ela impede e o que **não** impede. Tudo o que está aqui foi lido no código da `main`; onde um controle depende de uma ação fora do repositório, isso está dito. Os itens de conta e de GitHub (app do Renovate, relato privado de vulnerabilidades, proteção de branch) não são verificáveis no código: vêm de [`andamento.md`](andamento.md). Mudou o código? Atualize o documento junto.
 
 - [Parte 1: anti-bot e anti-inflação](#parte-1-anti-bot-e-anti-inflação)
 - [Parte 2: cadeia de suprimentos](#parte-2-cadeia-de-suprimentos)
@@ -20,18 +20,29 @@ O notify não tenta separar "humano" de "robô" com certeza. A estratégia é **
 
 ### Camadas, na ordem em que o gateway as aplica
 
-O `event` em [`handler.go`](../services/ingest-web/handler.go) executa as checagens nesta ordem. Os valores abaixo são os padrões de [`internal/config/config.go`](../services/ingest-web/internal/config/config.go); todos mudam por variável de ambiente.
+O `event` em [`handler.go`](../services/ingest-web/handler.go) executa as checagens nesta ordem. Os valores abaixo são os padrões de [`internal/config/config.go`](../services/ingest-web/internal/config/config.go). Só alguns são ajustáveis em produção: o [`prod.yaml`](../infra/compose/prod.yaml) repassa ao contêiner apenas `PROOF_SECRET`, `RATE_LIMIT`, `RATE_BURST` e `FINGERPRINT_LIMIT` (por `INGEST_*` no `.env`); mudar os demais exige editar o `prod.yaml`.
 
-| # | Camada | Onde | Limite padrão | Resposta quando falha |
-|---|---|---|---|---|
-| 1 | Limite de taxa por IP truncado (token bucket, em memória) | [`internal/limit`](../services/ingest-web/internal/limit/limit.go) | `RATE_LIMIT` 20 eventos/s, `RATE_BURST` 40 | `429` |
-| 2 | Tipo de conteúdo e tamanho do corpo | `handler.go` | `text/plain` ou `application/json`; corpo de até 16 KiB (`maxBody`) | `415` / `413` |
-| 3 | Prova de execução de JavaScript | [`internal/proof`](../services/ingest-web/internal/proof/proof.go) | `PROOF_BITS` 12, `PROOF_TTL` 10 min | `204`, evento descartado |
-| 4 | Site existe e aceita ingestão | [`internal/site`](../services/ingest-web/internal/site/site.go) (visão `ingest_site`) | cache de no máximo 1 min (`SITE_CACHE_TTL`) | `204`, evento descartado |
-| 5 | Limite de fingerprints distintas por IP e site | [`internal/fingerprint`](../services/ingest-web/internal/fingerprint/fingerprint.go) | `FINGERPRINT_LIMIT` 50 por `FINGERPRINT_WINDOW` de 10 min | `204`, evento descartado |
-| 6 | Repasse ao Umami com payload remontado | [`internal/relay`](../services/ingest-web/internal/relay/relay.go) | só `website`, `hostname`, `url`, `referrer`, `title`, `language`, `screen` | n/a |
+| # | Camada | Onde | Limite padrão | Ajustável em produção | Resposta quando falha |
+|---|---|---|---|---|---|
+| 1 | Limite de taxa por IP truncado (token bucket, em memória) | [`internal/limit`](../services/ingest-web/internal/limit/limit.go) | `RATE_LIMIT` 20 eventos/s, `RATE_BURST` 40 | sim (`RATE_LIMIT`, `RATE_BURST`) | `429` |
+| 2 | Tipo de conteúdo e tamanho do corpo | `handler.go` | `text/plain` ou `application/json`; corpo de até 16 KiB (`maxBody`) | não (constante) | `415` / `413` |
+| 3 | Prova de execução de JavaScript | [`internal/proof`](../services/ingest-web/internal/proof/proof.go) | `PROOF_BITS` 12, `PROOF_TTL` 10 min | só o segredo; `PROOF_BITS` e `PROOF_TTL` não | `204`, evento descartado |
+| 4 | Site existe e aceita ingestão | [`internal/site`](../services/ingest-web/internal/site/site.go) (visão `ingest_site`) | cache de no máximo 1 min (`SITE_CACHE_TTL`) | não | `204`, evento descartado |
+| 5 | Limite de fingerprints distintas por IP e site | [`internal/fingerprint`](../services/ingest-web/internal/fingerprint/fingerprint.go) | `FINGERPRINT_LIMIT` 50 por `FINGERPRINT_WINDOW` de 10 min | só `FINGERPRINT_LIMIT`; a janela não | `204`, evento descartado |
+| 6 | Repasse ao Umami com payload remontado | [`internal/relay`](../services/ingest-web/internal/relay/relay.go) | só `website`, `hostname`, `url`, `referrer`, `title`, `language`, `screen` | não | n/a |
 
-Falhas das camadas 3, 4 e 5 respondem `204`, igual ao sucesso. Quem testa o endpoint não descobre qual regra o barrou nem se um site existe (spec do E2, seção 6, em [`e2-tenants-e-controle-de-acesso.md`](specs/e2-tenants-e-controle-de-acesso.md)). `GET /c` (o desafio) passa pelo mesmo limite de taxa da camada 1 e não consulta a `ingest_site`, então não revela se o site existe.
+Falhas das camadas 3, 4 e 5 respondem `204`, igual ao sucesso, para não dar pista de qual regra barrou nem de se um site existe (spec do E2, seção 6, em [`e2-tenants-e-controle-de-acesso.md`](specs/e2-tenants-e-controle-de-acesso.md)). Isso vale só para essas camadas; outras respostas de `handler.go` aparecem para quem testa:
+
+| Resposta | Quando |
+|---|---|
+| `400` | IP do cliente ilegível, JSON inválido ou campos fora dos limites (`relay.Decode`), `s` do `GET /c` que não é UUID |
+| `413` | corpo maior que 16 KiB |
+| `415` | tipo de conteúdo diferente de `text/plain` e `application/json` |
+| `429` | limite de taxa por IP truncado |
+| `503` | falha na consulta à `ingest_site` (o gateway não deixa passar evento sem conferir o site) |
+| `502` | falha no repasse ao Umami |
+
+Quem testa o endpoint consegue, portanto, distinguir volume excessivo, formato inválido e indisponibilidade; não consegue distinguir prova inválida, site desconhecido e fingerprints demais. `GET /c` (o desafio) passa pelo mesmo limite de taxa da camada 1 e não consulta a `ingest_site`, então não revela se o site existe.
 
 ### Prova de execução de JS (`internal/proof`)
 
@@ -42,7 +53,19 @@ Como funciona:
 3. O script procura um nonce tal que `SHA-256(token + ":" + nonce)` comece com `PROOF_BITS` bits zero (`solve` em [`packages/tracker/src/tracker.ts`](../packages/tracker/src/tracker.ts), usando `crypto.subtle`) e manda `p:{t,n}` em cada evento.
 4. `Issuer.Verify` confere formato, assinatura (comparação em tempo constante com `hmac.Equal`), validade (`PROOF_TTL` de 1 min a 1 h, tolerância de 1 min para relógio adiantado) e o trabalho. A prova nunca é repassada ao Umami.
 
-Com 12 bits, o navegador faz em média cerca de 4 mil hashes por prova, o que é imperceptível; um servidor que mande milhões de eventos por segundo também paga pouco por evento (ver limites abaixo).
+Com 12 bits, o navegador faz em média cerca de 4 mil hashes por prova, o que é imperceptível; cada prova custa milissegundos de CPU. Quem limita o volume não é a prova, são as camadas de taxa (1) e de fingerprints (5), e os limites abaixo.
+
+Faixas aceitas e valores que desligam controles (validados em `config.go`; o gateway não sobe com valor fora da faixa):
+
+| Variável | Faixa | Efeito de um valor extremo |
+|---|---|---|
+| `PROOF_BITS` | 0 a 24 | `0` tira o custo da prova (o token assinado continua exigido) |
+| `PROOF_TTL` | 1 min a 1 h | quanto maior, mais tempo de reuso de um token |
+| `PROOF_SECRET` | 32 caracteres ou mais, ou vazio | vazio: `main.go` sorteia uma chave e avisa no log; os tokens não valem entre reinícios nem entre réplicas. O `prod.yaml` exige o segredo (`INGEST_PROOF_SECRET`) |
+| `FINGERPRINT_LIMIT` | 0 a 1000 | `0` desliga a camada de fingerprints |
+| `FINGERPRINT_WINDOW` | 1 min a 24 h | janela deslizante da contagem |
+| `RATE_LIMIT`, `RATE_BURST` | maiores que 0 | não há valor que desligue a taxa |
+| `SITE_CACHE_TTL` | 0 a 1 min | `0` consulta o banco a cada evento |
 
 **O que a prova impede:** `curl`, scripts que repetem um `POST /e` sem passar pelo desafio, e tráfego forjado com o ID de um site sem nunca ter carregado o fluxo do script. Um token de um site não vale para outro (o HMAC cobre o `website`).
 
@@ -104,13 +127,13 @@ O notify serve um script que roda no site de cada tenant e imagens que processam
 | **Nomes que ad blockers não barram** | Evita que o script e os endpoints sejam bloqueados (e que tenants sejam tentados a hospedar cópias próprias, sem SRI). O workflow `adblock` baixa EasyList, EasyPrivacy, as listas padrão do uBlock Origin e a de Peter Lowe e falha se alguma bloquear `/s/vX.Y.Z/n.js`, `/e` ou `/c`. Roda em PRs que mexem no script ou nas rotas, na `main` e todo dia. Está fora do agregador `ci` de propósito (as listas mudam sem mudança no código). | `.github/workflows/adblock.yml`, `packages/tracker/scripts/check-adblock.ts`, `packages/tracker/docs/ad-blockers.md` |
 | **Dependências travadas** | `pnpm-lock.yaml` e `services/go.sum` commitados; o CI instala com `pnpm install --frozen-lockfile`, o `Dockerfile` do portal também. Versões exatas nos `package.json`. | `.github/workflows/ci.yml`, `apps/portal/Dockerfile`, `CONTRIBUTING.md` |
 | **Espera de 14 dias** | O pnpm recusa releases com menos de 14 dias (`minimumReleaseAge: 20160`, em minutos) e o Renovate só propõe releases com pelo menos 14 dias (`minimumReleaseAge` e `internalChecksFilter: strict`). Dá tempo para a comunidade achar e retirar uma versão maliciosa. Os módulos do Collector OTel sobem juntos, na mesma release. | `pnpm-workspace.yaml`, `renovate.json`, `CLAUDE.md` |
-| **Renovate** | Atualizações por PR, `rangeStrategy: pin`, `gomodTidy`, versão maior só depois de aprovada no Dependency Dashboard (atualizações de segurança passam direto), Umami nunca agrupado nem automático, Postgres sem salto de versão maior, actions agrupadas. O manager `docker-compose` lê `infra/compose/*.yaml`. | `renovate.json` |
+| **Renovate** | Atualizações por PR, `rangeStrategy: pin`, `gomodTidy`, versão maior só depois de aprovada no Dependency Dashboard (atualizações de segurança passam direto, desde que os alertas de segurança do repositório estejam ativos, o que é ação da conta), Umami nunca agrupado nem automático, Postgres sem salto de versão maior, actions agrupadas. O manager `docker-compose` lê `infra/compose/*.yaml`. | `renovate.json` |
 | **Actions fixadas por SHA** | Todo `uses:` dos workflows tem o SHA do commit, com a tag em comentário (`helpers:pinGitHubActionDigests` mantém isso). Permissões mínimas por workflow (`contents: read`, elevadas só nos jobs que precisam, como `id-token: write` na assinatura). | `.github/workflows/ci.yml`, `release.yml`, `adblock.yml` |
 | **Imagens por digest** | Imagens base nos `Dockerfile` (`node`, `golang`) e no Compose (`postgres`, `umami`, `mailpit`, `caddy`, `otel/opentelemetry-collector`) fixadas por tag e digest. A imagem do Postgres de produção (Debian) também. As imagens finais do Go são `scratch`: só o binário, sem shell nem gerenciador de pacotes. O Go compila com `-trimpath` e `CGO_ENABLED=0`. | `apps/portal/Dockerfile`, `services/*/Dockerfile`, `infra/compose/*.yaml`, `infra/compose/postgres/Dockerfile` |
 | **Licenças aprovadas pela OSI** | Regra do projeto: toda dependência precisa de licença OSI. Já pesou em decisões (TimescaleDB, licença TSL, descartado no [ADR 0002](adr/0002-arquitetura-e-stack.md); OpenTofu no lugar do Terraform, licença BUSL, no [ADR 0004](adr/0004-hospedagem-e-backup.md)). O repositório é MIT. | `CONTRIBUTING.md`, `LICENSE`, ADRs |
 | **Release com SBOM** | Ao publicar uma release, o workflow gera um SBOM SPDX do repositório (syft) e o anexa à release. | `.github/workflows/release.yml` (job `sbom`) |
 | **Imagens assinadas e atestadas** | Para cada `Dockerfile` em `apps/*` e `services/*`, publica no GHCR com a tag da versão e a tag do commit, assina com cosign **sem chave** (identidade OIDC do GitHub Actions) e anexa o SBOM da imagem como atestado, tudo por digest. | `.github/workflows/release.yml` (job `image`) |
-| **Deploy só com imagem assinada** | O Ansible exige as imagens por digest (`@sha256:`) e roda `cosign verify` em cada uma, com a identidade esperada (`release.yml` em uma tag `v*` deste repositório) e o emissor OIDC do GitHub, antes de subir a pilha. O binário do cosign é baixado com hash fixado (`cosign_sha256`). | `infra/ansible/roles/notify/tasks/main.yml`, `infra/ansible/group_vars/all.yml`, `infra/ansible/roles/docker/tasks/main.yml`, [`deploy.md`](deploy.md) |
+| **Imagens próprias verificadas no deploy** | O `group_vars/all.yml` pede as imagens por digest (`@sha256:`) e o Ansible roda `cosign verify` em cada uma, com a identidade esperada (`release.yml` em uma tag `v*` deste repositório) e o emissor OIDC do GitHub, antes de subir a pilha. O binário do cosign é baixado com hash fixado (`cosign_sha256`). | `infra/ansible/roles/notify/tasks/main.yml`, `infra/ansible/group_vars/all.yml`, `infra/ansible/roles/docker/tasks/main.yml`, [`deploy.md`](deploy.md) |
 | **Canal de relato de vulnerabilidades** | Política, prazos por severidade (3 dias úteis para confirmar, 14 dias para crítica) e escopo; inclui o script `/s/vX.Y.Z/` nas versões suportadas. | [`SECURITY.md`](../SECURITY.md) |
 
 Como verificar uma imagem publicada e o SBOM atestado: ver o [`README.md`](../README.md), seção "Cadeia de suprimentos".
@@ -124,8 +147,10 @@ Como verificar uma imagem publicada e o SBOM atestado: ver o [`README.md`](../RE
 
 - **A assinatura prova origem, não ausência de bug.** O `cosign verify` do deploy confirma que a imagem saiu do `release.yml` numa tag `v*` do repositório. Se o repositório ou uma conta de mantenedor for comprometido e publicarem uma release, a imagem sairá assinada. A defesa aí é a proteção de conta (2FA) e a revisão, que estão fora do código.
 - **A `main` não tem proteção de branch**, por decisão registrada em [`andamento.md`](andamento.md): o CI roda mas não bloqueia merge nem push direto. Um push direto na `main` não passa por revisão. Se a proteção for ligada, exigir só o check `ci`.
+- **Só `portal` e `ingest-web` passam por `cosign verify`** (`roles/notify/tasks/main.yml`, loop das duas imagens). Umami, Caddy e as demais imagens de terceiros têm só digest fixado, sem verificação de assinatura. O Postgres de produção é construído no próprio host (`docker compose up --build`) a partir de base por digest, sem assinatura.
+- **O `cosign verify` não amarra o digest a uma release específica.** Ele confere identidade (workflow `release.yml` em tag `v*`) e emissor, não qual release o digest deveria ser; o operador escolhe o digest que preenche em `group_vars`.
 - **A regex de identidade aceita qualquer tag `v*`**, não só as de releases aprovadas. Quem puder criar uma tag e publicar uma release (permissão de escrita no repositório) produz uma imagem aceita.
-- **Builds não são verificados como reproduzíveis.** Há passos que ajudam (`-trimpath`, lockfiles, bases por digest, `CGO_ENABLED=0`), mas nenhum job reconstrói a imagem e compara o digest, e o build do portal (Next.js) não foi avaliado quanto a isso. Não afirmamos reprodutibilidade bit a bit. Os SBOMs e a atestação dão rastreabilidade, não reprodutibilidade.
+- **Builds não são verificados como reproduzíveis.** Há passos que ajudam (`-trimpath`, lockfiles, bases por digest, `CGO_ENABLED=0`), mas o `apt-get install` de `curl` em `infra/compose/postgres/Dockerfile` não tem versão fixa (muda com o repositório Debian), e nenhum job reconstrói a imagem e compara o digest, e o build do portal (Next.js) não foi avaliado quanto a isso. Não afirmamos reprodutibilidade bit a bit. Os SBOMs e a atestação dão rastreabilidade, não reprodutibilidade.
 - **O SBOM não é conferido automaticamente.** Ele é publicado e atestado, mas nenhum passo o compara com uma base de vulnerabilidades.
 - **Não há verificação automática de licenças nem varredura de vulnerabilidades no CI.** A regra da licença OSI é uma regra de revisão (CONTRIBUTING). Não há `pnpm audit`, `govulncheck`, Dependency Review ou equivalente nos workflows; o que pega vulnerabilidade conhecida hoje é o Renovate (atualização de segurança) quando estiver instalado. Ver a próxima seção.
 - **A espera de 14 dias reduz o risco, não o elimina.** Uma versão maliciosa que passe despercebida por mais de 14 dias é instalada. Atualizações de segurança do Renovate passam sem essa espera de propósito, pelo outro lado do mesmo risco.
@@ -144,8 +169,8 @@ Como verificar uma imagem publicada e o SBOM atestado: ver o [`README.md`](../RE
 | Relato privado de vulnerabilidades | Só existe em repositório público. | Ligar *Settings, Code security, Private vulnerability reporting* ao abrir o repositório (pendência da #56). |
 | Proteção da `main` | Desligada por decisão. | Se ligada, exigir o check `ci` e revisão. |
 | 2FA e proteção das contas de mantenedores | Não é verificável pelo repositório. | Ação da organização. |
-| Varredura de vulnerabilidades e de licenças no CI | Não existe. | Sem issue. Proposta: Dependency Review nas PRs, `govulncheck` no job `go`, `pnpm audit`, e uma verificação de licenças OSI. |
-| Verificação de build reproduzível | Não existe. | Sem issue. |
+| Varredura de vulnerabilidades e de licenças no CI | Não existe. | Issue a abrir (CI: varredura e licenças). Proposta: Dependency Review nas PRs, `govulncheck` no job `go`, `pnpm audit`, e uma verificação de licenças OSI. |
+| Verificação de build reproduzível | Não existe. | Issue a abrir (builds reproduzíveis verificados). |
 | Calibragem dos limites anti-bot | Padrões não medidos com tráfego real. | Calibrar nos pilotos (E8). |
 | Replicação do gateway | Limites em memória por processo. | Se houver mais de uma réplica, mover os contadores para um armazenamento compartilhado ou aceitar a cota por réplica. |
 
