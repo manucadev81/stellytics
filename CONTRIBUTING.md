@@ -64,7 +64,7 @@ node scripts/deps/audit-pnpm.mjs
 pnpm licenses list --json --prod > /tmp/npm-licenses.json
 (cd services && go run github.com/google/go-licenses/v2@v2.0.1 report ./... --template ../scripts/licenses/go-licenses.tpl --ignore github.com/romulospl/notify/services) > /tmp/go-licenses.tsv
 node scripts/deps/check-licenses.mjs --npm /tmp/npm-licenses.json --go /tmp/go-licenses.tsv
-node --test scripts/deps   # testes dos conferidores
+node --test scripts/deps/*.test.mjs   # testes dos conferidores
 ```
 
 **Vulnerabilidade.** Leia o pacote, a versão corrigida e o caminho (o relatório mostra de quem a dependência vem). Prefira subir a versão, respeitando os 14 dias de espera. Se a correção ainda não tem 14 dias e a vulnerabilidade é alcançável, decida no PR entre esperar com mitigação e abrir mão da espera só para essa atualização de segurança, registrando a escolha na descrição. Para uma dependência transitiva, suba a que a traz ou use `pnpm.overrides` com versão exata. `moderate` e `low` do `pnpm audit` não falham o job, mas aparecem no log: trate quando houver correção. Nunca silencie um alerta `high` ou `critical`, nem troque o limite do `audit`, para deixar o job verde. Um job vermelho com "Nao consegui consultar" não é vulnerabilidade: é falha do endpoint ou da rede, rode de novo.

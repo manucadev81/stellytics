@@ -1,4 +1,4 @@
-// Testes dos conferidores de dependencias. Rodam com: node --test scripts/deps
+// Testes dos conferidores de dependencias. Rodam com: node --test scripts/deps/*.test.mjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { check, evaluate, parseGo, parseNpm } from "./check-licenses.mjs";

@@ -85,7 +85,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-      - run: node --test scripts/deps
+      - run: node --test scripts/deps/*.test.mjs
       - run: node scripts/deps/audit-pnpm.mjs
 
   # Allowlist de licenças OSI em scripts/licenses/allowed.json, conferida contra
@@ -105,7 +105,7 @@ jobs:
         with:
           go-version-file: services/go.mod
           cache-dependency-path: services/go.*
-      - run: node --test scripts/deps
+      - run: node --test scripts/deps/*.test.mjs
       # "pnpm licenses" lê o que está instalado em node_modules.
       - run: pnpm install --frozen-lockfile
       - name: Licenças do pnpm (produção)
