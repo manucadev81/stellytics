@@ -8,8 +8,11 @@ import { eq, inArray, like } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { OperatorContext } from "@/lib/access";
 import {
+  approveTenant,
   getTenantDetail,
+  listPendingTenants,
   listTenants,
+  rejectTenant,
   REASON_MAX,
   reactivateTenant,
   removeTenant,
@@ -51,7 +54,7 @@ async function createUser(role: "tenant" | "operator" = "tenant") {
   return { id, email };
 }
 
-async function createTenant(status: "active" | "removed" = "active") {
+async function createTenant(status: "active" | "removed" | "pending" = "active") {
   const [created] = await db
     .insert(tenant)
     .values({ name: "Operator test", slug: `${SLUG}${randomUUID()}`, status })
@@ -325,6 +328,55 @@ describe("remoção e reativação de projeto (#20)", () => {
     expect(await reactivateTenant(operator, pending!.id)).toBe("unchanged");
     expect(await auditOf(active.id)).toEqual([]);
     expect(await auditOf(pending!.id)).toEqual([]);
+  });
+
+  it("aprovar vale só para projeto pendente: vira active e registra quem, quando e a observação (#49)", async () => {
+    const t = await createTenant("pending");
+    expect(await listPendingTenants(operator)).toEqual(expect.arrayContaining([expect.objectContaining({ id: t.id })]));
+
+    expect(await approveTenant(operator, t.id, { reason: "Known Stellar team" })).toBe("changed");
+
+    const [row] = await db.select().from(tenant).where(eq(tenant.id, t.id));
+    expect(row).toMatchObject({ status: "active", statusReason: null, statusChangedBy: operator.userId });
+    expect((await auditOf(t.id)).map((a) => [a.action, a.actorUserId, a.details])).toEqual([
+      ["tenant.approved", operator.userId, { from: "pending", reason: "Known Stellar team" }],
+    ]);
+    expect((await listPendingTenants(operator)).map((p) => p.id)).not.toContain(t.id);
+    // Aprovar de novo, ou um projeto que não está pendente, não grava nada.
+    expect(await approveTenant(operator, t.id)).toBe("unchanged");
+    const removed = await createTenant("removed");
+    expect(await approveTenant(operator, removed.id)).toBe("unchanged");
+    expect(await auditOf(removed.id)).toEqual([]);
+  });
+
+  it("rejeitar exige motivo, vira removed com o motivo e pode ser reativado (#49)", async () => {
+    const t = await createTenant("pending");
+    await expect(rejectTenant(operator, t.id, { reason: " " })).rejects.toBeInstanceOf(TenantStatusError);
+    await expect(rejectTenant(operator, t.id, { reason: "x".repeat(REASON_MAX + 1) })).rejects.toBeInstanceOf(
+      TenantStatusError,
+    );
+    expect((await db.select().from(tenant).where(eq(tenant.id, t.id)))[0]!.status).toBe("pending");
+
+    expect(await rejectTenant(operator, t.id, { reason: "Not a Stellar project" })).toBe("changed");
+    const [row] = await db.select().from(tenant).where(eq(tenant.id, t.id));
+    expect(row).toMatchObject({
+      status: "removed",
+      statusReason: "Not a Stellar project",
+      statusChangedBy: operator.userId,
+    });
+    expect((await auditOf(t.id)).map((a) => [a.action, a.actorUserId, a.details])).toEqual([
+      ["tenant.rejected", operator.userId, { from: "pending", reason: "Not a Stellar project" }],
+    ]);
+    // Rejeitar projeto ativo não vale; reativar o rejeitado vale (D6).
+    const active = await createTenant();
+    expect(await rejectTenant(operator, active.id, { reason: "Spam" })).toBe("unchanged");
+    expect(await reactivateTenant(operator, t.id)).toBe("changed");
+  });
+
+  it("aprovar e rejeitar: ID inexistente ou inválido devolve nulo", async () => {
+    expect(await approveTenant(operator, randomUUID())).toBeNull();
+    expect(await approveTenant(operator, "not-a-uuid")).toBeNull();
+    expect(await rejectTenant(operator, randomUUID(), { reason: "Spam" })).toBeNull();
   });
 
   it("projeto inexistente ou ID inválido devolve nulo", async () => {

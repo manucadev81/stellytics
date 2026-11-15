@@ -15,6 +15,7 @@ export default async function OperatorPage() {
   const ctx = await requireOperatorContext();
   const tenants = await listTenants(ctx);
   const active = tenants.filter((t) => t.status === "active").length;
+  const pending = tenants.filter((t) => t.status === "pending").length;
 
   return (
     <section>
@@ -31,6 +32,15 @@ export default async function OperatorPage() {
         </Link>
         .
       </p>
+      {pending > 0 && (
+        <p className="mt-2 text-sm">
+          {pending} project{pending === 1 ? " is" : "s are"} waiting for{" "}
+          <Link href="/operator/approvals" className="underline">
+            approval
+          </Link>
+          .
+        </p>
+      )}
 
       <div className="mt-8 overflow-x-auto">
         <table className="w-full min-w-[640px] text-left text-sm">

@@ -94,6 +94,9 @@ services:
       # E-mails de confirmação e de redefinição de senha vão para o Mailpit.
       SMTP_URL: smtp://mailpit:1025
       MAIL_FROM: notify <no-reply@notify.localhost>
+      # Cadastro com aprovação prévia (#49, ADR 0007): true deixa projetos novos
+      # pendentes até um operador aprovar em /operator/approvals.
+      SIGNUP_APPROVAL: ${SIGNUP_APPROVAL:-false}
     depends_on:
       postgres:
         condition: service_healthy

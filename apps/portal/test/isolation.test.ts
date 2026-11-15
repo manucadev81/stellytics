@@ -33,7 +33,12 @@ import { listActiveTenantSites } from "@/lib/data/operator/sites";
 import { getSiteStats } from "@/lib/umami/stats";
 import DashboardPage from "@/app/(private)/dashboard/page";
 import OperatorPage from "@/app/(private)/operator/page";
+import ApprovalsPage from "@/app/(private)/operator/approvals/page";
+import SitesPage from "@/app/(private)/sites/page";
+import ServicesPage from "@/app/(private)/services/page";
 import {
+  approveTenantAction,
+  rejectTenantAction,
   reactivateTenantAction,
   removeTenantAction,
   type StatusActionState,
@@ -622,5 +627,135 @@ describe("leitura do Umami", () => {
     expect(await getSiteStats(A.ctx, A.umamiWebsiteId, RANGE)).toBeNull();
     // Recusado antes de chegar ao Umami.
     expect(umami.requests).toEqual([]);
+  });
+});
+
+// Textos de uma árvore de elementos React (sem renderizar): só strings e filhos.
+function textOf(node: unknown): string {
+  if (typeof node === "string") return node;
+  if (Array.isArray(node)) return node.map(textOf).join("");
+  const props = (node as { props?: { children?: unknown } } | null)?.props;
+  return props ? textOf(props.children) : "";
+}
+
+describe("cadastro com aprovação (#49)", () => {
+  // Projeto pendente com site, serviço e chave. As linhas são criadas com o
+  // projeto ativo (as funções de data/ recusam pendente) e o status muda depois,
+  // como se fossem de um cadastro antigo: a ingestão e as páginas é que são
+  // testadas aqui.
+  async function pendingFixture(name: string): Promise<Fixture> {
+    const f = await createFixture(name);
+    await db.update(tenant).set({ status: "pending" }).where(eq(tenant.id, f.tenantId));
+    return { ...f, ctx: (await loadTenantContext(f.userId))! };
+  }
+
+  let P: Fixture;
+  beforeAll(async () => {
+    P = await pendingFixture("tenant-pending");
+  });
+
+  it("ingestão web e de API recusam o pendente; A continua", async () => {
+    expect(await acceptsWeb(P.umamiWebsiteId)).toBe(false);
+    expect(await collectorKey(P.keyPrefix)).toBeNull();
+    expect(await acceptsWeb(A.umamiWebsiteId)).toBe(true);
+    expect(await collectorKey(A.keyPrefix)).not.toBeNull();
+  });
+
+  it("o pendente vê só a tela de espera; o resto do portal manda para /dashboard", async () => {
+    asMember(P);
+    expect(P.ctx.tenantStatus).toBe("pending");
+    await expect(DashboardPage()).resolves.toBeTruthy();
+    const toDashboard = { digest: expect.stringContaining("/dashboard") };
+    await expect(SitesPage()).rejects.toMatchObject(toDashboard);
+    await expect(ServicesPage()).rejects.toMatchObject(toDashboard);
+    await expect(SitePage({ params: Promise.resolve({ siteId: P.siteId }), searchParams: Promise.resolve({}) })).rejects.toMatchObject(toDashboard);
+    await expect(ServicePage({ params: Promise.resolve({ serviceId: P.serviceId }) })).rejects.toMatchObject(toDashboard);
+    await expect(KeysPage({ params: Promise.resolve({ serviceId: P.serviceId }) })).rejects.toMatchObject(toDashboard);
+
+    const keys = await activeKeys(P.tenantId);
+    await expect(createSiteAction({ status: "idle" }, form({ name: "P", domain: "p.example" }))).rejects.toMatchObject(toDashboard);
+    await expect(createServiceAction({ status: "idle" }, form({ name: "p-api" }))).rejects.toMatchObject(toDashboard);
+    await expect(createKeyAction(P.serviceId)).rejects.toMatchObject(toDashboard);
+    await expect(revokeKeyAction(P.keyId)).rejects.toMatchObject(toDashboard);
+    expect(await activeKeys(P.tenantId)).toBe(keys);
+    expect(umami.requests).toEqual([]);
+
+    // Mesmo que alguém chame a camada de dados direto, ela recusa.
+    await expect(createApiService(P.ctx, { name: "direct" })).rejects.toMatchObject({ code: "tenant_pending" });
+    expect(await getSite(A.ctx, P.siteId)).toBeNull();
+  });
+
+  it("membro de A não alcança o pendente: 404 em tudo", async () => {
+    asMember(A);
+    await expect(ServicePage({ params: Promise.resolve({ serviceId: P.serviceId }) })).rejects.toMatchObject(NOT_FOUND);
+    expect(await getApiService(A.ctx, P.serviceId)).toBeNull();
+    await expect(approveTenantAction(P.tenantId, idle, form({}))).rejects.toMatchObject(NOT_FOUND);
+    await expect(rejectTenantAction(P.tenantId, idle, form({ reason: "No" }))).rejects.toMatchObject(NOT_FOUND);
+    await expect(ApprovalsPage()).rejects.toMatchObject(NOT_FOUND);
+    // O próprio pendente também não aprova.
+    asMember(P);
+    await expect(approveTenantAction(P.tenantId, idle, form({}))).rejects.toMatchObject(NOT_FOUND);
+    await expect(ApprovalsPage()).rejects.toMatchObject(NOT_FOUND);
+    expect(await tenantStatus(P.tenantId)).toBe("pending");
+  });
+
+  it("o operador vê a fila, aprova, e a ingestão passa a aceitar; tudo no audit_log", async () => {
+    asOperator();
+    await expect(ApprovalsPage()).resolves.toBeTruthy();
+    // Modo desligado com pendentes na fila: a tela explica; ligado, não.
+    delete process.env.SIGNUP_APPROVAL;
+    expect(textOf(await ApprovalsPage())).toContain("currently turned off");
+    process.env.SIGNUP_APPROVAL = "true";
+    expect(textOf(await ApprovalsPage())).not.toContain("currently turned off");
+    delete process.env.SIGNUP_APPROVAL;
+    expect(await approveTenantAction(P.tenantId, idle, form({ reason: "Looks good" }))).toEqual({ status: "done" });
+    expect(await tenantStatus(P.tenantId)).toBe("active");
+    expect(await acceptsWeb(P.umamiWebsiteId)).toBe(true);
+    expect(await collectorKey(P.keyPrefix)).toMatchObject({ tenant_id: P.tenantId });
+    // Segunda aprovação (dois operadores ao mesmo tempo): nada novo.
+    expect(await approveTenantAction(P.tenantId, idle, form({}))).toEqual({ status: "done" });
+
+    const audit = await db
+      .select({ action: auditLog.action, actor: auditLog.actorUserId })
+      .from(auditLog)
+      .where(and(eq(auditLog.tenantId, P.tenantId), like(auditLog.action, "tenant.%")));
+    expect(audit).toEqual([{ action: "tenant.approved", actor: operatorId }]);
+
+    asMember(P);
+    await expect(SitesPage()).resolves.toBeTruthy();
+  });
+
+  it("rejeitar exige motivo; o rejeitado vê o aviso e a ingestão segue recusada", async () => {
+    const R = await pendingFixture("tenant-rejected");
+    asOperator();
+    expect(await rejectTenantAction(R.tenantId, idle, form({ reason: " " }))).toMatchObject({ status: "error" });
+    expect(await tenantStatus(R.tenantId)).toBe("pending");
+    expect(await rejectTenantAction(R.tenantId, idle, form({ reason: "Not a Stellar project" }))).toEqual({
+      status: "done",
+    });
+    expect(await tenantStatus(R.tenantId)).toBe("removed");
+    expect(await acceptsWeb(R.umamiWebsiteId)).toBe(false);
+    expect(await collectorKey(R.keyPrefix)).toBeNull();
+    const [entry] = await db
+      .select({ action: auditLog.action, actor: auditLog.actorUserId, details: auditLog.details })
+      .from(auditLog)
+      .where(and(eq(auditLog.tenantId, R.tenantId), eq(auditLog.action, "tenant.rejected")));
+    expect(entry).toEqual({
+      action: "tenant.rejected",
+      actor: operatorId,
+      details: { from: "pending", reason: "Not a Stellar project" },
+    });
+    asMember(R);
+    await expect(DashboardPage()).resolves.toBeTruthy();
+    // Aprovar um rejeitado não vale: só reativar.
+    asOperator();
+    expect(await approveTenantAction(R.tenantId, idle, form({}))).toEqual({ status: "done" });
+    expect(await tenantStatus(R.tenantId)).toBe("removed");
+  });
+
+  it("aprovar ou rejeitar projeto inexistente: 404", async () => {
+    asOperator();
+    await expect(approveTenantAction(randomUUID(), idle, form({}))).rejects.toMatchObject(NOT_FOUND);
+    await expect(rejectTenantAction(randomUUID(), idle, form({ reason: "Spam" }))).rejects.toMatchObject(NOT_FOUND);
   });
 });

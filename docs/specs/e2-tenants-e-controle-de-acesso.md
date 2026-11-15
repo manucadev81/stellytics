@@ -195,7 +195,7 @@ Contrato entre o portal (#59) e o coletor (#30).
 |---|---|---|---|---|---|
 | `active` | Sim | Sim | Sim | Aceita | Aparece |
 | `removed` | Sim | Só um aviso de projeto removido, com o motivo | Não | Recusada | Não aparece nas comparações; operador ainda consegue abrir |
-| `pending` (não usado no MVP) | Sim | Sim, vazios | Sim | Recusada | Não aparece |
+| `pending` (só com `SIGNUP_APPROVAL`, #49) | Sim | Só uma tela de espera (outras páginas e ações redirecionam para ela) | Não | Recusada | Não aparece nas comparações; o operador aprova ou rejeita em `/operator/approvals` |
 
 - **Remoção é desativação.** Os dados já coletados ficam no banco. Apagar dados de um tenant removido é uma ação separada, fora deste spec.
 - **D6.** O operador pode **reativar** um tenant removido. A ação vai para o `audit_log`.
@@ -211,7 +211,7 @@ Contrato entre o portal (#59) e o coletor (#30).
 3. Com o e-mail confirmado, informa o nome do projeto. O portal cria o `tenant` com status `active` e a linha em `tenant_member` com `owner`, na mesma transação.
 4. Cadastra sites e serviços de API. Ao criar um serviço, recebe a primeira chave de ingestão.
 
-Quando o cadastro com aprovação for ligado (#49), o passo 3 passa a criar o tenant como `pending`; nada mais muda.
+Quando o cadastro com aprovação é ligado (`SIGNUP_APPROVAL`, #49, [ADR 0007](../adr/0007-cadastro-com-aprovacao.md)), o passo 3 cria o tenant como `pending`. O operador aprova (`active`) ou rejeita (`removed`, com motivo) em `/operator/approvals`, e cada decisão vai para o `audit_log` (`tenant.approved`, `tenant.rejected`).
 
 ### Site no Umami (#58)
 
