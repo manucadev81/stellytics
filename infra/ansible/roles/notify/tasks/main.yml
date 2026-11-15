@@ -74,7 +74,9 @@
     cmd: "docker compose {{ notify_compose_files }} exec -T postgres sh < {{ notify_root }}/infra/compose/postgres/init/03-replication.sh"
     chdir: "{{ notify_root }}/infra/compose"
   when: ha_replication | default(false) | bool
-  changed_when: false
+  register: notify_ha_prepare
+  # O script imprime "03-replication: changed" só quando alterou o pg_hba.conf.
+  changed_when: "'03-replication: changed' in notify_ha_prepare.stdout"
   no_log: true
   tags: [images]
 

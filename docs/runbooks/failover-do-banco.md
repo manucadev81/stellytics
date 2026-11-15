@@ -20,8 +20,8 @@ No `prod.yaml`, o portal e o Umami falam com `postgres:5432` (o serviço do mesm
 
 ## Antes de promover
 
-1. **Confirme que o primário não vai voltar a gravar.** Desligue a VM antiga pelo console ou `hcloud server poweroff notify`. Isso é o que impede o split-brain; faça mesmo que ela "pareça" morta. Se não conseguir desligar, não promova sem decidir conscientemente o risco.
-2. **Veja o quanto a réplica recebeu** (pelo túnel, `infra/scripts/admin-tunnel.sh <ip-da-réplica>`, ou na VM da réplica):
+1. **Confirme que o primário não vai voltar a gravar** (nos comandos abaixo, na VM da réplica, `cd /opt/notify/infra/compose` primeiro). Desligue a VM antiga pelo console ou `hcloud server poweroff notify`. Isso é o que impede o split-brain; faça mesmo que ela "pareça" morta. Se não conseguir desligar, não promova sem decidir conscientemente o risco.
+2. **Veja o quanto a réplica recebeu** (na VM da réplica, ou pelo túnel `infra/scripts/admin-tunnel.sh <ip-da-réplica>`):
 
    ```bash
    cd /opt/notify/infra/compose
@@ -80,10 +80,16 @@ O `prod.yaml` sobe o `postgres` **no mesmo diretório de dados** (`/srv/notify/p
 
 ### 6. O que fazer com o antigo primário
 
-- **Não ligue a pilha antiga.** Se a VM voltar sozinha, `docker compose -f prod.yaml down` imediatamente (o `postgres` tem `restart: unless-stopped`). Dois primários gravando = dados divergentes sem como mesclar.
+- **Não ligue a pilha antiga.** O `postgres` tem `restart: unless-stopped` e o Docker sobe sozinho com a VM: se ela for religada, o primário antigo volta a gravar (split-brain). Antes de religá-la, **remova a VM ou desanexe e apague o volume antigo** (ou, no mínimo, `systemctl disable docker` e `docker compose -f prod.yaml down` por console). Dois primários gravando = dados divergentes sem como mesclar. Como rede de proteção, a réplica recusa subir sobre um diretório que seja de um primário (sem `standby.signal`, erro explícito; `STANDBY_FORCE=1` desliga a proteção, não use), mas isso só protege a montagem da réplica, não o `prod.yaml` da VM antiga.
 - O que ele gravou e não chegou à réplica **está perdido** para a produção (é o RPO). Se importar, antes de apagar, suba uma cópia **isolada** (sem rede) do diretório de dados dele só para inspecionar; não há mesclagem automática.
 - Para reaproveitá-lo como réplica da nova: apague o diretório de dados dele (`/srv/notify/postgres`, depois de ter certeza de que não precisa) e rode `standby.yml` com o host `db_standby` apontando para ele e `ha_primary_private_ip` para o IP do novo primário. O `pg_basebackup` refaz tudo; o slot é criado pelo próprio script. Isto foi exercitado em Docker (passo D do teste).
 - Se for recriar tudo do zero, reconcilie o estado do OpenTofu com o que foi mudado à mão (volume, firewall, qual VM é a principal) antes do próximo `tofu apply`; senão ele pode tentar desfazer o failover.
+
+## Disco e monitoramento
+
+- **Folga de disco:** com uma réplica parada, o slot faz o primário reter até `max_slot_wal_keep_size` (10 GB) de WAL **além** do banco. Mantenha pelo menos **10 GB livres, e mais o crescimento esperado**, no volume do primário (padrão do OpenTofu: 40 GB). Passou do limite, o slot é invalidado (o primário se protege) e a réplica precisa ser refeita.
+- **Ainda não há alerta** de atraso de replicação, de WAL retido nem de réplica fora. Hoje só se descobre olhando `pg_stat_replication` e `pg_replication_slots` (e `df -h /srv/notify`). É pendência do ADR 0009.
+- **Volume:** o papel `data_volume` **não formata** nada: só confere o dispositivo, grava o `fstab` e monta (o ext4 vem do OpenTofu na criação do volume). Um volume sem sistema de arquivos falha ao montar; um volume com dados é montado como está, sem apagar.
 
 ## Depois
 
