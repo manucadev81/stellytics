@@ -268,3 +268,97 @@ func (g *slowGate) Send(ctx context.Context, _ relay.Event, _ string, _ netip.Ad
 	}
 	return nil
 }
+
+// O cliente que cancela enquanto espera a vaga não gera log de erro nem conta
+// como descarte, e a fingerprint nova dele volta para a cota.
+func TestClientCancelWhileWaitingForSlot(t *testing.T) {
+	umami, inner := newSlowUmami(t)
+	limited := relay.NewLimited(inner, 1, 5*time.Second)
+	var buf syncBuffer
+	s := newSetup(t, func(g *gateway) {
+		g.relay = limited
+		g.fps = fingerprint.New(2, 10*time.Minute)
+		g.log = slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	})
+	t.Cleanup(umami.open)
+	postAsync(s, eventBody(activeSite), "ua-hold")
+	waitFor(t, func() bool { return umami.started.Load() == 1 })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, s.server.URL+"/e", strings.NewReader(eventBody(activeSite)))
+	req.Header.Set("Content-Type", "text/plain")
+	req.Header.Set("User-Agent", "ua-cancel")
+	done := make(chan struct{})
+	go func() {
+		if resp, err := http.DefaultClient.Do(req); err == nil {
+			resp.Body.Close()
+		}
+		close(done)
+	}()
+	waitFor(t, func() bool { return limited.InFlight() == 1 })
+	time.Sleep(50 * time.Millisecond) // o handler já está esperando a vaga
+	cancel()
+	<-done
+	waitFor(t, func() bool { return strings.Contains(buf.String(), "cliente cancelou") })
+
+	if strings.Contains(buf.String(), `"level":"ERROR"`) {
+		t.Errorf("cancelamento não é erro: %s", buf.String())
+	}
+	if limited.Dropped() != 0 {
+		t.Errorf("descartados = %d", limited.Dropped())
+	}
+	// A cota (2) tem a fingerprint do hold; a do cancelado foi devolvida, então
+	// uma terceira ainda cabe e chega ao Umami.
+	umami.open()
+	waitFor(t, func() bool { return limited.InFlight() == 0 })
+	if r := post(t, s, "text/plain", eventBody(activeSite), "User-Agent", "ua-other"); r.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d", r.StatusCode)
+	}
+	if n := umami.started.Load(); n != 2 {
+		t.Fatalf("umami recebeu %d, quero 2 (hold e ua-other)", n)
+	}
+}
+
+// Panic no repasse também devolve a fingerprint nova.
+func TestPanicInRelayReturnsFingerprint(t *testing.T) {
+	var boom atomic.Bool
+	boom.Store(true)
+	var sent atomic.Int64
+	inner := panicSender(func() error {
+		if boom.Load() {
+			panic("boom")
+		}
+		sent.Add(1)
+		return nil
+	})
+	s := newSetup(t, func(g *gateway) {
+		g.relay = inner
+		g.fps = fingerprint.New(1, 10*time.Minute)
+	})
+	if r := post(t, s, "text/plain", eventBody(activeSite), "User-Agent", "ua-1"); r.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("panic: %d", r.StatusCode)
+	}
+	boom.Store(false)
+	// Limite 1: se ua-1 ainda ocupasse a conta, ua-2 seria descartada (204 sem repasse).
+	if r := post(t, s, "text/plain", eventBody(activeSite), "User-Agent", "ua-2"); r.StatusCode != http.StatusNoContent || sent.Load() != 1 {
+		t.Fatalf("status = %d, repassados = %d", r.StatusCode, sent.Load())
+	}
+}
+
+// Ao desligar, o último minuto parcial ainda é registrado.
+func TestLogSaturatedFlushesOnShutdown(t *testing.T) {
+	g := newSlowGate()
+	limited := relay.NewLimited(g, 1, 0)
+	go func() { _ = limited.Send(context.Background(), relay.Event{}, "ua", netip.Addr{}) }()
+	<-g.in
+	_ = limited.Send(context.Background(), relay.Event{}, "ua", netip.Addr{})
+	var buf syncBuffer
+	log := slog.New(slog.NewJSONHandler(&buf, nil))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	logSaturated(ctx, log, limited, time.Hour) // retorna na hora, sem nenhum tick
+	if !strings.Contains(buf.String(), `"descartados":1`) {
+		t.Fatalf("sem linha final: %q", buf.String())
+	}
+	close(g.out)
+}

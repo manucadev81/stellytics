@@ -159,6 +159,10 @@ func logSaturated(ctx context.Context, log *slog.Logger, l *relay.Limited, every
 	for {
 		select {
 		case <-ctx.Done():
+			// Último minuto parcial antes de desligar.
+			if n := l.Dropped(); n != last {
+				log.Warn("eventos descartados por saturação do repasse ao umami", "descartados", n-last, "total", n, "em_voo", l.InFlight())
+			}
 			return
 		case <-t.C:
 			if n := l.Dropped(); n != last {

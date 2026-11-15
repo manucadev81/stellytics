@@ -159,22 +159,43 @@ func (g *gateway) event(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// O evento só conta para a cota de fingerprints se for repassado. Saturação,
+	// cancelamento do cliente, falha do Umami e panic (defer) devolvem a vaga de
+	// fingerprint que este evento acabou de ocupar.
+	//
+	// Limite conhecido: se outro evento do mesmo IP e da mesma fingerprint passou
+	// entre o Admit e o Forget (viu a fingerprint como "não nova" e foi gravado),
+	// o Forget também tira a fingerprint dele da conta. A cota fica subcontada
+	// por uma fingerprint, e só sob concorrência; o efeito é frouxo, não rígido.
+	relayed := false
+	if fresh {
+		defer func() {
+			if !relayed {
+				g.fps.Forget(truncated, ev.Payload.Website, fp)
+			}
+		}()
+	}
+
 	if err := g.relay.Send(r.Context(), ev, r.UserAgent(), truncated); err != nil {
 		if errors.Is(err, relay.ErrSaturated) {
 			// Repasses ao Umami no limite: o evento é perdido (o script não tenta
-			// de novo) e o contador agregado registra. Não gastou a cota de
-			// fingerprints do IP. Sem log por evento.
-			if fresh {
-				g.fps.Forget(truncated, ev.Payload.Website, fp)
-			}
+			// de novo) e o contador agregado registra. Sem log por evento.
 			w.Header().Set("Retry-After", "1")
 			http.Error(w, "overloaded", http.StatusServiceUnavailable)
+			return
+		}
+		if r.Context().Err() != nil {
+			// O cliente desistiu (ou estourou o prazo dele) durante a espera ou o
+			// repasse: não é falha do Umami nem do gateway, não há quem leia a
+			// resposta. Sem Error e sem 502.
+			g.log.Debug("evento descartado", "reason", "cliente cancelou")
 			return
 		}
 		g.log.Error("repasse ao umami falhou", "err", err)
 		http.Error(w, "bad gateway", http.StatusBadGateway)
 		return
 	}
+	relayed = true
 	w.WriteHeader(http.StatusNoContent)
 }
 
