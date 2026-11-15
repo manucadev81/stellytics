@@ -9,6 +9,11 @@ Script de rastreamento em TypeScript, empacotado com esbuild. Criado na [#22](ht
 - Em SPA, conta cada mudança de rota (`pushState`, `replaceState` e `popstate`).
 - Antes de enviar, pede um desafio em `GET /c` e resolve a prova de execução de JS com `crypto.subtle` (#25). Por isso só funciona em página HTTPS (ou `localhost`).
 - Nomes de arquivo e de endpoint não podem conter termos bloqueados por ad blockers (`umami`, `analytics`, `track`, `collect`). O check `check:adblock` confere isso contra EasyList, EasyPrivacy e as listas padrão do uBlock Origin; resultado, recomendação de host e roteiro manual em [`docs/ad-blockers.md`](docs/ad-blockers.md).
+- Evento customizado (v1.2.0, #50): `window.notify.event(nome, propriedades?)`. Nome de 1 a 50 caracteres `[A-Za-z0-9_.:-]`; até 10 propriedades com valor string (até 100 bytes), número ou booleano. Fora disso o evento é ignorado em silêncio. **Nunca** mande endereço de carteira, hash de transação, valor ou dado pessoal. A captura automática do Stellar Wallets Kit não foi feita; ver [ADR 0007](../../docs/adr/0007-eventos-customizados-e-wallets-kit.md).
+
+```js
+window.notify?.event("wallet_connected", { wallet: "freighter" });
+```
 
 ## Instalação no site do tenant
 

@@ -7,6 +7,7 @@ import {
   pageUrl,
   solve,
   start,
+  validateCustomEvent,
   type EventPayload,
 } from "../src/tracker.ts";
 
@@ -121,6 +122,35 @@ describe("start", () => {
     expect(leadingZeroBits(sha256(`${TOKEN}:${event.p.n}`))).toBeGreaterThanOrEqual(BITS);
   });
 
+  it("window.notify.event envia um evento customizado com nome e propriedades", async () => {
+    stop = start(script({ src: SRC, "data-site": SITE }));
+    await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    const api = (window as unknown as { notify: { event: (n: string, d?: object) => void } }).notify;
+    api.event("signup_clicked", { plan: "pro", seats: 3, trial: true });
+    await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(2));
+    const event = sent(fetchMock)[1]!;
+    expect(event.payload).toMatchObject({
+      website: SITE,
+      url: "/inicio?utm_campaign=lancamento",
+      name: "signup_clicked",
+      data: { plan: "pro", seats: 3, trial: true },
+    });
+    // O page view não leva nome nem dados.
+    expect(sent(fetchMock)[0]!.payload).not.toHaveProperty("name");
+  });
+
+  it("window.notify.event ignora evento fora do contrato e some ao parar", async () => {
+    stop = start(script({ src: SRC, "data-site": SITE }));
+    await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    const w = window as unknown as { notify?: { event: (n: string, d?: object) => void } };
+    w.notify!.event("nome inválido");
+    w.notify!.event("ok", { nested: { a: 1 } });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(posts(fetchMock)).toHaveLength(1);
+    stop();
+    expect(w.notify).toBeUndefined();
+  });
+
   it("não faz nada sem data-site válido", async () => {
     start(script({ src: SRC }));
     start(script({ src: SRC, "data-site": "abc" }));
@@ -196,5 +226,26 @@ describe("start", () => {
     expect(cookie).not.toHaveBeenCalled();
     expect(setItem).not.toHaveBeenCalled();
     expect(document.cookie).toBe("");
+  });
+});
+
+describe("validateCustomEvent", () => {
+  it("aceita string, número e booleano", () => {
+    expect(validateCustomEvent("a.b-c_d:e", { x: "y", n: 1.5, b: false })).toEqual({ x: "y", n: 1.5, b: false });
+    expect(validateCustomEvent("a")).toEqual({});
+  });
+
+  it("recusa nome, chaves e valores fora do contrato", () => {
+    expect(validateCustomEvent("", {})).toBeNull();
+    expect(validateCustomEvent("a b")).toBeNull();
+    expect(validateCustomEvent("a".repeat(51))).toBeNull();
+    expect(validateCustomEvent(1 as unknown as string)).toBeNull();
+    expect(validateCustomEvent("a", { "a b": 1 })).toBeNull();
+    expect(validateCustomEvent("a", { a: null })).toBeNull();
+    expect(validateCustomEvent("a", { a: [1] })).toBeNull();
+    expect(validateCustomEvent("a", { a: NaN })).toBeNull();
+    expect(validateCustomEvent("a", { a: "x".repeat(101) })).toBeNull();
+    expect(validateCustomEvent("a", Object.fromEntries(Array.from({ length: 11 }, (_, i) => [`k${i}`, 1])))).toBeNull();
+    expect(validateCustomEvent("a", [1])).toBeNull();
   });
 });
