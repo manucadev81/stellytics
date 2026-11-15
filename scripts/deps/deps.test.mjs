@@ -140,3 +140,21 @@ test("audit: falha de consulta nunca vira verde", () => {
   assert.equal(interpret("{}").code, 2);
   assert.equal(interpret(JSON.stringify({ advisories: {} })).code, 2);
 });
+
+test("audit: severidade desconhecida ou ausente e exit 2, nao verde nem TypeError", () => {
+  assert.equal(interpret(report(["unknown"])).code, 2);
+  assert.equal(interpret(report(["High"])).code, 2);
+  const semSeveridade = JSON.stringify({ advisories: { 0: { module_name: "m", findings: [] } }, metadata: { vulnerabilities: {} } });
+  assert.equal(interpret(semSeveridade).code, 2);
+});
+
+test("audit: contagem high/critical no metadata sem advisories e exit 2", () => {
+  const incons = JSON.stringify({ advisories: {}, metadata: { vulnerabilities: { high: 2, critical: 0 }, totalDependencies: 5 } });
+  assert.equal(interpret(incons).code, 2);
+  const incons2 = JSON.stringify({ advisories: {}, metadata: { vulnerabilities: { critical: 1 } } });
+  assert.equal(interpret(incons2).code, 2);
+});
+
+test("audit: null, array e primitivos sao exit 2", () => {
+  for (const t of ["null", "[]", "42", '"x"', "true"]) assert.equal(interpret(t).code, 2, t);
+});
