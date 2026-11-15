@@ -117,6 +117,8 @@ Antes de tocar nos dados, porque tudo o que sobe no destino precisa de imagens d
 
 Janela sugerida: o horário de menor tráfego dos sites dos tenants, **longe do backup base das 03:15 UTC** e do timer do operador antigo (desligue o timer antigo no passo 2). Tamanho: o dos tempos do ensaio, mais a propagação do DNS e a emissão do certificado. Com os volumes do teste local (pequenos, ver os tempos abaixo) o trabalho de dados leva segundos, mas **com dados reais o tempo não foi medido**; reserve uma folga.
 
+**Decisão registrada: janela longa, ingestão parada do passo 1 à virada do DNS.** O gateway antigo é parado no passo 1 e o novo só atende depois da virada; tudo o que chegar no intervalo se perde. Escolhido pela simplicidade e porque o dump consistente exige o Umami parado. **Alternativa não testada:** virar o DNS **antes** do backup (o gateway novo, ainda sem sites, descarta com `204` do mesmo jeito, mas o intervalo de perda passa a ser só o tempo de dump, transferência e restore, e o tráfego já chega ao Caddy novo com certificado). Ela só vale se o gateway novo estiver saudável e a perda for aceita; não foi ensaiada.
+
 Durante a janela, o portal fica fora do ar (ninguém entra nem cria nada) e **a ingestão web para: os eventos que chegarem entre a parada do gateway antigo e o gateway novo atender são descartados** (o `fetch` do script falha em silêncio) e **não são recuperados**. Os painéis terão um buraco desse tamanho. Avise isso aos tenants.
 
 Na VM **antiga**, como root (`cd /opt/notify/infra/compose`; os scripts estão em `../scripts/` depois de um `site.yml` com esta versão do repositório):
@@ -132,17 +134,16 @@ Na VM **antiga**, como root (`cd /opt/notify/infra/compose`; os scripts estão e
 
 Na VM **nova**, como root (`cd /opt/notify/infra/compose`), com a pilha já no ar e **vazia** (passo 4 do `docs/deploy.md`):
 
-5. `../scripts/db-import.sh --yes /root/migracao`. Ele confere o `sha256sums`, **para** a aplicação, **apaga e recria** os bancos `notify` e `umami`, restaura, reaplica o `02-ingest-roles.sh` e compara a impressão digital com a da origem. Só imprime `OK` se for idêntica; qualquer diferença aborta e você **não sobe a aplicação**.
+5. `docker compose -f prod.yaml stop caddy portal ingest-web umami` e depois `../scripts/db-import.sh --yes /root/migracao`. **Antes de apagar qualquer coisa** ele confere que o `sha256sums` lista `notify.dump` e `umami.dump` e bate, que os dois dumps abrem (`pg_restore -l`), que **nenhum serviço além do Postgres está rodando** (ele não os para) e que o destino tem **0 tenants** (`--force-nonempty` só de propósito: sem isso, rodar o script na VM de origem por engano apagaria a produção). Restaura em bancos temporários (`notify_new`, `umami_new`) e só então troca pelos de verdade, reaplica o `02-ingest-roles.sh` e compara a impressão digital com a da origem. Só imprime `OK` se for idêntica; qualquer diferença aborta e você **não sobe a aplicação**.
 6. `docker compose -f prod.yaml up -d --wait`.
 7. **Troque a senha do `admin` do Umami** pelo túnel (`infra/scripts/admin-tunnel.sh <ip-da-vm-nova>`, `http://127.0.0.1:13001`): ela veio do banco e o operador antigo a conhece.
 8. `systemctl start notify-backup` (o primeiro backup base da linha nova, no bucket novo) e confira com `backup-list`.
-9. Apague os dumps da VM nova **e** da antiga (`rm -rf /root/migracao`; contêm hashes de senha e sessões).
-
 **Virada do DNS** (com o gateway novo já saudável por IP):
 
 10. Aponte `app.<domínio>` e o host da ingestão (A e AAAA) para os IPs da VM nova. Com TTL de 300 s a virada leva alguns minutos; o Caddy novo pega o certificado quando o nome passar a resolver para ele.
 11. Conferir de fora, com os comandos do passo 6 do `docs/deploy.md`; entrar no portal com uma conta de tenant e abrir o painel de um site; abrir `/operator`; instalar o script num site de teste e ver a visita no painel.
 12. Se o portal receber 401 do Umami, gere a chave de serviço de novo (`docs/deploy.md`, passo 5) e atualize `umami_api_key`.
+13. **Só depois de validar** (passos 11 e 12), apague os **dumps** (`notify.dump`, `umami.dump`; contêm hashes de senha e sessões) da VM nova e da antiga: `rm -f /root/migracao/*.dump`. Deixe o `fingerprint.txt` e o `sha256sums` até o fim do período de reversão. Até lá os dumps são a forma mais rápida de refazer a migração: guarde-os só se a decisão for explícita, e apague no fim.
 
 ### Fase 4: depois (T até T+30)
 
@@ -189,7 +190,7 @@ Até o fim do período de reversão (30 dias) o antigo operador mantém tudo o q
 
 | Em que ponto | Como voltar |
 |---|---|
-| **Antes da virada do DNS** (passos 1 a 9 da janela) | Abortar é seguro: na VM antiga, `docker compose -f prod.yaml up -d --wait` e `systemctl start notify-backup.timer`. A ingestão volta; os eventos do intervalo da janela já se perderam. Os dados da VM antiga não foram alterados (o `db-export.sh` só lê) |
+| **Antes da virada do DNS** (passos 1 a 8 da janela) | Abortar é seguro: na VM antiga, `docker compose -f prod.yaml up -d --wait` e `systemctl start notify-backup.timer`. A ingestão volta; os eventos do intervalo da janela já se perderam. Os dados da VM antiga não foram alterados (o `db-export.sh` só lê) |
 | **Depois da virada** | Aponte o DNS de volta para o IP antigo (TTL de 300 s) e suba a pilha antiga (comando acima). **O que o novo operador gravou desde a virada se perde**, a menos que seja trazido de volta: pare a aplicação nova, rode `db-export.sh` nela e `db-import.sh --yes` na antiga. Os scripts são os mesmos, **mas essa direção não foi testada** |
 | **Imagens** | A pilha antiga volta com as imagens antigas e a identidade antiga do cosign (`group_vars/all.yml` do operador antigo); não misture os dois `all.yml` |
 | **Repositório** | A transferência de volta é outra transferência no GitHub; não é preciso reverter para voltar a operar |
@@ -203,8 +204,8 @@ Procedimento para mover os bancos `notify` e `umami` de uma pilha para outra, co
 
 | Arquivo | Papel |
 |---|---|
-| [`infra/scripts/db-export.sh`](../infra/scripts/db-export.sh) | Na origem, com a aplicação parada: `pg_dump -Fc` de cada banco, confere que o arquivo abre, grava a impressão digital e o `sha256sums` |
-| [`infra/scripts/db-import.sh`](../infra/scripts/db-import.sh) | No destino: confere o `sha256sums`, para a aplicação, apaga e recria os dois bancos, restaura, reaplica o `02-ingest-roles.sh` e compara a impressão digital. **Destrutivo** (`--yes`) |
+| [`infra/scripts/db-export.sh`](../infra/scripts/db-export.sh) | Na origem, com **tudo parado exceto o Postgres**: `pg_dump -Fc` de cada banco, confere que o arquivo abre, grava a impressão digital e o `sha256sums` |
+| [`infra/scripts/db-import.sh`](../infra/scripts/db-import.sh) | No destino: confere o `sha256sums`, exige a aplicação parada e o destino sem tenants, restaura em bancos temporários, troca pelos de verdade, reaplica o `02-ingest-roles.sh` e compara a impressão digital. **Destrutivo** (`--yes`) |
 | [`infra/scripts/db-fingerprint.sh`](../infra/scripts/db-fingerprint.sh) | Imprime, sem dados de ninguém e sem senhas, as linhas e um checksum de **cada tabela** (partições inclusas), as sequências, o hash do esquema (`pg_dump --schema-only`), as extensões, os papéis, as filiações e as ACLs dos bancos e as permissões de `notify_ingest` e `notify_collector` |
 | [`infra/compose/test/data-migration-test.sh`](../infra/compose/test/data-migration-test.sh) | O teste: sobe origem e destinos com as imagens de produção (Compose de produção por cima de `prod.yaml`), grava dados, migra e confere |
 
@@ -252,7 +253,7 @@ Depois, com a aplicação rodando no destino:
 - o `audit_log` **continua só de inserção**: `UPDATE`, `DELETE` e `TRUNCATE` são recusados pelos gatilhos e o `INSERT` passa;
 - `notify_ingest` e `notify_collector` **entram pela rede com as senhas novas** e leem só `ingest_site` e `ingest_key_active`; `notify_ingest` **não** lê `tenant`; `notify_collector` insere em `api_metric_1m`;
 - `api_metric_ensure_partitions(2)` roda, e as partições existem;
-- um dump **adulterado** é recusado pelo `sha256sums`.
+- o `db-import.sh` **recusa**, sem tocar nos bancos do destino (OIDs iguais antes e depois), cada um destes casos: aplicação rodando, dump adulterado, dump truncado com `sha256sums` regenerado, `sha256sums` sem os dumps, e a própria origem como destino (tem tenants).
 
 **Tempos** (uma máquina de desenvolvimento, dados pequenos: `notify.dump` com 224 KB e `umami.dump` com 68 KB; **não extrapole para dados reais**):
 
@@ -282,7 +283,9 @@ Depois, com a aplicação rodando no destino:
    - **certificados do Caddy** (`/srv/notify/caddy`): não se migram; o Caddy novo emite os dele;
    - **histórico de backup do WAL-G e dados do Prometheus:** não migram; o destino começa linhas novas (`systemctl start notify-backup` depois da migração).
 6. **Versão do destino.** O `db-import.sh` confere a impressão digital **antes** de a aplicação subir, então ela só bate se o destino restaurou exatamente o que a origem tinha. Se as imagens do destino forem **mais novas** e trouxerem migração, o portal as aplica na subida (comportamento normal do `RUN_MIGRATIONS`; **não foi testado na migração**). Nunca suba uma versão **mais antiga** que a da origem sobre os dados: as migrações só andam para frente (`docs/deploy.md`, "Atualizar a aplicação").
-7. **O destino precisa estar vazio de dados, não de estrutura.** Se o `site.yml` já subiu o portal e o Umami, eles criaram tabelas vazias, e o restore bateria nelas (não tentado). O `db-import.sh` por isso para a aplicação, apaga e recria os bancos antes de restaurar (é o caminho testado). Rodá-lo contra uma produção com dados **apaga esses dados**: confira o host antes de dizer `--yes`.
+7. **O destino precisa estar vazio de dados, não de estrutura.** Se o `site.yml` já subiu o portal e o Umami, eles criaram tabelas vazias, e o restore bateria nelas (não tentado). O `db-import.sh` por isso exige a aplicação parada, restaura em bancos temporários e troca pelos de verdade (é o caminho testado). Ele **recusa** um destino com tenants (a origem, por exemplo) sem `--force-nonempty`; com a opção, apaga esses dados: confira o host antes.
+8. **Falhas e reexecução.** O `db-import.sh` pode ser rodado de novo. Uma falha **antes** da troca (soma que não bate, dump que não abre, restore que falha, aplicação rodando, destino não vazio) deixa o destino **como estava** (testado: os OIDs dos bancos não mudam). Uma falha **depois** da troca (impressão digital diferente) deixa o destino com os dados restaurados e **a aplicação parada**: investigue ou rode de novo; não suba a aplicação. Se o `db-import.sh` for interrompido à força (queda da máquina) no meio, podem sobrar `notify_new` ou `umami_new`, que a execução seguinte apaga.
+9. **`sha256sums` prova integridade, não autenticidade.** Quem consegue alterar a pasta altera também a soma; a autenticidade vem do canal (ssh entre as duas VMs, pela máquina de quem administra). O `db-export.sh` recusa uma pasta de saída que não esteja vazia: depois de uma exportação interrompida, apague a pasta parcial (`rm -rf`) antes de repetir.
 
 ### Reexecutar o teste
 

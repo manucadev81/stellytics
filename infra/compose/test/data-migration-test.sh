@@ -237,10 +237,15 @@ if [ "$MODE" != physical ]; then
   COMPOSE="docker compose -p $P --env-file $ENVF -f prod.yaml -f test/prod-test.yaml -f test/migration-test.yaml" \
     "$repo/infra/scripts/db-export.sh" "$dump" >/dev/null
   lap "exportação (pg_dump -Fc dos dois bancos + impressão digital)"
-  # Um dump adulterado ou truncado na cópia entre as máquinas tem de ser recusado.
-  cp -r "$dump" "$work/migracao-adulterado" && printf x >> "$work/migracao-adulterado/notify.dump"
-  if (cd "$work/migracao-adulterado" && sha256sum -c sha256sums >/dev/null 2>&1); then fail "dump adulterado passou no sha256sum"; fi
-  ok "[A] sha256sums recusa um dump alterado"
+  cfiles="-f prod.yaml -f test/prod-test.yaml -f test/migration-test.yaml"
+  imp() { COMPOSE="docker compose -p $P --env-file $ENVF $cfiles" "$repo/infra/scripts/db-import.sh" "$@"; }
+  dboids() { pgsql postgres -c "select string_agg(datname || ':' || oid, ',' order by datname) from pg_database where datname in ('notify','umami')"; }
+  # Importar na própria ORIGEM (que tem tenants) tem de ser recusado sem --force-nonempty.
+  oids=$(dboids)
+  if imp --yes "$dump" >/dev/null 2>&1; then fail "db-import rodou numa pilha com tenants"; fi
+  [ "$(dboids)" = "$oids" ] || fail "a recusa por destino não vazio mexeu nos bancos"
+  ok "[A] db-import recusa um destino com tenants (a origem) sem --force-nonempty"
+
   du -h "$dump"/*.dump | sed 's/^/     /'
 
   # Destino: o `site.yml` já rodou (pilha completa, vazia, com portal e Umami
@@ -248,9 +253,24 @@ if [ "$MODE" != physical ]; then
   new_stack destino-logico 1 "$(rand 32)" "$auth_secret" "$umami_secret"
   lap "destino lógico no ar e vazio"
   [ "$(pgsql notify -c 'select count(*) from tenant')" = 0 ] || fail "destino não está vazio"
-  # (a origem fica parada; o arquivo é copiado como seria com scp)
-  COMPOSE="docker compose -p $P --env-file $ENVF -f prod.yaml -f test/prod-test.yaml -f test/migration-test.yaml" \
-    "$repo/infra/scripts/db-import.sh" --yes "$dump" | tail -4
+  # Proteções do import, todas ANTES de qualquer DROP: os bancos do destino
+  # (OIDs) têm de continuar os mesmos depois de cada recusa.
+  oids=$(dboids)
+  refuse() { # descrição, pasta
+    if imp --yes "$2" >/dev/null 2>&1; then fail "[A] db-import aceitou: $1"; fi
+    [ "$(dboids)" = "$oids" ] || fail "[A] a recusa de '$1' mexeu nos bancos do destino"
+    ok "[A] db-import recusa $1 e deixa o destino intacto"
+  }
+  refuse "com a aplicação rodando" "$dump"
+  compose stop portal umami >/dev/null
+  cp -r "$dump" "$work/migracao-adulterado" && printf x >> "$work/migracao-adulterado/notify.dump"
+  refuse "um dump adulterado (sha256sums não confere)" "$work/migracao-adulterado"
+  cp -r "$dump" "$work/migracao-truncado" && head -c 1000 "$dump/notify.dump" > "$work/migracao-truncado/notify.dump"
+  (cd "$work/migracao-truncado" && sha256sum notify.dump umami.dump fingerprint.txt > sha256sums)
+  refuse "um dump truncado com sha256sums regenerado (pg_restore -l falha)" "$work/migracao-truncado"
+  cp -r "$dump" "$work/migracao-semsoma" && (cd "$work/migracao-semsoma" && sha256sum fingerprint.txt > sha256sums)
+  refuse "um sha256sums que não lista os dumps" "$work/migracao-semsoma"
+  imp --yes "$dump" | tail -4
   lap "importação + conferência (db-import.sh)"
   diff -u "$fp_origin" "$dump/fingerprint-destino.txt" > /dev/null || fail "impressão digital do destino difere"
   ok "[A] impressão digital idêntica (linhas e checksum por tabela, sequências, esquema, papéis, ACLs)"

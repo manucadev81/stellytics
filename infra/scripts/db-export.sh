@@ -22,7 +22,7 @@ umask 077
 mkdir -p "$dir"
 if [ -n "$(ls -A "$dir")" ]; then echo "db-export: $dir não está vazia." >&2; exit 1; fi
 
-running=$($COMPOSE ps --status running --services | grep -E '^(portal|ingest-web|umami|caddy)$' || true)
+running=$($COMPOSE ps --status running --services | grep -v -E '^(postgres|s3)$' || true)
 if [ -n "$running" ]; then
   echo "db-export: pare antes: $(echo "$running" | tr '\n' ' ')" >&2
   exit 1

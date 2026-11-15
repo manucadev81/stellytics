@@ -7,40 +7,90 @@
 # nelas), restaura os dumps, reaplica o 02-ingest-roles.sh e confere a
 # impressão digital contra a da origem. Só depois disso suba a aplicação.
 #
-#   infra/scripts/db-import.sh --yes /root/migracao
+#   docker compose -f prod.yaml stop caddy portal ingest-web umami   # antes
+#   infra/scripts/db-import.sh --yes [--force-nonempty] /root/migracao
 #
+# Proteções, todas ANTES de apagar qualquer coisa: o sha256sums tem de listar
+# notify.dump e umami.dump e bater; os dois dumps têm de abrir (`pg_restore -l`);
+# nenhum serviço além do Postgres pode estar rodando (o script não os para);
+# e o destino tem de ter 0 tenants (use --force-nonempty só se for de propósito:
+# sem isso, rodar o script na VM de origem por engano apagaria a produção).
+# Os dumps são restaurados em bancos temporários (notify_new e umami_new); só
+# quando os dois restauram é que os bancos antigos são trocados por eles. Uma
+# falha no restore deixa o destino como estava.
+
 # Rode na VM de destino como root, em /opt/notify/infra/compose. Destrutivo:
 # exige --yes.
 set -euo pipefail
 
-if [ "${1:-}" != "--yes" ] || [ -z "${2:-}" ]; then
-  echo "uso: db-import.sh --yes <pasta-com-os-dumps>  (APAGA os bancos notify e umami do destino)" >&2
+yes=0 force=0 dir=""
+for arg in "$@"; do
+  case "$arg" in
+    --yes) yes=1 ;;
+    --force-nonempty) force=1 ;;
+    -*) echo "db-import: opção desconhecida: $arg" >&2; exit 2 ;;
+    *) dir="$arg" ;;
+  esac
+done
+if [ "$yes" != 1 ] || [ -z "$dir" ]; then
+  echo "uso: db-import.sh --yes [--force-nonempty] <pasta-com-os-dumps>  (APAGA os bancos notify e umami do destino)" >&2
   exit 2
 fi
-dir="$2"
 COMPOSE="${COMPOSE:-docker compose -f prod.yaml}"
 here="$(cd "$(dirname "$0")" && pwd)"
 pg() { $COMPOSE exec -T -u postgres postgres "$@"; }
+abort() { echo "db-import: $*" >&2; exit 1; }
 
-(cd "$dir" && sha256sum -c sha256sums)
+# 1. Integridade: o sha256sums tem de listar os dois dumps (um sha256sums só com
+# o fingerprint não pode passar). Ele prova integridade, não autenticidade: a
+# autenticidade vem do canal (ssh) por onde a pasta chegou.
+for f in notify.dump umami.dump fingerprint.txt; do
+  grep -q "  $f\$" "$dir/sha256sums" || abort "$dir/sha256sums não lista $f"
+done
+(cd "$dir" && sha256sum -c sha256sums) || abort "sha256sums não confere"
 
-$COMPOSE stop caddy portal ingest-web umami >/dev/null 2>&1 || true
+# 2. Os dumps abrem? Falhar aqui não custa nada; falhar depois do DROP custaria o banco.
+for db in notify umami; do
+  pg pg_restore -l < "$dir/$db.dump" > /dev/null || abort "$db.dump não abre (truncado ou corrompido?)"
+done
 
-# Mesmos comandos do infra/compose/postgres/init/01-databases.sh, sem criar os
-# papéis (já existem). WITH (FORCE) derruba conexões que sobraram.
+# 3. Nada rodando além do Postgres (e do S3 do teste).
+running=$($COMPOSE ps --status running --services | grep -v -E '^(postgres|s3)$' || true)
+if [ -n "$running" ]; then
+  abort "pare antes: $(echo "$running" | tr '\n' ' ')(docker compose -f prod.yaml stop ...)"
+fi
+
+# 4. O destino está vazio? (sem a tabela, ou com 0 tenants)
+tenants=$(pg psql -X -At -d notify -c "select case when to_regclass('public.tenant') is null then 0 else (select count(*) from tenant) end" 2>/dev/null || echo 0)
+if [ "$tenants" != 0 ] && [ "$force" != 1 ]; then
+  abort "o destino tem $tenants tenant(s): isto não parece um destino vazio (é a origem?). Use --force-nonempty se for de propósito."
+fi
+
+# Restaura em bancos temporários; os de verdade só mudam depois.
+pg psql -X -v ON_ERROR_STOP=1 -d postgres <<'SQL'
+DROP DATABASE IF EXISTS umami_new WITH (FORCE);
+DROP DATABASE IF EXISTS notify_new WITH (FORCE);
+CREATE DATABASE umami_new OWNER umami;
+CREATE DATABASE notify_new OWNER notify;
+SQL
+for db in notify umami; do
+  echo "importando $db..."
+  if ! pg pg_restore --no-password --exit-on-error -d "${db}_new" < "$dir/$db.dump"; then
+    pg psql -X -d postgres -c "DROP DATABASE IF EXISTS umami_new WITH (FORCE)" -c "DROP DATABASE IF EXISTS notify_new WITH (FORCE)" >/dev/null || true
+    abort "o restore de $db falhou; o destino NÃO foi alterado."
+  fi
+done
+
+# Troca. Mesmos comandos do 01-databases.sh quanto a dono e REVOKE. A partir
+# daqui os bancos antigos já não existem.
 pg psql -X -v ON_ERROR_STOP=1 -d postgres <<'SQL'
 DROP DATABASE IF EXISTS umami WITH (FORCE);
 DROP DATABASE IF EXISTS notify WITH (FORCE);
-CREATE DATABASE umami OWNER umami;
-CREATE DATABASE notify OWNER notify;
+ALTER DATABASE umami_new RENAME TO umami;
+ALTER DATABASE notify_new RENAME TO notify;
 REVOKE ALL ON DATABASE umami FROM PUBLIC;
 REVOKE ALL ON DATABASE notify FROM PUBLIC;
 SQL
-
-for db in notify umami; do
-  echo "importando $db..."
-  pg pg_restore --no-password --exit-on-error -d "$db" < "$dir/$db.dump"
-done
 
 # CONNECT dos usuários do gateway e do coletor é permissão do banco, que o dump
 # não leva. O script é idempotente.
