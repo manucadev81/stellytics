@@ -4,7 +4,7 @@
 
 ## Open items for Romulo
 
-1. **Referral code.** Not obtained. The RFP brief says builders unknown to SCF are not eligible (Raven `getRfps`, 2026-11-15), and the handbook says SCF relies heavily on referral signals, though a referral is not mandatory and a project without one still gets an initial review (SCF Handbook "Build Award", 2026-11-15). Decide: look for a referrer, or record in #64 the decision to send without one. Per the SCF interest form guidance, the interest form must be submitted **before** a referrer can fill in the referral form, because the referrer picks the project by name from submitted interest forms.
+1. **Referral code.** Not obtained. The RFP brief says builders unknown to SCF are not eligible (Raven `getRfps`, 2026-11-15), and the handbook says SCF relies heavily on referral signals, though a referral is not mandatory and a project without one still gets an initial review (SCF Handbook "Build Award", 2026-11-15). Decide: look for a referrer, or record in #64 the decision to send without one. The SCF interest form guidance (a skill reference, not the handbook) says the interest form must be submitted **before** a referrer can fill in the referral form, because the referrer picks the project by name from submitted interest forms. This ordering rule is **UNVERIFIED**.
 2. **Team** (names, roles, links). Not in the repository.
 3. **Budget range.** Proposal only; see [`proposal.md`](proposal.md) section 5. Choose the range after Romulo validates the budget.
 4. **Jurisdiction and legal entity.** Handbook: jurisdiction-specific restrictions may apply, and SCF reaches out after reading the form.

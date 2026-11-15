@@ -15,7 +15,9 @@ None of these can be decided by the drafter. Each one blocks submission or weake
 | 5 | **Language of the repository docs** | The handbook says the RFP Track proposal needs a plain-English explanation and a diagram, and reviewers "assess each application based solely on the information provided". The linked docs in this repository are in Portuguese. Acceptance criterion of #65: "README e documentos citados disponíveis em inglês". | Not done. Decide: translate before submission, or write the English summaries inline. |
 | 6 | **How to present work already built** | Much of the web pipeline and the portal already exist. The handbook says Tranche 1 "should focus on actual development" and that architecture must be complete at application time. Funded scope has to be the work that remains (section 5). | Decide how to frame prior work. |
 | 7 | **Legal entity, jurisdiction and payee** | Needed on the form. Not in the repository. [`docs/privacidade.md`](../privacidade.md) also leaves the operating entity open. | Not decided. |
-| 8 | **Tranche structure** | The issue and the SCF skill references use 10/20/30/40%. The handbook page retrieved from Raven describes "three tranches". Whether the RFP Track form uses four is **UNVERIFIED**. | Confirm on the form. |
+| 8 | **Tranche structure** | The handbook says the award is "split into four payments tied to specific deliverables" and also that the "budget must be tied to three tranches". How the fourth payment fits with three tranches was **not confirmed**, so the 10/20/30/40% split (from the issue and the SCF skill references) is **UNVERIFIED for the RFP Track**. | Confirm with SCF or on the form. |
+| 9 | **Private vulnerability reporting** | The repository is already public, but private vulnerability reporting is `enabled: false` and [`SECURITY.md`](../../SECURITY.md) tells reporters to click "Report a vulnerability", which does not exist yet. | Romulo to turn it on in Settings > Code security before submission. Not done by the drafter. |
+| 10 | **Operating costs in the budget** | The handbook says costs should support future development, not operation (section 5). The RFP requires 12 months of hosting and support. | Decide how to present it and, ideally, ask SCF. |
 
 ## 1. Summary
 
@@ -62,8 +64,8 @@ flowchart LR
     portal["Portal<br/>Next.js"]
     gw["Web gateway<br/>Go"]
     umami["Umami<br/>internal network only"]
-    col["API collector<br/>OTel, Go"]
-    roll["Rollup<br/>Go"]
+    col["API collector (planned)<br/>OTel, Go"]
+    roll["Rollup (planned)<br/>Go"]
     pg[("PostgreSQL<br/>umami and notify databases")]
   end
   nav -->|"script, challenge, event"| caddy
@@ -79,6 +81,8 @@ flowchart LR
   portal --> umami
   portal --> pg
 ```
+
+Note: the collector and the rollup exist and run in the development Compose, but they are **not in `infra/compose/prod.yaml` or the Caddyfile**, so they are drawn as planned for production (section 4).
 
 In plain words:
 
@@ -97,13 +101,14 @@ Requirements are from the RFP brief (Scout `getRfps`, id `scf-web-api-analytics`
 | RFP requirement | Status today |
 |---|---|
 | Web metrics: page views, unique visitors, referrers, session duration, bounce rate, country, device and browser | Built: tenant dashboard and SCF dashboard ([`docs/e4-implementacao.md`](../e4-implementacao.md)); **not yet running in production** |
+| GDPR-compliant web analytics (RFP wording) | **Compliance is not claimed.** [`docs/privacidade.md`](../privacidade.md) records what the system does (no cookies, no browser storage, truncated IP, residency in Germany by IaC default) and its gaps (no retention for Umami events, no account deletion, no erasure of a removed project, roles and jurisdictions to validate with counsel). Not legal advice |
 | Version-pinned tracker, bot and inflation mitigation, supply-chain defenses | Built (section 7) |
 | API: dual-export OTel, drop traces and spans, keep route, status and latency in PostgreSQL, 24 months of aggregates | Collector, exporter, route normalization, rollup and retention built and tested locally ([`docs/specs/e5-pipeline-de-api.md`](../specs/e5-pipeline-de-api.md)); **collector and rollup are not in `infra/compose/prod.yaml`** |
 | About 1,000,000 requests a day | **Not load tested.** There is a volume estimate in the E5 spec; the load test is issue [#51](https://github.com/romulospl/notify/issues/51) |
 | Self-service enrollment, strict isolation, global SCF view | Built, with an isolation test suite ([`docs/e2-implementacao.md`](../e2-implementacao.md)) |
 | Revocable API keys for machine consumers (SCF) | **Not built** ([#48](https://github.com/romulospl/notify/issues/48)). Ingest keys for tenants exist, which is a different thing |
 | Dashboards: private per project plus global comparison, for web and API | Built ([`docs/e4-implementacao.md`](../e4-implementacao.md), [`docs/e6-implementacao.md`](../e6-implementacao.md)) |
-| One OSI-licensed monorepo with IaC, runbooks, onboarding guide, tests, security and privacy docs | MIT monorepo, IaC, onboarding guide ([`docs/onboarding-de-tenant.md`](../onboarding-de-tenant.md)), privacy and security docs exist. **Runbooks do not exist** ([#53](https://github.com/romulospl/notify/issues/53)) |
+| One OSI-licensed monorepo with IaC, runbooks, onboarding guide, tests, security and privacy docs | MIT monorepo, IaC, onboarding guide ([`docs/onboarding-de-tenant.md`](../onboarding-de-tenant.md)), privacy and security docs exist. **Runbooks are in PR [#111](https://github.com/romulospl/notify/pull/111) (open, pending merge; issue [#53](https://github.com/romulospl/notify/issues/53))** |
 | Hosting and support for 12 months, 99.99% ingestion, 99.90% dashboards, critical and high patched in 24 hours | **Not met today** (section 5, SLA) |
 | Handover to a community operator between months 6 and 12 | **Not planned in detail** ([#54](https://github.com/romulospl/notify/issues/54)) |
 | Adoption: at least three SCF-awarded projects on web, one on API | **None** (section 8) |
@@ -124,7 +129,8 @@ Delivered on `main` as of 2026-11-15 (source: [`docs/andamento.md`](../andamento
 - **The production environment has not been applied.** No Hetzner account, domain, DNS or SMTP is set up, and no release has been published. The `cosign verify` of real images, certificate issuance and e-mail delivery were never exercised ([`docs/deploy.md`](../deploy.md), "Como este guia foi conferido").
 - **The API collector and rollup are not in production** (`infra/compose/prod.yaml`, Caddyfile).
 - **No pilot and no letters of interest.**
-- **No load test, no high availability, no runbooks, no handover plan.**
+- **No load test, no high availability and no handover plan.** Runbooks are in PR [#111](https://github.com/romulospl/notify/pull/111), open and pending merge; they are not on `main`.
+- **The "Last used" column of ingest keys is never updated.** `last_used_on` (planned in the E2 spec) is not written by any code ([`docs/andamento.md`](../andamento.md), item on #42 and #43; [`docs/onboarding-de-tenant.md`](../onboarding-de-tenant.md) warns about it). The RFP asks for revocable keys; revocation works, but a tenant cannot see whether a key is still in use.
 - Privacy gaps listed in [`docs/privacidade.md`](../privacidade.md): no retention configured for web events in Umami, no account deletion, no erasure of a removed project's data.
 - No vulnerability scanning, no license check and no reproducible-build verification in CI ([`docs/anti-bot-e-cadeia-de-suprimentos.md`](../anti-bot-e-cadeia-de-suprimentos.md)).
 
@@ -132,24 +138,40 @@ Delivered on `main` as of 2026-11-15 (source: [`docs/andamento.md`](../andamento
 
 ### Framing
 
-The handbook states Tranche 1 should be development, not planning, and that SCF Build tranches end in a mainnet launch with go-live metrics (Raven, SCF Handbook "Budget & Deliverable Guidelines"). The work already done is **prior work, not funded scope**. Funded scope is what separates the repository today from the RFP: production, the API path in production, real pilots, the privacy and security gaps above, load, availability, runbooks, handover and 12 months of hosting.
+The handbook states Tranche 1 should be development, not planning, and that SCF Build tranches end in a mainnet launch with go-live metrics (Raven, SCF Handbook "Budget & Deliverable Guidelines"). The work already done is **prior work, not funded scope**. Funded scope is what separates the repository today from the RFP: production, the API path in production, real pilots, the privacy and security gaps above, load, availability, runbooks (in PR #111, pending merge), handover and 12 months of hosting.
 
 Each milestone below is independently verifiable from outside the team: a public URL, a published release, a report committed to the repository, or a letter.
 
-### Tranche 0: 10% (on award approval)
+### Calendar
 
-The SCF reference material available to the drafter (`scf-budget-builder`) describes the first 10% as paid automatically on approval, with no deliverable. **UNVERIFIED for the RFP Track form.** Funds the first weeks of setup (accounts, domain, SMTP, first release). If the form instead ties 10% to a deliverable, move "Environment ready" from Tranche 1 here.
+Handbook rules (Raven, SCF Handbook "Build Award", 2026-11-15): each tranche must be submitted within 90 days of the last payment, or the remaining funds are forfeited, and a project typically takes 3 to 6 months. Proposed calendar, counted from award approval (month 0):
 
-### Tranche 1: 20%, production web path
+| Tranche | Target | Hard limit under the handbook rule |
+|---|---|---|
+| T0 | Month 0 to 1 | 90 days after approval |
+| T1 | Month 2 | 90 days after the T0 payment |
+| T2 | Month 4 | 90 days after the T1 payment |
+| T3 | Month 6 | 90 days after the T2 payment |
+
+Four payments at the 90-day limit would run to about 12 months, so the target keeps development to about 6 months, the top of the handbook's typical range. The 12 months of operation required by the RFP start **after** the final development tranche (RFP brief) and are not part of this 6-month development calendar.
+
+### Tranche 0: 10% (setup, tied to a deliverable)
+
+The handbook says the award is "split into four payments tied to specific deliverables" and also that the budget "must be tied to three tranches". How the fourth payment fits was **not confirmed**. The earlier idea of a first 10% paid automatically with no deliverable (from the SCF budget reference, not the handbook) conflicts with that wording, so this draft gives T0 a concrete deliverable. **The 10/20/30/40% split is UNVERIFIED for the RFP Track.** If SCF uses three tranches, merge T0 into T1.
 
 | # | Deliverable | Completion criteria (testable) |
 |---|---|---|
-| 1.1 | Production environment applied | `tofu apply` and Ansible run on a real Hetzner account in `nbg1`; HTTPS portal and gateway on the project domain; `docs/deploy.md` corrected from what actually happened |
-| 1.2 | First signed release | Published images with SBOM and cosign signature; the deploy verifies the signature on real images |
-| 1.3 | Backup restore drill | Restore of the real bucket into a throwaway VM, with the steps and result committed |
-| 1.4 | Collector and rollup in `prod.yaml` | Both services in production with digest and `cosign verify`; OTLP routed and the firewall opened; external monitoring covers the API ingestion URL |
-| 1.5 | CI security gates | Dependency review, `govulncheck`, `pnpm audit` and an OSI license check running in CI (gaps listed in `docs/anti-bot-e-cadeia-de-suprimentos.md`) |
-| 1.6 | First web pilot instrumented | One SCF-awarded project sends events to production; its dashboard and the SCF view show them; letter of interest attached |
+| 0.1 | Production environment applied | `tofu apply` and Ansible run on a real Hetzner account in `nbg1`; portal and gateway answer over HTTPS on the project domain; external monitoring alerting |
+| 0.2 | First signed release | Published images with SBOM and cosign signature; the deploy verifies the signature on real images |
+
+### Tranche 1: 20%, production web path (production itself is T0)
+
+| # | Deliverable | Completion criteria (testable) |
+|---|---|---|
+| 1.1 | Backup restore drill | Restore of the real bucket into a throwaway VM, with the steps and result committed |
+| 1.2 | Collector and rollup in `prod.yaml` | Both services in production with digest and `cosign verify`; OTLP routed and the firewall opened; external monitoring covers the API ingestion URL |
+| 1.3 | CI security gates | Dependency review, `govulncheck`, `pnpm audit` and an OSI license check running in CI (gaps listed in `docs/anti-bot-e-cadeia-de-suprimentos.md`) |
+| 1.4 | First web pilot instrumented | One SCF-awarded project sends events to production; its dashboard and the SCF view show them; letter of interest attached |
 
 ### Tranche 2: 30%, full RFP feature set with pilots
 
@@ -164,16 +186,16 @@ The SCF reference material available to the drafter (`scf-budget-builder`) descr
 
 ### Tranche 3: 40%, mainnet-equivalent launch, operation and handover
 
-Stellar mainnet deployment does not apply to an analytics service. The equivalent "go-live" is a production service meeting its availability and support commitments, handed over.
+Stellar mainnet deployment does not apply to an analytics service. Go-live is the production service from T0; T3 is its hardening (HA, runbooks, handover plan), not a first launch.
 
 | # | Deliverable | Completion criteria (testable) |
 |---|---|---|
 | 3.1 | High availability | HA plan implemented in IaC for ingestion and dashboards; failover exercised and documented (issue #52) |
-| 3.2 | Measured availability | External monitoring report for the period since go-live against the stated targets, including incidents |
-| 3.3 | Runbooks | `docs/runbooks/` with incident, backup and restore, secret rotation, Umami upgrade and vulnerability response (issue #53) |
+| 3.2 | Measured availability | External monitoring report for the period since the production go-live (T0, so about 4 months by T3) against the targets, including incidents. The 12 months of operation are not needed to deliver this report |
+| 3.3 | Runbooks | `docs/runbooks/` (in PR #111, open and pending merge; issue #53): review the merged runbooks against the real production environment, correct them after the restore drill (1.1) and a failover exercise (3.1) |
 | 3.4 | Handover plan and tested data migration | Written plan for repository, data and domain transfer; migration procedure tested on a second environment (issue #54) |
 | 3.5 | Video | Walkthrough of the tenant experience and of the SCF global view (issue [#47](https://github.com/romulospl/notify/issues/47)) |
-| 3.6 | 12 months of hosting and support start | Service operated under the SLA below from the date of the final tranche |
+| 3.6 | Operation plan for the 12 months | Hosting, support and vulnerability process documented and funded by the T3 operation lines; the 12 months start after the final tranche and are reported to SCF monthly. This is operation, not development (see the eligibility risk in the budget notes) |
 
 ### Budget (PROPOSAL, to validate with Romulo)
 
@@ -181,7 +203,7 @@ Method: bottom-up from deliverables, with weekly rates inside the ranges used by
 
 | Tranche | Share | Amount (USD) | Items |
 |---|---|---|---|
-| T0 | 10% | 15,000 | Setup effort (accounts, domain, SMTP, first release): DevOps 5 weeks at 3,000 |
+| T0 | 10% | 15,000 | Deliverables 0.1 and 0.2 (accounts, domain, SMTP, first release): DevOps effort, 5 weeks at 3,000 |
 | T1 | 20% | 30,000 | DevOps 4 weeks at 3,000 (12,000); Go backend 3 weeks at 3,000 (9,000); full-stack 3 weeks at 3,000 (9,000) |
 | T2 | 30% | 45,000 | Go backend 5 weeks at 3,000 (15,000); full-stack 5 weeks at 3,000 (15,000); DevOps 3 weeks at 3,000 (9,000); technical writer 2 weeks at 2,000 (4,000); pilot support and coordination 1 week at 2,000 (2,000) |
 | T3 | 40% | 60,000 | HA and failover, DevOps 8 weeks at 3,000 (24,000); handover and migration 4 weeks at 3,000 (12,000); runbooks and video 3 weeks at 2,000 (6,000); 12 months of Hetzner hosting, backup and monitoring (6,000, **placeholder, not priced**); support and vulnerability response for 12 months (12,000) |
@@ -192,8 +214,10 @@ Notes for the budget review:
 - **Audit costs are not in the budget** (ineligible line; covered by the Audit Bank for eligible projects, per the same skill reference). Whether this project qualifies is **UNVERIFIED**.
 - No marketing, no contingency, no legal or entity fees.
 - The Hetzner figure is a placeholder; it must be replaced with a priced quote for the VM, volume, Object Storage and the monitoring VM.
+- **Eligibility risk: operating costs.** The handbook says costs should support future development, not operation (as relayed in review; the exact wording was not re-retrieved). The 12 months of hosting (6,000) and support (12,000) in T3 are operation, but the RFP itself requires them ("hosted and supported by the proposer for 12 months"). The justification is that the RFP makes them part of the deliverable. SCF may reject or reduce these lines; ask SCF before submission and be ready to move them out. Roles named in the table are budget categories only, not named people.
+- **How the 12 months are paid:** there is no separate payment in this draft. The 18,000 for operation sits inside T3 and is released when T3 is accepted, so the team carries the cost of months 1 to 12 of operation up front. How SCF treats this is **UNVERIFIED**.
 - T3 is 40% of the total and carries 12 months of support, which is where "any line over 40% needs an explanation" should be answered: support is spread over a year, not delivered at once. Consider whether part of it should be tied to the handover.
-- Names and rates per person are not in the repository.
+- Roles and rates are budget categories drawn from a benchmark, not named people. The repository has no team or rate data, and none was inferred.
 
 ## 6. Service levels and support
 
@@ -205,10 +229,10 @@ In absolute terms: 99.99% is about 4.3 minutes of downtime in a 30-day month and
 
 **Commitment proposed:**
 
-- Adopt the RFP targets as the committed service levels, measured by the external monitoring and published.
+- Adopt the RFP targets as **targets, measured and reported**, by the external monitoring and published. They are not guaranteed commitments: 99.99% is not reachable on a single VM.
 - Tranche 3 delivers the HA design in IaC (issue #52) and a measured availability report. The design is not decided: 99.99% on ingestion may need more than one node and a failover path. **We do not claim the target is reachable on a single provider until that is tested.** If the measured result falls short, we report it and state what would be needed.
-- Vulnerabilities: critical and high fixes within 24 hours of a fix being available upstream, through the existing pinned-dependency flow ([`docs/anti-bot-e-cadeia-de-suprimentos.md`](../anti-bot-e-cadeia-de-suprimentos.md)). The 14-day wait for new releases has an exception for security fixes to be written down in the runbook (not written yet).
-- Support model: public issue tracker, a security contact ([`SECURITY.md`](../../SECURITY.md); private vulnerability reporting is pending, it is only available once the repository is public), and a response time to be defined. **Support hours and contact are for Romulo to decide.**
+- Vulnerabilities: critical and high fixes within 24 hours of a fix being available upstream, through the existing pinned-dependency flow ([`docs/anti-bot-e-cadeia-de-suprimentos.md`](../anti-bot-e-cadeia-de-suprimentos.md)). The 14-day wait for new releases has an exception for security fixes to be written down in the runbook (to be added to the runbooks of PR #111).
+- Support model: public issue tracker, a security contact ([`SECURITY.md`](../../SECURITY.md); the repository is already public but private vulnerability reporting is `enabled: false`, so the "Report a vulnerability" button that SECURITY.md points to does not exist yet; turning it on is an action for Romulo, item 9 of section 0), and a response time to be defined. **Support hours and contact are for Romulo to decide.**
 
 ## 7. Privacy and anti-bot
 
@@ -224,7 +248,7 @@ In absolute terms: 99.99% is about 4.3 minutes of downtime in a 30-day month and
 
 - Layers: JavaScript proof of work (HMAC-signed challenge, bits configurable), fingerprint limit per truncated IP and per site, rate limit, a site-status check, and an event payload rebuilt from a fixed field list (client-supplied IP, user agent, id and timestamp are never forwarded).
 - What it does not stop, stated in the document: bots that execute JavaScript, token reuse within its lifetime, botnets, and open CORS without an `Origin` check. Limits are not calibrated on real traffic; that happens with the pilots.
-- Supply chain applied in the repository: immutable tracker versions with SRI, lockfiles, a 14-day wait on new releases, pinned actions and image digests, SBOM, cosign-signed images, and a deploy that verifies the signature. Not yet existing: vulnerability scanning, license checks and a verified reproducible build (Tranche 1 deliverable 1.5 covers the first two).
+- Supply chain applied in the repository: immutable tracker versions with SRI, lockfiles, a 14-day wait on new releases, pinned actions and image digests, SBOM, cosign-signed images, and a deploy that verifies the signature. Not yet existing: vulnerability scanning, license checks and a verified reproducible build (Tranche 1 deliverable 1.3 covers the first two).
 - The Renovate app is not installed on the repository, so automated update PRs are not running yet.
 
 ## 8. Pilots
@@ -261,7 +285,7 @@ All of these are open post-MVP issues ([#9](https://github.com/romulospl/notify/
 | Handover | [#54](https://github.com/romulospl/notify/issues/54) | Transfer of repository, data and domain to a community-appointed operator; counts as done only when the new operator runs the system alone | T3 |
 | SCF machine keys | [#48](https://github.com/romulospl/notify/issues/48) | Operators create and revoke keys; authenticated read API for metrics | T2 |
 
-Handover timing: the RFP asks for the handover between months 6 and 12 of operation, at SCF's discretion. The design already helps: MIT license, a single repository with IaC, one database engine, pinned versions, no heavy fork of Umami. What is missing is the runbooks (#53) and a tested data migration, which Tranche 3 delivers before month 6. Who the community operator is and who decides is SCF's call; we do not assume it.
+Handover timing: the RFP asks for the handover between months 6 and 12 of operation, at SCF's discretion. The design already helps: MIT license, a single repository with IaC, one database engine, pinned versions, no heavy fork of Umami. What is missing is the merge of the runbooks (PR #111, open) and a tested data migration, which Tranche 3 delivers before month 6. Who the community operator is and who decides is SCF's call; we do not assume it.
 
 ## 11. Ecosystem facts and sources
 
