@@ -25,6 +25,13 @@ import { GET as getProjects } from "@/app/api/v1/projects/route";
 import { GET as getWeb } from "@/app/api/v1/web/route";
 import { startFakeUmami, type FakeUmami } from "./fake-umami";
 
+// O segredo é tudo depois de `nrk_<prefixo>_`. Ele é base64url e pode conter `_`,
+// então cortar a chave por `_` e pegar o terceiro pedaço dá um fragmento curto
+// que aparece em qualquer JSON e deixa o teste instável.
+function secretOf(key: string): string {
+  return key.slice(key.indexOf("_", "nrk_".length) + 1);
+}
+
 const DOMAIN = "@read-api-test.notify.invalid";
 const SLUG = "read-api-test-";
 
@@ -109,7 +116,7 @@ describe("gerar, listar e revogar", () => {
     const [row] = await db.select().from(operatorApiKey).where(eq(operatorApiKey.id, created.summary.id));
     expect(row!.keyHash).toEqual(hashReadKey(created.key));
     // A chave completa não está em nenhuma coluna de texto da tabela nem do audit_log.
-    const secret = created.key.split("_")[2]!;
+    const secret = secretOf(created.key);
     const dump = JSON.stringify([
       row,
       await db.select().from(auditLog).where(eq(auditLog.actorUserId, operatorId)),
@@ -214,7 +221,7 @@ describe("autenticação da API", () => {
     expect(res.status).toBe(200);
     expect(update).toHaveBeenCalledTimes(1);
     expect(spy).toHaveBeenCalledWith("Falha ao gravar o último uso da chave de leitura", "Error");
-    expect(JSON.stringify(spy.mock.calls)).not.toContain(key.split("_")[2]);
+    expect(JSON.stringify(spy.mock.calls)).not.toContain(secretOf(key));
     expect((await listReadKeys(op)).find((k) => k.id === summary.id)?.lastUsedOn).toBeNull();
     update.mockRestore();
     spy.mockRestore();
@@ -255,7 +262,7 @@ describe("autenticação da API", () => {
     const { key } = await newKey("log");
     await call(getProjects, "/api/v1/projects", key);
     await call(getProjects, "/api/v1/projects", `${key}x`);
-    expect(JSON.stringify(spy.mock.calls)).not.toContain(key.split("_")[2]);
+    expect(JSON.stringify(spy.mock.calls)).not.toContain(secretOf(key));
     spy.mockRestore();
   });
 });
