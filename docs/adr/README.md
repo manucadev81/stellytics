@@ -16,6 +16,7 @@ Registro das decisões de arquitetura do projeto. Cada ADR descreve o contexto, 
 | [0008](0008-eventos-customizados-e-wallets-kit.md) | Eventos customizados no script e captura do Stellar Wallets Kit | Aceito | 15/11/2026 |
 | [0009](0009-alta-disponibilidade.md) | Alta disponibilidade para as metas de SLA | Proposto | 15/11/2026 |
 | [0010](0010-adaptador-opt-in-do-wallets-kit.md) | Adaptador opt-in do Stellar Wallets Kit | Aceito | 15/11/2026 |
+| [0011](0011-limite-de-repasses-ao-umami.md) | Limite de repasses simultâneos do gateway ao Umami | Proposto | 15/11/2026 |
 
 ## Como escrever um novo ADR
 
