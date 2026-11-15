@@ -32,3 +32,19 @@ output "monitor_ipv4" {
   description = "IPv4 da VM de monitoramento (inventário do Ansible, host `monitor`)."
   value       = hcloud_server.monitor.ipv4_address
 }
+
+# Alta disponibilidade (#52, ADR 0009): vazias com os padrões.
+output "ingest_ipv4" {
+  description = "IPv4 das VMs extras de ingestão (lista vazia se ha_ingest_replicas = 0)."
+  value       = hcloud_server.ingest[*].ipv4_address
+}
+
+output "floating_ipv4" {
+  description = "IPv4 flutuante (nulo se ha_floating_ip = false). Só IPv4: o registro AAAA continua apontando para a VM e não migra num failover."
+  value       = one(hcloud_floating_ip.ingest[*].ip_address)
+}
+
+output "standby_private_ip" {
+  description = "IP privado da réplica do Postgres (nulo se ha_db_standby = false)."
+  value       = one(hcloud_server_network.standby[*].ip)
+}

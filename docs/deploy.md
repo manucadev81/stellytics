@@ -357,6 +357,7 @@ ssh -N -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 root@<monitor_ipv4>
 - **API de leitura do SCF (`/api/v1`, [#48](https://github.com/romulospl/notify/issues/48)):** é servida pelo portal, no mesmo host e pelo mesmo Caddy, sem rota nem porta própria. O Caddy **não limita requisições por IP** (a imagem não tem módulo de rate limit). O limite é do portal, em memória e por instância ([ADR 0006](adr/0006-api-de-leitura-do-scf.md)); um ataque distribuído não é contido. Não precisa de variável nova.
 - **Domínio e DNS na IaC:** hoje os registros são criados à mão (ADR 0004).
 - **SMTP de produção:** o guia exige um provedor, mas não escolhe nem configura nenhum (SPF, DKIM e DMARC do domínio do `mail_from` ficam com você).
+- **Transferir a operação para outra equipe:** plano, ordem, janela, migração de dados testada localmente (`infra/scripts/db-export.sh` e `db-import.sh`) e critérios de aceite em [`docs/transferencia.md`](transferencia.md) ([#54](https://github.com/romulospl/notify/issues/54)).
 - **Alta disponibilidade:** é uma VM só. Se ela cair, o serviço cai até a recriação (restauração do backup em VM nova, seção "Restaurar o banco").
 - **Teste de restauração em produção:** a restauração é testada no CI com S3 local, não contra o bucket real. Faça um ensaio numa VM descartável antes de precisar dela.
 - **Atualização do Umami, do Postgres e do Caddy:** só por PR (imagens por digest no `prod.yaml`); não há guia de migração de versão maior do Postgres.
