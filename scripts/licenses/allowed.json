@@ -1,0 +1,26 @@
+{
+  "comment": "Allowlist de licencas das dependencias de producao (regra do projeto: toda dependencia precisa de licenca aprovada pela OSI). Veja CONTRIBUTING.md, secao Dependencias. Ids SPDX; expressoes com OR passam se uma alternativa estiver aqui, com AND exigem todas.",
+  "allowed": [
+    "0BSD",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "LGPL-3.0-only",
+    "LGPL-3.0-or-later",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "Unlicense"
+  ],
+  "exceptions": [
+    {
+      "ecosystem": "npm",
+      "package": "caniuse-lite",
+      "license": "CC-BY-4.0",
+      "reason": "CC-BY-4.0 nao e aprovada pela OSI, mas cobre so dados (tabelas de suporte de navegadores do Can I Use), nao codigo. Chega por next/browserslist e so e lida no build para escolher o alvo do CSS e do JS; nao vai para o runtime nem para o script de rastreamento. Nao ha substituto: o Next.js a exige.",
+      "date": "2026-11-15",
+      "expires": "2027-05-15"
+    }
+  ]
+}
