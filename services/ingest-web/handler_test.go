@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/romulospl/notify/services/ingest-web/internal/limit"
 	"github.com/romulospl/notify/services/ingest-web/internal/proof"
 	"github.com/romulospl/notify/services/ingest-web/internal/relay"
+	"github.com/romulospl/notify/services/ingest-web/internal/site"
 )
 
 const (
@@ -406,5 +408,91 @@ func TestScripts(t *testing.T) {
 		if cc := resp.Header.Get("Cache-Control"); strings.Contains(cc, "immutable") {
 			t.Errorf("%s: 404 com cache imutável", p)
 		}
+	}
+}
+
+// Com SITE_STALE_TTL em 0, nada vencido é servido: a falha do banco continua
+// virando 503, mesmo para um site que o cache já conheceu.
+func TestEventStaleOffReturns503OnDBFailure(t *testing.T) {
+	var fail atomic.Bool
+	store := siteFunc(func(_ context.Context, id string) (bool, error) {
+		if fail.Load() {
+			return false, context.DeadlineExceeded
+		}
+		return id == activeSite, nil
+	})
+	// TTL 0: toda requisição consulta o banco; sem stale, o erro passa.
+	s := newSetup(t, func(g *gateway) { g.sites = site.NewCached(store, 0).WithStale(0) })
+	if r := post(t, s, "text/plain", eventBody(activeSite)); r.StatusCode != http.StatusNoContent {
+		t.Fatalf("banco ok: status = %d, quero 204", r.StatusCode)
+	}
+	fail.Store(true)
+	if r := post(t, s, "text/plain", eventBody(activeSite)); r.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("banco fora, stale desligado: status = %d, quero 503", r.StatusCode)
+	}
+	if n := len(s.umami.received()); n != 1 {
+		t.Fatalf("eventos repassados = %d, quero 1", n)
+	}
+}
+
+// Com stale ligado, o mesmo site conhecido segue aceito; um desconhecido não.
+func TestEventStaleOnServesKnownSite(t *testing.T) {
+	var fail atomic.Bool
+	store := siteFunc(func(_ context.Context, id string) (bool, error) {
+		if fail.Load() {
+			return false, context.DeadlineExceeded
+		}
+		return id == activeSite, nil
+	})
+	s := newSetup(t, func(g *gateway) { g.sites = site.NewCached(store, 0).WithStale(time.Hour) })
+	post(t, s, "text/plain", eventBody(activeSite))
+	fail.Store(true)
+	if r := post(t, s, "text/plain", eventBody(activeSite)); r.StatusCode != http.StatusNoContent {
+		t.Fatalf("conhecido com banco fora: status = %d, quero 204", r.StatusCode)
+	}
+	if n := len(s.umami.received()); n != 2 {
+		t.Fatalf("eventos repassados = %d, quero 2", n)
+	}
+	unknown := "0a0b0c0d-0e0f-4000-8000-0000000000ff"
+	if r := post(t, s, "text/plain", eventBody(unknown)); r.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("desconhecido com banco fora: status = %d, quero 503", r.StatusCode)
+	}
+}
+
+type siteFunc func(context.Context, string) (bool, error)
+
+func (f siteFunc) Active(ctx context.Context, id string) (bool, error) { return f(ctx, id) }
+
+// logStale registra o total de respostas vencidas, sem identificadores.
+func TestLogStaleReportsCount(t *testing.T) {
+	var fail atomic.Bool
+	store := siteFunc(func(context.Context, string) (bool, error) {
+		if fail.Load() {
+			return false, context.DeadlineExceeded
+		}
+		return true, nil
+	})
+	sites := site.NewCached(store, 0).WithStale(time.Hour)
+	sites.Active(context.Background(), activeSite)
+	fail.Store(true)
+	sites.Active(context.Background(), activeSite)
+
+	var buf syncBuffer
+	log := slog.New(slog.NewJSONHandler(&buf, nil))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { logStale(ctx, log, sites, 10*time.Millisecond); close(done) }()
+	deadline := time.Now().Add(2 * time.Second)
+	for !strings.Contains(buf.String(), "vencida") && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	cancel()
+	<-done
+	out := buf.String()
+	if !strings.Contains(out, `"respostas":1`) || !strings.Contains(out, `"total":1`) {
+		t.Fatalf("log inesperado: %s", out)
+	}
+	if strings.Contains(out, activeSite) {
+		t.Fatal("o log não pode conter o ID do site")
 	}
 }
