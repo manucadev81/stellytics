@@ -4,17 +4,19 @@ Este documento descreve o que a plataforma faz com dados pessoais, lendo o códi
 
 Convenções: "verificado" quer dizer que a afirmação foi conferida no código ou na configuração citados ao lado. "Não verificado" quer dizer que depende de comportamento de terceiros (Umami, provedor de SMTP, Hetzner) ou de algo que o repositório ainda não tem.
 
+Seções verificadas diretamente no código: 3.1 (`tracker.ts`, `relay.go`), 3.3 (`auth.ts`, `schema.ts`) e 4 (`clientip.go`). As demais combinam código, specs e ADRs, como indicado em cada uma.
+
 ## 1. Resumo
 
 - **Visitantes dos sites dos tenants (analytics web):** sem cookie, sem `localStorage`/`sessionStorage`, sem identificador persistente no navegador. O IP completo nunca é gravado: o gateway trunca antes de repassar ao Umami.
 - **Chamadas de API dos tenants (analytics de API):** só contadores e histogramas por rota, método e status, a cada minuto. Traces, spans e logs são descartados.
 - **Usuários do portal (e-mail, nome, senha com hash):** são dados pessoais e ficam no banco `notify`. O portal não grava o IP de quem entra.
-- **Onde ficam:** Alemanha (Hetzner, `nbg1`), servidor, volume e backup.
+- **Onde ficariam:** a IaC fixa `nbg1` (Hetzner, Alemanha) por padrão para servidor, volume e backup; **a produção ainda não foi aplicada** (`docs/andamento.md`).
 - **Apagamento:** hoje **não há fluxo de apagamento** nem para visitantes nem para usuários. Para visitantes, a razão é que o IP completo e os identificadores persistentes não existem (seção 6), mas isso **não é o mesmo que "nenhum dado pessoal guardado"**: a seção 3 lista o que fica. Para usuários do portal, é uma lacuna (seção 7).
 
 ## 2. Papéis (proposta a validar)
 
-| Dado | Quem decide finalidade e meios | Papel proposto da plataforma |
+| Dado | Quem decide finalidade e meios (proposto) | Papel da plataforma (proposto) |
 |---|---|---|
 | Eventos de visitantes dos sites do tenant e métricas de API do tenant | O projeto (tenant), que instala o script ou o OpenTelemetry | **Operador** (processor) |
 | Conta no portal (e-mail, nome, senha, sessões) | A própria plataforma | **Controlador** |
@@ -52,7 +54,7 @@ Tabelas `user`, `account`, `session` e `verification` (`apps/portal/src/lib/db/s
 
 ### 3.4 Registro de auditoria e chaves
 
-`audit_log` recebe ação, quem fez (`actor_user_id`), tenant, data e `details` (`tenant.created`, `tenant.removed`, `tenant.reactivated`, `operator.created`, `ingest_key.created`, `ingest_key.revoked`, entre outras). O código e o comentário do esquema dizem que não leva chave, senha nem IP. O motivo da remoção de um projeto é texto livre digitado pelo operador e vai para `details`. A tabela só aceita inserção (gatilho em `0002_ingest_views.sql`) e não tem chave estrangeira, de propósito: sobrevive à exclusão do usuário ou do tenant. Isso entra em conflito com um futuro apagamento de conta (seção 7): o `actor_user_id` fica.
+`audit_log` recebe ação, quem fez (`actor_user_id`), tenant, data e `details` (`tenant.created`, `tenant.removed`, `tenant.reactivated`, `operator.created`, `ingest_key.created`, `ingest_key.revoked`, entre outras). O código e o comentário do esquema dizem que não leva chave, senha nem IP. O motivo da remoção de um projeto é texto livre digitado pelo operador e vai para `details` e também para `tenant.status_reason`; `tenant.status_changed_by` guarda o operador (chave estrangeira para `user` com `onDelete: set null`), ou seja, apagar o operador zera esse campo, mas não o `actor_user_id` do `audit_log`. A tabela só aceita inserção (gatilhos em `apps/portal/drizzle/0002_ingest_views.sql` contra UPDATE, DELETE e TRUNCATE) e não tem chave estrangeira, de propósito: sobrevive à exclusão do usuário ou do tenant. Isso entra em conflito com um futuro apagamento de conta (seção 7): o `actor_user_id` fica, e corrigir ou apagar uma linha à mão exigiria desabilitar o gatilho.
 
 A chave de ingestão completa nunca é gravada; só o prefixo e o SHA-256 (`ingest_key`), e `last_used_on` guarda só a data.
 
@@ -62,10 +64,11 @@ O portal envia por SMTP (`apps/portal/src/lib/mail.ts`, variável `SMTP_URL`) s�
 
 ### 3.6 Logs e memória
 
-- **Gateway:** nenhum log leva IP, `X-Forwarded-For` ou `User-Agent`; um panic é registrado só com o erro (`handler.go`, `recoverPanic`). Nenhuma resposta grava cookie. O limite de requisições por IP e a contagem de fingerprints (hash de User-Agent, `Accept-Language`, idioma e tela) usam o IP **truncado**, só em memória e por janela curta (`internal/limit`, `internal/fingerprint`).
+- **Gateway:** nenhum log leva IP, `X-Forwarded-For` ou `User-Agent`; um panic é registrado com `path` e `fmt.Sprint(v)` (`handler.go`, `recoverPanic`), onde `v` é um valor arbitrário do panic: não leva IP por desenho, mas o conteúdo não é controlado. O nível do log é o padrão do `slog` (Info), então os logs `Debug` de "evento descartado" ficam desligados. Nenhuma resposta grava cookie. O limite de requisições por IP e a contagem de fingerprints (hash de User-Agent, `Accept-Language`, idioma e tela) usam o IP **truncado**, só em memória e por janela curta (`internal/limit`, `internal/fingerprint`).
 - **Caddy:** o log de erro padrão apaga IP, porta, cabeçalhos, URI e TLS do pedido (`infra/caddy/Caddyfile`). Não há access log configurado.
-- **Coletor:** a chave completa nunca vai para log (`CLAUDE.md`, #30). Uma leitura de todos os `slog` do coletor **não foi feita** nesta revisão.
-- Logs de contêineres do Docker, do Umami e do Postgres: **não verificados** quanto a conteúdo pessoal.
+- **Coletor:** quando a consulta à `ingest_key_active` falha, o log leva o prefixo da chave (`ingestkeyauth/auth.go`), que é a parte pública e não é dado pessoal; a chave completa não. Uma leitura de todos os logs do coletor **não foi feita**.
+- **Portal:** o logger do Better Auth está em `warn` (`auth.ts`), e o envio de e-mail loga só o tipo do erro.
+- **Contêineres:** em produção usam `json-file` com 20 MB por arquivo e 5 arquivos (`x-logging` em `infra/compose/prod.yaml`). A rotação é por tamanho, não por tempo, então não há prazo fixo de retenção dos logs. O conteúdo dos logs do Umami e do Postgres **não foi verificado**.
 
 ## 4. Truncamento de IP
 
@@ -80,7 +83,7 @@ O portal envia por SMTP (`apps/portal/src/lib/mail.ts`, variável `SMTP_URL`) s�
 
 ## 6. Residência dos dados e retenção
 
-**Onde ficam** (ADR 0004): Hetzner Cloud, Nuremberg (`nbg1`), Alemanha. A VM, o volume com o Postgres e o Object Storage dos backups ficam no mesmo local; o local é uma variável (`nbg1`, `fsn1` ou `hel1`, todos na UE). Os backups do WAL-G saem da VM **cifrados no cliente** (chave fora da VM). O monitoramento externo (ADR 0005) roda numa VM separada em `fsn1` (Falkenstein, Alemanha) e, pelo ADR, serve para checar disponibilidade; **não verifiquei** se algum dado de analytics chega a ele. O Hetzner é um suboperador; contrato e localização do suporte dele **não verificados**. A UE como residência é decisão de implantação: a instância que outra equipe subir pode escolher outro local.
+**Onde ficam** (ADR 0004): a IaC (`infra/opentofu/variables.tf`) fixa por padrão a Hetzner Cloud em Nuremberg (`nbg1`), Alemanha; **a produção ainda não foi aplicada**, então hoje nenhum dado de produção está lá. Pela IaC, a VM, o volume com o Postgres e o Object Storage dos backups ficam no mesmo local; o local é uma variável (`nbg1`, `fsn1` ou `hel1`, todos na UE). Os backups do WAL-G saem da VM **cifrados no cliente** (chave fora da VM). O monitoramento externo (ADR 0005) roda numa VM separada em `fsn1` (Falkenstein, Alemanha) e, pelo ADR, serve para checar disponibilidade; **não verifiquei** se algum dado de analytics chega a ele. O Hetzner é um suboperador; contrato e localização do suporte dele **não verificados**. A UE como residência é decisão de implantação: a instância que outra equipe subir pode escolher outro local.
 
 **Quanto tempo ficam:**
 
@@ -101,33 +104,37 @@ A issue pede a justificativa para não haver fluxo de apagamento por "nenhum dad
 
 **Visitantes dos sites (analytics web):**
 
-- Não existe identificador persistente nem no navegador (sem cookie ou storage) nem no servidor que permita localizar "os dados de uma pessoa" a partir de um pedido dela: o IP completo não é gravado, e o Umami não recebe ID do cliente. Esse é o argumento para **não oferecer** busca e exclusão por pessoa.
-- Mas o argumento não é "nenhum dado pessoal": o Umami guarda IP truncado e `User-Agent` como entradas da sessão e geolocalização, e o caminho e o título que o tenant manda podem conter dado pessoal. Se isso é dado pessoal sob o GDPR ou é anonimização efetiva é **questão jurídica em aberto**, não decidida aqui.
+- O navegador não guarda identificador (sem cookie ou storage), o gateway não repassa `id` do cliente e o IP completo não é gravado. Mas o Umami deriva um identificador de sessão (`session_id`) a partir de IP truncado, `User-Agent` e um sal; essa derivação **não foi analisada** aqui. Por isso, "não dá para localizar os dados de uma pessoa" é uma hipótese, não uma justificativa firme para dispensar o fluxo de apagamento de visitantes. Está no checklist da seção 9.
+- Também não vale dizer "nenhum dado pessoal": o Umami recebe IP truncado e `User-Agent` e deriva sessão, navegador, sistema, dispositivo e localização; o que ele **persiste** não foi verificado. E o caminho e o título que o tenant manda podem conter dado pessoal. Se isso é dado pessoal sob o GDPR ou é anonimização efetiva é **questão jurídica em aberto**, não decidida aqui.
 - Arquivar um site (`site.archived_at`) para a ingestão e tira o site dos painéis, mas **nenhum fluxo apaga os dados já coletados** no Umami. Apagar à mão no banco `umami` é possível a quem administra, mas não há processo.
 
 **Usuários do portal (controlador: a plataforma):**
 
 - **Não existe exclusão da própria conta** (lacuna apontada em `docs/andamento.md`, item 9, sem issue) nem exportação dos dados. Também não existe convite de membros; hoje só quem cria o projeto tem acesso.
-- **Remover um projeto é desativação** (#20, `removeTenant`): muda o status, grava quem, motivo e um `audit_log`, bloqueia a ingestão e some dos painéis. Os dados continuam no banco. O spec do E2 deixa "apagar os dados de um tenant removido" como ação separada e ainda inexistente.
+- **Remover um projeto é desativação** (#20, `removeTenant`): muda o status, grava quem (`status_changed_by`), o motivo em texto livre (`status_reason`) e um `audit_log`, bloqueia a ingestão e some dos painéis. Os dados continuam no banco. O spec do E2 deixa "apagar os dados de um tenant removido" como ação separada e ainda inexistente.
+- Um pedido de correção de dado no `audit_log` só poderia ser atendido desabilitando o gatilho da migração `0002`, que bloqueia UPDATE, DELETE e TRUNCATE.
 - No esquema, `session`, `account` e `tenant_member` apagam em cascata quando o `user` é apagado, e `audit_log` não tem chave estrangeira, então manteria o `actor_user_id`. Nenhuma tela ou comando apaga usuário hoje.
 - Retificação (mudar nome ou e-mail), portabilidade, limitação e oposição: **não há tela nem processo**. O pedido hoje seria atendido à mão por quem administra o banco.
 
 **Próximos passos sugeridos** (nenhum tem issue ainda, a abrir): exclusão da própria conta com tratamento do `audit_log` (por exemplo, trocar o `actor_user_id` por um marcador); apagar dados de um tenant removido (Umami e `api_metric_*`); retenção dos eventos web no Umami; processo documentado de pedidos de titulares; DPA e aviso de privacidade.
 
-## 8. Jurisdições: pontos de atenção (não é parecer)
+## 8. Jurisdições: lista provisória (proposta)
 
-A issue pede a lista de jurisdições onde a solução não seria conforme sem opt-in. Este repositório **não tem** conclusão jurídica para afirmar isso e não a inventa. O que ele afirma, verificado no código: o script não escreve nem lê cookie, `localStorage` ou `sessionStorage`, e não usa identificador persistente. O que cada jurisdição exige a partir daí precisa de revisão:
+A issue pede a lista de jurisdições onde a solução não seria conforme sem opt-in. **Este critério é atendido só parcialmente:** não há conclusão jurídica no repositório, e este documento não a inventa. Abaixo está uma lista **provisória, para validar com assessoria jurídica**, que separa onde há regime próprio de consentimento para acesso ao dispositivo (que é o ponto de partida da dúvida) do que não foi analisado.
+
+O que o código faz, verificado: o script não escreve nem lê cookie, `localStorage` ou `sessionStorage` e não guarda identificador no navegador (`packages/tracker/src/tracker.ts`). Ele lê `navigator.language`, `screen`, `document.title` e `document.referrer` e os envia.
+
+**A rever primeiro (regime de consentimento para acesso ao dispositivo, conclusão em aberto):**
 
 | Jurisdição | Ponto a revisar |
 |---|---|
-| UE/EEE (GDPR e diretiva ePrivacy) | Se medição de audiência sem cookie, com IP truncado e `User-Agent` repassados ao Umami, depende de base legal e de consentimento. O artigo 5(3) da ePrivacy trata de acesso ao dispositivo; o script lê `navigator.language` e `screen`, e o que isso significa para a regra **é questão em aberto** |
-| Alemanha (TDDDG, antes TTDSG) e França (orientação da CNIL sobre medição de audiência) | Há orientações próprias, com condições para dispensar consentimento. As condições (como limite de retenção) **não foram conferidas aqui**; a falta de retenção nos eventos do Umami (seção 6) é provável ponto de conflito |
-| Reino Unido (UK GDPR e PECR) | Regras análogas, com orientações próprias do ICO; **não verificado** |
-| Brasil (LGPD) | Bases legais e direitos dos titulares; **não verificado** |
-| Califórnia (CCPA/CPRA) | Aplica-se conforme porte e uso; a plataforma não vende dados e não faz publicidade; enquadramento **não verificado** |
-| Suíça, outras | **Não analisadas** |
+| UE/EEE (GDPR e diretiva ePrivacy, art. 5(3)) | Se ler `language` e `screen` e enviar IP truncado e `User-Agent` ao Umami exige consentimento ou base legal. **Em aberto** |
+| Alemanha (TDDDG, antes TTDSG) e França (orientação da CNIL sobre medição de audiência) | Orientações próprias, com condições para dispensar consentimento. As condições (como limite de retenção) **não foram conferidas aqui**; a falta de retenção nos eventos do Umami (seção 6) é provável ponto de conflito |
+| Reino Unido (UK GDPR e PECR) | Regime análogo, com orientações do ICO; **não verificado** |
 
-Pelo que o código faz (nada é lido do cookie, nada vai a terceiros de publicidade, sem rastreamento entre sites), o argumento para dispensa de consentimento é plausível, mas é um argumento a validar, não uma conclusão. Quando cada tenant instala o script, ele decide se mostra aviso ou banner; este projeto não oferece opt-in.
+**Não analisadas** (podem ter regras próprias de privacidade ou de consentimento): Brasil (LGPD), Califórnia (CCPA/CPRA), Suíça e demais jurisdições. Aplicação e enquadramento, inclusive o fato de o código não enviar dados a terceiros de publicidade (verificado só no gateway e no portal), não substituem essa análise.
+
+Não há base no repositório para concluir, para nenhum dos lados, se o consentimento é ou não exigido. Cada tenant que instala o script decide se mostra aviso ou banner; este projeto não oferece opt-in.
 
 Não há transferência para fora da UE por parte do código: o gateway só fala com o Umami interno. Tenants fora da UE enviam dados de visitantes para a UE; isso, e qualquer transferência por suboperadores (SMTP, backup), precisa de análise.
 
@@ -140,6 +147,8 @@ Não há transferência para fora da UE por parte do código: o gateway só fala
 5. Suboperadores: Hetzner (VM e Object Storage), provedor de SMTP e, se houver, o do monitoramento.
 6. Aviso de privacidade do portal e texto-modelo para os tenants.
 7. Processo de pedidos de titulares enquanto não houver fluxo automático.
+8. Como o Umami deriva e persiste o `session_id` e os demais campos da sessão (IP truncado, `User-Agent`, sal), e se isso permite ou dispensa um fluxo de apagamento de visitantes.
+9. Gatilho de `audit_log` e pedidos de correção ou apagamento (seção 3.4).
 
 ## 10. Arquivos conferidos
 
