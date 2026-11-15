@@ -26,7 +26,20 @@ Escolha o que se aplica; todas têm efeito imediato ou em até 1 minuto na inges
 
 ### Chave de ingestão vazada
 
-O próprio tenant revoga em `/services` (a ação `revokeIngestKey` grava `ingest_key.revoked`). O coletor passa a recusar com 401. Quem cria a chave nova é o tenant; a completa só aparece na criação. Se o tenant não conseguir, o operador do SCF não revoga pela tela (as únicas escritas do operador são remover e reativar projeto): use a remoção do projeto abaixo ou, com o túnel, um `UPDATE ingest_key SET revoked_at = now() WHERE prefix = '<prefixo>'` (**não testado e fora do fluxo normal**: a linha em `audit_log` não é criada por ele; registre a operação por escrito). Revogue pelo prefixo, nunca coloque a chave completa em issue, log ou mensagem.
+O próprio tenant revoga em `/services` (a ação grava `ingest_key.revoked`). O coletor passa a recusar com 401. Quem cria a chave nova é o tenant; a completa só aparece na criação. Se o tenant não conseguir, o operador não revoga pela tela (as únicas escritas do operador são remover e reativar projeto): use a remoção do projeto abaixo ou, pelo túnel, o SQL abaixo como usuário `notify` (dono das tabelas; é o papel que o portal usa para as mesmas escritas; **não testado**). Troque `<prefixo>` (8 caracteres, parte pública da chave `ntf_<prefixo>_...`); nunca ponha a chave completa em issue, log ou mensagem:
+
+```sql
+BEGIN;
+UPDATE ingest_key SET revoked_at = now() WHERE prefix = '<prefixo>' AND revoked_at IS NULL;
+-- Confira "UPDATE 1". Se vier UPDATE 0, faça ROLLBACK e investigue.
+INSERT INTO audit_log (actor_user_id, action, tenant_id, details)
+SELECT NULL, 'ingest_key.revoked', tenant_id,
+       jsonb_build_object('apiServiceId', api_service_id, 'prefix', prefix, 'manual', true)
+FROM ingest_key WHERE prefix = '<prefixo>';
+COMMIT;
+```
+
+O `audit_log` só aceita inserção (gatilho contra UPDATE e DELETE), então um erro no INSERT não se corrige depois: confira antes de `COMMIT`. O `actor_user_id` fica nulo porque a ação é manual; registre por escrito quem fez.
 
 ### Projeto (tenant) a bloquear
 
@@ -34,14 +47,14 @@ Entre como operador em `/operator`, abra `/operator/tenants/<tenantId>` e use a 
 
 ### Operador comprometido
 
-Pela VM ou pelo túnel, com `DATABASE_URL` do banco `notify` (como no passo 5 de `docs/deploy.md`):
+Roda na **máquina do administrador**, num checkout do repositório com `pnpm install` e Node 24 (não na VM, que não tem o repositório nem o pnpm), com o túnel `infra/scripts/admin-tunnel.sh` aberto:
 
 ```bash
 DATABASE_URL='postgresql://notify:<notify_db_password>@127.0.0.1:15432/notify' \
   pnpm --filter @notify/portal operator:demote --email <e-mail>
 ```
 
-Isso rebaixa a conta a usuário comum, apaga as sessões dela e grava `operator.demoted` no `audit_log`. Troque a senha da conta pelo fluxo de recuperação do portal se ela ainda for legítima. Faça depois uma revisão do `audit_log` pelas ações do operador. Se foi o acesso ao servidor que vazou, siga também [rotação de segredos](rotacao-de-segredos.md) (todos os segredos, a chave SSH e a Hetzner).
+Isso rebaixa a conta a usuário comum, apaga as sessões dela e grava `operator.demoted` no `audit_log`. **Limites:** não cobre conta de tenant comprometida (para isso, remova ou revise o projeto e use a recuperação de senha); e não impede uma nova promoção por quem tenha acesso ao banco (`operator:promote` com o mesmo `DATABASE_URL`): se o atacante tem o banco ou a VM, o problema é de infraestrutura. Troque a senha da conta pelo fluxo de recuperação do portal se ela ainda for legítima e revise o `audit_log` pelas ações do operador. Se o vazamento foi do acesso ao servidor, siga [rotação de segredos](rotacao-de-segredos.md) por inteiro.
 
 ### Segredo ou acesso à infraestrutura vazado
 
@@ -49,7 +62,9 @@ Isso rebaixa a conta a usuário comum, apaga as sessões dela e grava `operator.
 
 ### Script de rastreamento adulterado ou com falha
 
-Versões publicadas são imutáveis (`packages/tracker/published/vX.Y.Z/n.js`, hash em `published/sri.json`; o teste `test/published.test.ts` garante). A correção sai numa versão nova: suba a `version` do `package.json` e rode `pnpm --filter @notify/tracker release`; avise os tenants para trocar a URL e o SRI (trechos em `examples/README.md`). O gateway só descarta eventos da v1.0.0 (sem prova de JS); para forçar a saída de uma versão vulnerável, a medida disponível é retirar o arquivo de `published/` e fazer deploy de uma imagem nova do `ingest-web` (a imagem copia `packages/tracker/published` para `/scripts`; **não testado**; quebra os tenants que não migrarem).
+Versões publicadas são imutáveis (`packages/tracker/published/vX.Y.Z/n.js`, hash em `published/sri.json`). A correção normal sai numa versão nova: suba a `version` do `package.json` e rode `pnpm --filter @notify/tracker release`; avise os tenants para trocar a URL e o SRI (trechos em `examples/README.md`).
+
+**Retirar uma versão vulnerável não é só apagar a pasta.** Remover `published/vX.Y.Z/` quebra `packages/tracker/test/published.test.ts` (que exige uma entrada em `sri.json` para cada pasta e vice-versa, e confere o hash) e contraria a regra de imutabilidade. Para retirar de fato seria preciso, no mesmo PR: apagar a pasta, remover a entrada de `sri.json`, e registrar a exceção à política (ADR novo ou nota em `docs/anti-bot-e-cadeia-de-suprimentos.md`), e fazer deploy de imagem nova do `ingest-web` (a imagem copia `published/` para `/scripts`). Isso quebra os tenants que não migrarem (o script some, sem aviso). Alternativa a avaliar, **inexistente hoje**: o gateway responder `410 Gone` para uma lista de versões revogadas, sem apagar o arquivo do repositório; exigiria código e teste novos em `services/ingest-web`. Nada disto foi testado.
 
 ## 3. Corrigir e publicar
 
@@ -67,7 +82,7 @@ Versões publicadas são imutáveis (`packages/tracker/published/vX.Y.Z/n.js`, h
 
 ## 5. Divulgar
 
-Depois da correção publicada, publique o advisory do GitHub e dê crédito a quem relatou, se a pessoa quiser (`SECURITY.md`). Se dados pessoais de tenants ou visitantes foram expostos, a notificação a tenants e autoridades segue a política em [`docs/privacidade.md`](../privacidade.md) (leia a seção de papéis; o procedimento de notificação de incidente de dados **não está escrito** em lugar nenhum do repositório: defina com o jurídico antes do primeiro incidente real).
+Depois da correção publicada, publique o advisory do GitHub e dê crédito a quem relatou, se a pessoa quiser (`SECURITY.md`). Se dados pessoais de tenants ou visitantes foram expostos, os papéis (controlador e operador) estão na seção 2 de [`docs/privacidade.md`](../privacidade.md), e as lacunas jurídicas, nas seções 7 e 9; o procedimento de notificação de incidente de dados **não está escrito** em lugar nenhum do repositório: defina com o jurídico antes do primeiro incidente real).
 
 ## Quando escalar
 

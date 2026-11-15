@@ -37,11 +37,11 @@ Serve para os quatro alertas reais do monitoramento externo ([`alerts.yml`](../.
 
 - Serviço parado ou `unhealthy`: `docker compose -f prod.yaml up -d --wait` (recria o que faltar) ou `docker compose -f prod.yaml restart <serviço>`.
 - Imagem nova que quebrou: rollback pelos digests anteriores em `group_vars/all.yml` e `ansible-playbook site.yml -e @secrets.yml` (seção "Voltar atrás" de `docs/deploy.md`; o rollback não desfaz migração de banco).
-- Disco cheio: veja `docker system df` e `du -sh /srv/notify/*`; sobras de restauração (`postgres.antes-*`) e imagens antigas (`docker image prune`, só depois de conferir) são os candidatos. Aumentar o volume é pela Hetzner.
+- Disco cheio: veja `docker system df` e `du -sh /srv/notify/*`; sobras de restauração e imagens antigas são os candidatos. **`postgres.antes-*` só se apaga depois de uma restauração conferida** ([backup e restauração](backup-e-restauracao.md)). `docker image prune` (sem `-a`) remove só imagens soltas; **nunca** rode `docker system prune --volumes`. Aumentar o volume é pela Hetzner.
 - Portal sobe mas o painel não mostra dados ou não cria sites: veja se o Umami responde (`docker compose -f prod.yaml ps umami`) e se a `UMAMI_API_KEY` é válida (ver [rotação de segredos](rotacao-de-segredos.md), efeito do `umami_app_secret`).
 - Gateway responde `204` mas os eventos não aparecem no painel: o `204` é a resposta também para site recusado e para prova inválida (de propósito). Confira o site na tela do projeto (ativo e não arquivado) e `docker compose -f prod.yaml logs ingest-web`.
 
-**Verificação.** A mesma triagem de fora responde; `docker compose -f prod.yaml ps` com tudo `healthy`; o e-mail de resolvido chega (o Alertmanager envia o `resolved`; ver `alertmanager.yml.j2`, não conferido).
+**Verificação.** A mesma triagem de fora responde; `docker compose -f prod.yaml ps` com tudo `healthy`; o e-mail de resolvido chega (`send_resolved: true` em `alertmanager.yml.j2`; o envio real não foi observado).
 
 **Perda de dados.** Enquanto o `ingest-web` ou o Umami ficam fora, os eventos web chegados são descartados; não há fila. Registre a janela do incidente.
 
@@ -79,16 +79,18 @@ Serve para os quatro alertas reais do monitoramento externo ([`alerts.yml`](../.
 
 ## ProberDown
 
-**Sintomas.** `The blackbox prober is down`: o blackbox exporter não responde e nenhum alvo é testado.
+**Sintomas.** `The blackbox prober is down`: o blackbox exporter não responde e nenhum alvo é testado. Este alerta cobre **só o blackbox**. Pela `inhibit_rule` do Alertmanager (`alertmanager.yml.j2`), enquanto ele está ativo, `EndpointDown` e `ProbeFailing` ficam suprimidos: não esperar esses e-mails, e o estado real da produção é desconhecido; faça a triagem de fora à mão.
 
-**Diagnóstico.** Na VM de monitoramento: `docker compose ps` (serviços `prometheus`, `blackbox` e `alertmanager`), `docker compose logs --tail 100 blackbox`. Se a VM nem responde ao SSH, o alerta não chegaria (o Alertmanager mora nela): a pista, nesse caso, é o **sinal de vida externo** parar de chegar (`monitor_deadman_url`, opcional; sem ele ninguém fica sabendo).
+**E se a VM de monitoramento inteira cair?** Nenhum alerta dispara, porque o Prometheus e o Alertmanager moram nela. A única pista é o **sinal de vida externo** (`Watchdog` enviado a `monitor_deadman_url`) parar de chegar, e **só se `monitor_deadman_url` estiver definido**: sem ele o Watchdog vai para o receptor `blackhole` e ninguém fica sabendo.
 
-**Ação.** `docker compose up -d --wait` na pasta do monitor; se a VM caiu, reinicie pelo console da Hetzner (a pilha tem `restart` configurado; não conferido após reboot real). Para recriar do zero, `ansible-playbook monitoring.yml -e @secrets.yml`.
+**Diagnóstico.** Na VM de monitoramento (`cd /opt/notify-monitor`): `docker compose ps` (serviços `prometheus`, `blackbox` e `alertmanager`), `docker compose logs --tail 100 blackbox`. Se o SSH não entra, a VM caiu: console da Hetzner.
+
+**Ação.** `docker compose up -d --wait` na pasta do monitor; se a VM caiu, reinicie pelo console (reinício da pilha após reboot real não foi conferido). Para recriar do zero, `ansible-playbook monitoring.yml -e @secrets.yml`.
 
 **Verificação.** `probe_success` volta a `1` e `ProberDown` resolve.
 
-**Escalar** se a VM do monitor estiver perdida: a produção continua, mas sem vigilância; recrie com o `tofu apply` e o playbook de monitoramento (`docs/deploy.md`, "Monitoramento").
+**Escalar** se a VM do monitor estiver perdida: a produção continua, sem vigilância; recrie com o `tofu apply` e o playbook de monitoramento (`docs/deploy.md`, "Monitoramento").
 
 ## Não testado
 
-Nenhum destes procedimentos foi executado numa produção. O disparo real dos alertas foi coberto só pelo teste do CI (`infra/monitoring/test/`, job `monitoring`). O envio de e-mail, o `resolved` e o reinício após reboot não foram conferidos.
+Nenhum destes procedimentos foi executado numa produção. O disparo real dos alertas foi coberto só pelo teste do CI (`infra/monitoring/test/`, job `monitoring`). O envio real de e-mail e o reinício após reboot não foram conferidos.

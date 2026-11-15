@@ -33,12 +33,14 @@ Causas comuns: credencial do Object Storage inválida ou expirada (`walg_s3_acce
 
 - **Backup base agora:** `systemctl start notify-backup` (executa `notify-backup`: `wal-g backup-push`, depois `wal-g delete retain FULL 7 --confirm` e `backup-list`).
 - **Credencial trocada:** siga [rotação de segredos](rotacao-de-segredos.md) e confira com `backup-list`.
-- **Restaurar:** siga "Restaurar o banco" em `docs/deploy.md`, inclusive a janela de manutenção, o `mv` dos dados antigos para `postgres.antes-*` e o "voltar a um horário" (`notify-restore <backup> '<horário>'`). Para escolher entre restaurar o último ou um horário: um erro lógico (migração ruim, remoção indevida) pede o horário anterior ao erro, com um backup base concluído antes dele; perda de disco pede o `LATEST`.
+- **Restaurar:** siga "Restaurar o banco" em `docs/deploy.md`. Atenção: ela derruba portal, ingestão (eventos descartados) e Umami até terminar; exige `systemctl stop notify-backup.timer` antes (e `start` depois) e espaço livre para dois conjuntos de dados (`df -h /srv/notify`), porque os dados antigos ficam em `postgres.antes-*`. Siga também a janela de manutenção, o `mv` dos dados antigos para `postgres.antes-*` e o "voltar a um horário" (`notify-restore <backup> '<horário>'`). Para escolher entre restaurar o último ou um horário: um erro lógico (migração ruim, remoção indevida) pede o horário anterior ao erro, com um backup base concluído antes dele; perda de disco pede o `LATEST`.
 - **Perda de VM e de volume ao mesmo tempo:** recrie a infraestrutura (`docs/deploy.md`, passos 1 a 4) com o **mesmo** `secrets.yml` (em especial `walg_libsodium_key` e as credenciais do bucket) e restaure em seguida. O bucket de backup tem `prevent_destroy`; os backups sobrevivem.
 
 ## Chave de cifra
 
-Os backups são cifrados no cliente com `walg_libsodium_key` (libsodium, 64 hexadecimais). **Sem essa chave não há como ler nenhum backup.** Guarde uma cópia do `secrets.yml` fora da VM e do repositório. Trocar a chave não é só trocar o valor: os backups e WAL já gravados continuam cifrados com a antiga. O procedimento seguro (ainda **não documentado nem testado** neste repositório) é manter a chave antiga guardada, trocar, rodar um backup base novo e só descartar a antiga quando todos os backups retidos tiverem sido feitos com a nova.
+Os backups são cifrados no cliente com `walg_libsodium_key` (libsodium, 64 hexadecimais). **Sem essa chave não há como ler nenhum backup, e ela não pode ser trocada por rotina**: o `docs/deploy.md` é explícito, e o `prod.yaml` tem uma chave só, então um restore de backup antigo exige a chave antiga. Guarde uma cópia do `secrets.yml` no cofre de senhas, fora da VM e do repositório.
+
+Se a chave **vazar**, a resposta (ainda **não testada**) é: criar um bucket ou prefixo novo (`walg_s3_prefix`, `backup_bucket` no OpenTofu), gerar uma chave nova, aplicar e rodar `systemctl start notify-backup` para um backup base novo, e **manter o prefixo antigo, com a chave antiga guardada**, enquanto houver retenção útil nele. Quem tiver a chave vazada e acesso ao bucket antigo lê esses backups: restrinja as credenciais do bucket antigo ([rotação](rotacao-de-segredos.md)).
 
 ## Verificação
 
@@ -52,7 +54,7 @@ Os backups são cifrados no cliente com `walg_libsodium_key` (libsodium, 64 hexa
 - `backup-list` vazio ou sem backup novo por mais de 2 dias e a causa não é credencial ou rede.
 - O Postgres não abre depois da restauração (log do contêiner `postgres`).
 - Suporte da Hetzner para o Object Storage fora do ar ou volume corrompido.
-- Perda da `walg_libsodium_key`: os backups não são recuperáveis; trate como perda total de histórico.
+- Perda da `walg_libsodium_key` (ou vazamento dela: ver "Chave de cifra"): os backups não são recuperáveis; trate como perda total de histórico.
 
 ## Não testado
 

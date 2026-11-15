@@ -11,7 +11,7 @@ O Umami é a ferramenta base ([ADR 0001](../adr/0001-ferramenta-base.md)) e roda
 
 1. A release tem pelo menos 14 dias? O Renovate espera (`minimumReleaseAge`); em correção de segurança urgente, a exceção é uma decisão registrada no PR, não automática.
 2. Leia as notas da release procurando: migração de banco, mudança em `/api/send`, `/api/websites/:id/...` (`stats`, `pageviews`, `metrics`), no recorder (`/api/record`, colunas `recorder_enabled` e `replay_config`, tabelas `session_replay`, `session_replay_saved` e `heatmap_event`) e em variáveis de ambiente.
-3. O Umami só aparece em `infra/compose/dev.yaml` e `prod.yaml` (imagem por digest). Confira os dois.
+3. O Umami aparece em `infra/compose/dev.yaml` e `prod.yaml` (imagem por digest) e na regra própria do `renovate.json`. Procure todas as menções da versão atual: `grep -rn '3.4.1' docs/ CLAUDE.md infra/ apps/ services/ packages/ examples/ renovate.json` (ajuste o número) e atualize textos e testes que citem a versão.
 
 ## Ação
 
@@ -30,7 +30,7 @@ O Umami é a ferramenta base ([ADR 0001](../adr/0001-ferramenta-base.md)) e roda
 - O Umami continua fechado: o passo 6 de `docs/deploy.md` (`/api/send` com 404 de fora; só o Caddy publica porta).
 - Um evento de teste chega pelo gateway e aparece no painel do site; o painel do SCF (`/operator/web`) carrega.
 - Isolamento: o tenant A não vê site de B (a suíte `isolation.test.ts` passou no CI da versão nova).
-- `docs/umami.md` e o ADR 0001 reflitam a versão nova (ADR aceito não se reescreve: se a mudança for de decisão, crie outro).
+- `docs/umami.md`, o `CLAUDE.md` e os demais textos de versão (resultado do `grep`) refletem a versão nova. **Não reescreva o ADR 0001 só por causa da versão**; um ADR novo só se a decisão mudar (por exemplo, troca de ferramenta ou patch).
 
 ## Rollback
 
