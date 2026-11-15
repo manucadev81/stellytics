@@ -8,8 +8,9 @@
   loop:
     - "{{ notify_root }}/infra/compose/postgres/init"
     - "{{ notify_root }}/infra/caddy"
+    - "{{ notify_root }}/infra/scripts"
 
-- name: Copia o Compose, o Postgres com WAL-G e o Caddyfile do repositório
+- name: Copia o Compose, o Postgres com WAL-G, o Caddyfile e os scripts de migração do repositório
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../{{ item.src }}"
     dest: "{{ notify_root }}/infra/{{ item.src }}"
@@ -22,6 +23,10 @@
     - { src: compose/postgres/init/01-databases.sh, mode: "0755" }
     - { src: compose/postgres/init/02-ingest-roles.sh, mode: "0755" }
     - { src: caddy/Caddyfile }
+    # Migração de dados entre operadores (docs/transferencia.md, #54).
+    - { src: scripts/db-export.sh, mode: "0755" }
+    - { src: scripts/db-import.sh, mode: "0755" }
+    - { src: scripts/db-fingerprint.sh, mode: "0755" }
   register: notify_files
 
 - name: Segredos e configuração da pilha (.env)
