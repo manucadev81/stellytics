@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Teste da replicação do Postgres e da ingestão replicada (#52, ADR 0009).
+# Os gateways do teste leem do primário e, depois, do banco promovido (pelo
+# apelido pg-primary); a ingest_site da RÉPLICA é lida por psql como notify_ingest.
 # Uso, da raiz do repositório, com a imagem do gateway já construída
 # (docker compose build ingest-web; INGEST_WEB_IMAGE troca a imagem):
 #   infra/compose/test/ha-replication-test.sh
@@ -87,12 +89,14 @@ write_env "$work/env.prim" "$work/prim"
 write_env "$work/env.newprim" "$work/stby"          # mesmo projeto, outro diretório de dados
 write_env "$work/env.stby" "$work/stby"
 write_env "$work/env.old" "$work/prim"
+mkdir -p "$work/ing"
+write_env "$work/env.ing" "$work/ing"
 
 P=(-f prod.yaml -f prod-ha-primary.yaml -f test/prod-test.yaml -f test/ha-test.yaml)
 prim_c() { docker compose -p "$prim" --env-file "$1" "${P[@]}" "${@:2}"; }
 stby_c() { TEST_PG_PORT=$PGPORT_STBY docker compose -p notify52b-stby --env-file "$work/env.stby" -f prod-standby.yaml -f test/ha-join.yaml "$@"; }
 old_c() { TEST_PG_PORT=$PGPORT_OLD docker compose -p notify52b-old --env-file "$work/env.old" -f prod-standby.yaml -f test/ha-join.yaml "$@"; }
-ing_c() { TEST_INGEST_PORT=$2 docker compose -p "notify52b-$1" --env-file "$work/env.prim" -f prod-ingest.yaml -f test/ha-join-ingest.yaml "${@:3}"; }
+ing_c() { TEST_INGEST_PORT=$2 docker compose -p "notify52b-$1" --env-file "$work/env.ing" -f prod-ingest.yaml -f test/ha-join-ingest.yaml "${@:3}"; }
 
 # psql de um cliente na rede do teste (a origem cai na faixa do pg_hba).
 cpsql() { # senha, host, usuário, banco, SQL...
@@ -114,7 +118,7 @@ cleanup() {
   stby_c down -v >/dev/null 2>&1 || true
   docker rm -f notify52b-fake-umami >/dev/null 2>&1 || true
   prim_c "$work/env.prim" down -v --remove-orphans >/dev/null 2>&1 || true
-  docker run --rm -v "$work:/w" alpine:3.22 rm -rf /w/prim /w/stby >/dev/null 2>&1 || true
+  docker run --rm -v "$work:/w" alpine:3.22 rm -rf /w/prim /w/stby /w/ing >/dev/null 2>&1 || true
   rm -rf "$work"
   exit "$status"
 }
@@ -127,6 +131,13 @@ wait_for() { # descrição, tentativas, comando...
 }
 
 # ---------------------------------------------------------------- A. réplica
+# HA_PRIVATE_IP ou REPLICATION_DB_PASSWORD vazios abortam o Compose (:?).
+for var in HA_PRIVATE_IP REPLICATION_DB_PASSWORD; do
+  if err=$(env "$var=" docker compose -p "$prim" --env-file "$work/env.prim" "${P[@]}" config 2>&1); then fail "$var vazio não abortou o compose"; fi
+  echo "$err" | grep -q "required variable $var is missing a value" || fail "$var: erro inesperado: $err"
+done
+ok "HA_PRIVATE_IP e REPLICATION_DB_PASSWORD vazios abortam o Compose"
+
 stamp "A. sobe S3 local e o primário"
 prim_c "$work/env.prim" up -d s3 --wait
 prim_c "$work/env.prim" exec -T s3 sh -c 'echo "s3.bucket.create -name notify-backup" | weed shell -master=localhost:9333' >/dev/null
@@ -227,7 +238,18 @@ stamp "gateways de ingestão"
 docker run -d --name notify52b-fake-umami --network "$net" \
   -v "$here/test/fake-umami.py:/fake-umami.py:ro" -v "$work/umami:/out" \
   python:3.13-slim python /fake-umami.py /out/events.log >/dev/null
-for n in "ing1 $ING1" "ing2 $ING2"; do set -- $n; ing_c "$1" "$2" up -d ingest-web --wait --wait-timeout 120; done
+# ing1 sobe também o Caddy (prod-ingest.yaml) para conferir as rotas; ing2 só o gateway.
+ing_c ing1 "$ING1" up -d --wait --wait-timeout 120
+ing_c ing2 "$ING2" up -d ingest-web --wait --wait-timeout 120
+chttp() { curl -sk -o /dev/null -w '%{http_code}' --resolve "ingest.localhost:${TEST_CADDY_HTTPS:-18443}:127.0.0.1" "$@"; }
+cu="https://ingest.localhost:${TEST_CADDY_HTTPS:-18443}"
+wait_for "Caddy da ingestão" 60 test "$(chttp "$cu/healthz")" = 200
+[ "$(chttp "$cu/c?s=$(cat /proc/sys/kernel/random/uuid)")" = 200 ] || fail "Caddy: /c"
+[ "$(chttp -X POST -H 'Content-Type: text/plain' -d '{}' "$cu/e")" = 400 ] || fail "Caddy: POST /e deveria chegar ao gateway (400 por corpo inválido)"
+for path in / /api/send /api/heartbeat /api/websites /api/record /sign-in /login; do
+  [ "$(chttp "$cu$path")" = 404 ] || fail "Caddy da ingestão deveria dar 404 em $path"
+done
+ok "Caddy de prod-ingest.yaml: /healthz, /c e /e passam; /, /api/send, /api/heartbeat, /api/websites, /api/record e rotas do portal dão 404"
 
 # O gateway lê da RÉPLICA: DB_HOST aponta para o apelido pg-primary, que por ora
 # é o primário; para ler da réplica, o teste troca o env dos gateways.
@@ -317,6 +339,14 @@ ok "gateways (reconectando pelo mesmo apelido) aceitam o site criado no banco j�
 
 # --------------------------------------------------- D. antigo primário volta como réplica
 stamp "D. o antigo primário volta como réplica do novo (diretório de dados apagado, pg_basebackup)"
+# Antes de apagar: subir a réplica sobre o diretório do antigo primário tem de falhar.
+old_c up -d --no-build --wait --wait-timeout 30 >/dev/null 2>&1 && fail "réplica subiu sobre o diretório de um primário"
+sleep 3
+old_c logs postgres 2>&1 | grep -q 'sem standby.signal' || fail "recusa explícita não apareceu nos logs: $(old_c logs --tail 5 postgres 2>&1)"
+old_c logs postgres 2>&1 | grep -q 'ready to accept connections' && fail "o Postgres abriu sobre o diretório do primário"
+[ ! -e "$work/prim/standby.signal" ] || fail "o diretório do antigo primário foi alterado (standby.signal)"
+old_c down >/dev/null 2>&1
+ok "standby sobre o diretório de um primário antigo é recusado (erro explícito, Postgres não abre, diretório intacto)"
 docker run --rm -v "$work/prim:/d" alpine:3.22 sh -c 'rm -rf /d/* /d/.[!.]* 2>/dev/null; true'
 td=$(date +%s)
 old_c up -d $BUILD --wait --wait-timeout 300

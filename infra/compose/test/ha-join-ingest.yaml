@@ -9,6 +9,12 @@ services:
     ports:
       - "127.0.0.1:${TEST_INGEST_PORT:-18081}:8080"
 
+  caddy:
+    networks: !override
+      internal: {}
+    ports: !override
+      - "127.0.0.1:${TEST_CADDY_HTTPS:-18443}:443"
+
 networks:
   internal: !override
     external: true

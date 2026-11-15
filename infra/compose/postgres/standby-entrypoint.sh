@@ -7,7 +7,7 @@
 # e só então entrega para o docker-entrypoint.sh da imagem, que não roda initdb
 # porque já existe PG_VERSION. Com dados, só reinicia como réplica (o
 # standby.signal já está lá). Nunca apaga dados: se o diretório não está vazio e
-# não tem PG_VERSION, recusa.
+# não tem PG_VERSION, recusa; e recusa também um cluster sem standby.signal.
 set -eu
 
 : "${PRIMARY_HOST:?}" "${REPLICATOR_PASSWORD:?}"
@@ -56,6 +56,15 @@ if [ ! -s "$pgdata/PG_VERSION" ]; then
   gosu postgres pg_basebackup \
     -h "$PRIMARY_HOST" -p "$primary_port" -U replicator \
     -D "$pgdata" -X stream -S "$slot" -R -c fast -P
+fi
+
+# Há cluster mas não há standby.signal: é o diretório de um primário (ou de uma
+# réplica já promovida). Subir assim abriria um segundo primário com dados
+# divergentes (split-brain), então recusa. Para refazer uma réplica, apague o
+# diretório de dados; STANDBY_FORCE=1 existe só para quem sabe o que está fazendo.
+if [ -s "$pgdata/PG_VERSION" ] && [ ! -e "$pgdata/standby.signal" ] && [ "${STANDBY_FORCE:-}" != 1 ]; then
+  echo "standby-entrypoint: $pgdata tem um cluster sem standby.signal (primário antigo ou réplica já promovida); recusando para não abrir um segundo primário. Apague o diretório para refazer a réplica." >&2
+  exit 1
 fi
 
 exec docker-entrypoint.sh "$@"
