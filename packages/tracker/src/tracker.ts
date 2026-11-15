@@ -56,7 +56,7 @@ export type EventValue = string | number | boolean;
 // Mesmos limites do gateway (services/ingest-web/internal/relay). O gateway é
 // quem manda; aqui só se evita enviar o que ele recusaria.
 const NAME = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,49}$/;
-const KEY = /^[A-Za-z0-9_.-]{1,40}$/;
+const KEY = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,39}$/;
 const MAX_DATA_KEYS = 10;
 const MAX_DATA_STRING = 100;
 

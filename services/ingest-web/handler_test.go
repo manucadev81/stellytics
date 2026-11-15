@@ -190,6 +190,18 @@ func TestCustomEventForwardsOnlyNameAndData(t *testing.T) {
 	}
 }
 
+func TestCustomEventLimitsAccepted(t *testing.T) {
+	s := newSetup(t)
+	body := `{"type":"event",` + proofField(activeSite) + `,"payload":{"website":"` + activeSite + `","url":"/","name":"x","data":{"` +
+		strings.Repeat("k", relay.MaxDataKey) + `":"` + strings.Repeat("a", relay.MaxDataString) + `"}}}`
+	if resp := post(t, s, "text/plain", body); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, quero 204", resp.StatusCode)
+	}
+	if n := len(s.umami.received()); n != 1 {
+		t.Fatalf("umami recebeu %d eventos, quero 1", n)
+	}
+}
+
 func TestCustomEventRejected(t *testing.T) {
 	long := strings.Repeat("a", relay.MaxDataString+1)
 	many := `{"k0":1`
@@ -205,6 +217,11 @@ func TestCustomEventRejected(t *testing.T) {
 		"valor aninhado":      `"name":"x","data":{"a":{"b":1}}`,
 		"valor lista":         `"name":"x","data":{"a":[1]}`,
 		"valor nulo":          `"name":"x","data":{"a":null}`,
+		"__proto__":           `"name":"x","data":{"__proto__":1}`,
+		"chave de 41":         `"name":"x","data":{"` + strings.Repeat("k", relay.MaxDataKey+1) + `":1}`,
+		"valor de 101":        `"name":"x","data":{"a":"` + strings.Repeat("a", relay.MaxDataString+1) + `"}`,
+		"número 1e999":        `"name":"x","data":{"a":1e999}`,
+		"número gigante":      `"name":"x","data":{"a":` + strings.Repeat("9", 200) + `}`,
 		"valor longo":         `"name":"x","data":{"a":"` + long + `"}`,
 		"chave inválida":      `"name":"x","data":{"a b":1}`,
 		"propriedades demais": `"name":"x","data":` + many,

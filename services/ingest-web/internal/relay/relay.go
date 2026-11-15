@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -34,6 +35,7 @@ const (
 	MaxDataKeys   = 10
 	MaxDataKey    = 40
 	MaxDataString = 100
+	MaxDataNumber = 32 // caracteres do literal
 )
 
 // Payload são os campos permitidos de um page view.
@@ -120,7 +122,7 @@ func (ev Event) validate() error {
 
 var (
 	namePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]*$`)
-	keyPattern  = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+	keyPattern  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
 )
 
 // validateCustom confere o nome e as propriedades de um evento customizado.
@@ -148,7 +150,13 @@ func validateCustom(p Payload) error {
 			if len(x) > MaxDataString {
 				return fmt.Errorf("%w: valor de data passa de %d bytes", ErrInvalid, MaxDataString)
 			}
-		case json.Number, bool:
+		case json.Number:
+			// Literal curto e finito: o Umami pode recusar o resto e o 502 gastaria vaga.
+			f, err := x.Float64()
+			if len(x) > MaxDataNumber || err != nil || math.IsInf(f, 0) || math.IsNaN(f) {
+				return fmt.Errorf("%w: número de data fora do formato", ErrInvalid)
+			}
+		case bool:
 		default:
 			return fmt.Errorf("%w: valor de data deve ser string, número ou booleano", ErrInvalid)
 		}

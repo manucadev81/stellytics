@@ -102,8 +102,14 @@ window.notify?.event("signup_clicked", { plan: "pro", seats: 3 });
 
 - Nome: 1 a 50 caracteres entre letras, números e `_ . : -`, começando por letra ou número. Propriedades: até 10, com chave de até 40 caracteres e valor texto (até 100 bytes), número ou verdadeiro/falso. O que fugir disso é ignorado.
 - **Não envie dado pessoal nem de carteira:** endereço, chave pública, hash de transação, valor transferido, e-mail. O gateway limita só tipo e tamanho; o conteúdo é responsabilidade do projeto.
-- O script só define `window.notify` depois de carregado (use `?.` se o seu código pode rodar antes).
-- A captura automática dos eventos do Stellar Wallets Kit **não existe** (ver [ADR 0007](adr/0007-eventos-customizados-e-wallets-kit.md)); chame `notify.event` você mesmo ao conectar a carteira.
+- `window.notify` só existe depois que o script carrega, e **não há fila**: uma chamada antes disso se perde. Use sempre `window.notify?.event(...)`.
+- A captura automática dos eventos do Stellar Wallets Kit **não existe** (ver [ADR 0008](adr/0008-eventos-customizados-e-wallets-kit.md)). Se quiser medir a escolha de carteira, assine você mesmo, só com o `id` (nunca `STATE_UPDATED`, que traz o endereço):
+
+```js
+StellarWalletsKit.on(KitEventType.WALLET_SELECTED, (e) => {
+  if (e.id) window.notify?.event("wallet_selected", { wallet: e.id });
+});
+```
 - O painel web ainda não lista os eventos customizados; eles ficam no Umami.
 
 ### 3.5 Ad blockers

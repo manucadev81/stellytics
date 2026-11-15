@@ -247,5 +247,8 @@ describe("validateCustomEvent", () => {
     expect(validateCustomEvent("a", { a: "x".repeat(101) })).toBeNull();
     expect(validateCustomEvent("a", Object.fromEntries(Array.from({ length: 11 }, (_, i) => [`k${i}`, 1])))).toBeNull();
     expect(validateCustomEvent("a", [1])).toBeNull();
+    expect(validateCustomEvent("a", JSON.parse('{"__proto__":1}'))).toBeNull();
+    expect(validateCustomEvent("a", { ["k".repeat(41)]: 1 })).toBeNull();
+    expect(validateCustomEvent("a", { ["k".repeat(40)]: "x".repeat(100) })).not.toBeNull();
   });
 });
