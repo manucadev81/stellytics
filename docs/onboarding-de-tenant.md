@@ -81,7 +81,7 @@ Os trechos acima são os mesmos de [`examples/README.md`](../examples/README.md)
 
 - Cada versão publicada (`/s/vX.Y.Z/n.js`) **nunca muda**: o arquivo é servido com cache imutável de um ano e o hash vem de `sri.json`. Se o conteúdo mudasse, o navegador recusaria o script pelo `integrity`.
 - O script **nunca se atualiza sozinho**. Para trocar de versão, mude o caminho e o `integrity` no seu HTML.
-- Use sempre a versão **v1.1.0 ou mais nova** (a **v1.2.0** acrescenta eventos customizados). A v1.0.0 não faz a prova de execução de JS, e o gateway **descarta os eventos dela**.
+- Use sempre a versão **v1.1.0 ou mais nova** (a **v1.2.0** acrescenta eventos customizados e a **v1.3.0**, `window.notify.wallets`). A v1.0.0 não faz a prova de execução de JS, e o gateway **descarta os eventos dela**.
 - `crossorigin="anonymous"` é obrigatório junto com `integrity`; o gateway responde com `Access-Control-Allow-Origin: *` para isso.
 
 ### 3.4 Requisitos e o que o script faz
@@ -103,13 +103,16 @@ window.notify?.event("signup_clicked", { plan: "pro", seats: 3 });
 - Nome: 1 a 50 caracteres entre letras, números e `_ . : -`, começando por letra ou número. Propriedades: até 10, com chave de até 40 caracteres e valor texto (até 100 bytes), número ou verdadeiro/falso. O que fugir disso é ignorado.
 - **Não envie dado pessoal nem de carteira:** endereço, chave pública, hash de transação, valor transferido, e-mail. O gateway limita só tipo e tamanho; o conteúdo é responsabilidade do projeto.
 - `window.notify` só existe depois que o script carrega, e **não há fila**: uma chamada antes disso se perde. Use sempre `window.notify?.event(...)`.
-- A captura automática dos eventos do Stellar Wallets Kit **não existe** (ver [ADR 0008](adr/0008-eventos-customizados-e-wallets-kit.md)). Se quiser medir a escolha de carteira, assine você mesmo, só com o `id` (nunca `STATE_UPDATED`, que traz o endereço):
+- **Eventos do Stellar Wallets Kit (v1.3.0, opt-in, não é automático):** o script **não** captura nada do kit sozinho. Ele só alcança o kit se **você** o entregar, com uma chamada, depois de iniciar o kit (ver [ADR 0010](adr/0010-adaptador-opt-in-do-wallets-kit.md)):
 
 ```js
-StellarWalletsKit.on(KitEventType.WALLET_SELECTED, (e) => {
-  if (e.id) window.notify?.event("wallet_selected", { wallet: e.id });
-});
+window.notify?.wallets(StellarWalletsKit, KitEventType);
 ```
+
+  - Chame **uma vez** (chamar de novo com o mesmo kit não duplica a assinatura). Ela devolve uma função que cancela a assinatura. Se o kit ou o enum forem inválidos, nada acontece e a página não quebra.
+  - Só assina `WALLET_SELECTED` (envia `wallet_selected` com `{ wallet: "freighter" }`, o ID do módulo) e `DISCONNECT` (envia `wallet_disconnected`, sem dados). **Nunca** assina `STATE_UPDATED` e nunca envia endereço, chave pública, `networkPassphrase`, hash ou valor. Um ID que não seja um nome simples de módulo (até 40 caracteres) é ignorado.
+  - Como `window.notify` não tem fila, chame depois de o script carregar (`window.notify?.wallets(...)`; se o script puder demorar, repita a chamada no `load` da janela, ela é idempotente).
+  - Se você preferir não usar isso, continue podendo chamar `window.notify?.event(...)` à mão, sem nunca pôr endereço.
 - O painel web ainda não lista os eventos customizados; eles ficam no Umami.
 
 ### 3.5 Ad blockers

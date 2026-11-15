@@ -151,6 +151,128 @@ describe("start", () => {
     expect(w.notify).toBeUndefined();
   });
 
+  describe("window.notify.wallets (kit falso)", () => {
+    const Types = { STATE_UPDATED: "STATE_UPDATE", WALLET_SELECTED: "WALLET_SELECTED", DISCONNECT: "DISCONNECT" };
+    const ADDRESS = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7";
+
+    // Kit falso com a forma da documentação: on(tipo, handler) devolve a função de cancelar.
+    function fakeKit() {
+      const handlers = new Map<string, Set<(e: unknown) => void>>();
+      const unsub = vi.fn();
+      const on = vi.fn((type: string, handler: (e: unknown) => void) => {
+        if (!handlers.has(type)) handlers.set(type, new Set());
+        handlers.get(type)!.add(handler);
+        return () => {
+          unsub();
+          handlers.get(type)!.delete(handler);
+        };
+      });
+      const emit = (type: string, payload: unknown) =>
+        handlers.get(type)?.forEach((h) => h({ eventType: type, payload }));
+      return { kit: { on }, on, emit, handlers, unsub };
+    }
+
+    const wallets = () =>
+      (window as unknown as { notify: { wallets: (k: unknown, t: unknown) => () => void } }).notify.wallets;
+
+    it("assina só WALLET_SELECTED e DISCONNECT e manda só o id do módulo", async () => {
+      stop = start(script({ src: SRC, "data-site": SITE }));
+      await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+      const f = fakeKit();
+      wallets()(f.kit, Types);
+      expect(f.on.mock.calls.map((c) => c[0]).sort()).toEqual(["DISCONNECT", "WALLET_SELECTED"]);
+
+      f.emit(Types.STATE_UPDATED, { address: ADDRESS, networkPassphrase: "Public Global Stellar Network ; September 2015" });
+      f.emit(Types.WALLET_SELECTED, { id: "freighter", address: ADDRESS });
+      f.emit(Types.DISCONNECT, {});
+      await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(3));
+
+      const [, selected, disconnected] = sent(fetchMock);
+      expect(selected!.payload).toMatchObject({ name: "wallet_selected", data: { wallet: "freighter" } });
+      expect(disconnected!.payload.name).toBe("wallet_disconnected");
+      expect(disconnected!.payload).not.toHaveProperty("data");
+      const all = JSON.stringify(sent(fetchMock));
+      expect(all).not.toContain(ADDRESS);
+      expect(all).not.toContain("Public Global");
+    });
+
+    it("ignora id ausente, inválido ou parecido com endereço", async () => {
+      stop = start(script({ src: SRC, "data-site": SITE }));
+      await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+      const f = fakeKit();
+      wallets()(f.kit, Types);
+      f.emit(Types.WALLET_SELECTED, { id: undefined });
+      f.emit(Types.WALLET_SELECTED, { id: ADDRESS });
+      f.emit(Types.WALLET_SELECTED, { id: "a b" });
+      f.emit(Types.WALLET_SELECTED, { id: 42 });
+      await vi.advanceTimersByTimeAsync(50);
+      expect(posts(fetchMock)).toHaveLength(1);
+    });
+
+    it("é idempotente por kit e o cancelamento remove as assinaturas", async () => {
+      stop = start(script({ src: SRC, "data-site": SITE }));
+      await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+      const f = fakeKit();
+      const cancel = wallets()(f.kit, Types);
+      expect(wallets()(f.kit, Types)).toBe(cancel);
+      expect(f.on).toHaveBeenCalledTimes(2);
+      f.emit(Types.WALLET_SELECTED, { id: "albedo" });
+      await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(2));
+
+      cancel();
+      cancel();
+      expect(f.unsub).toHaveBeenCalledTimes(2);
+      f.emit(Types.WALLET_SELECTED, { id: "albedo" });
+      await vi.advanceTimersByTimeAsync(50);
+      expect(posts(fetchMock)).toHaveLength(2);
+      // Depois de cancelar, pode assinar de novo.
+      wallets()(f.kit, Types);
+      expect(f.on).toHaveBeenCalledTimes(4);
+    });
+
+    it("kit ou enum inválidos não lançam nem assinam", async () => {
+      stop = start(script({ src: SRC, "data-site": SITE }));
+      await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+      const w = wallets();
+      const boom = { on: () => { throw new Error("quebrado"); } };
+      const f = fakeKit();
+      for (const [kit, types] of [
+        [undefined, Types], [null, Types], ["x", Types], [{}, Types], [boom, Types],
+        [f.kit, undefined], [f.kit, {}], [f.kit, { WALLET_SELECTED: 1, DISCONNECT: 2 }],
+        [f.kit, { WALLET_SELECTED: "A", DISCONNECT: "A" }],
+      ] as const) {
+        expect(() => w(kit, types)()).not.toThrow();
+      }
+      expect(f.on).not.toHaveBeenCalled();
+    });
+
+    it("falha da segunda assinatura desfaz a primeira; handler que lança não propaga", async () => {
+      stop = start(script({ src: SRC, "data-site": SITE }));
+      await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+      const off = vi.fn();
+      let n = 0;
+      const kit = { on: () => { if (++n === 2) throw new Error("x"); return off; } };
+      expect(() => wallets()(kit, Types)()).not.toThrow();
+      expect(off).toHaveBeenCalledTimes(1);
+
+      const f = fakeKit();
+      wallets()(f.kit, Types);
+      expect(() => f.emit(Types.WALLET_SELECTED, null)).not.toThrow();
+    });
+
+    it("não usa cookie nem storage", async () => {
+      stop = start(script({ src: SRC, "data-site": SITE }));
+      await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+      const f = fakeKit();
+      wallets()(f.kit, Types);
+      f.emit(Types.WALLET_SELECTED, { id: "freighter" });
+      await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(2));
+      expect(document.cookie).toBe("");
+      expect(localStorage.length).toBe(0);
+      expect(sessionStorage.length).toBe(0);
+    });
+  });
+
   it("não faz nada sem data-site válido", async () => {
     start(script({ src: SRC }));
     start(script({ src: SRC, "data-site": "abc" }));
