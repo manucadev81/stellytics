@@ -110,9 +110,16 @@ window.notify?.wallets(StellarWalletsKit, KitEventType);
 ```
 
   - Chame **uma vez** (chamar de novo com o mesmo kit não duplica a assinatura). Ela devolve uma função que cancela a assinatura. Se o kit ou o enum forem inválidos, nada acontece e a página não quebra.
-  - Só assina `WALLET_SELECTED` (envia `wallet_selected` com `{ wallet: "freighter" }`, o ID do módulo) e `DISCONNECT` (envia `wallet_disconnected`, sem dados). **Nunca** assina `STATE_UPDATED` e nunca envia endereço, chave pública, `networkPassphrase`, hash ou valor. Um ID que não seja um nome simples de módulo (até 40 caracteres) é ignorado.
+  - Só assina `WALLET_SELECTED` (envia `wallet_selected` com `{ wallet: "freighter" }`, o ID do módulo) e `DISCONNECT` (envia `wallet_disconnected`, sem dados). **Nunca** assina `STATE_UPDATED` e nunca envia endereço, chave pública, `networkPassphrase`, hash ou valor. Um ID que não seja um nome simples de módulo (até 32 caracteres) é ignorado.
   - Como `window.notify` não tem fila, chame depois de o script carregar (`window.notify?.wallets(...)`; se o script puder demorar, repita a chamada no `load` da janela, ela é idempotente).
-  - Se você preferir não usar isso, continue podendo chamar `window.notify?.event(...)` à mão, sem nunca pôr endereço.
+  - Se preferir assinar à mão e usar `notify.event`, o handler recebe `{ eventType, payload }`: o id está em `e.payload.id`, **nunca** em `e.id`, e `STATE_UPDATED` continua proibido (traz o endereço):
+
+```js
+StellarWalletsKit.on(KitEventType.WALLET_SELECTED, (e) => {
+  const id = e?.payload?.id;
+  if (id) window.notify?.event("wallet_selected", { wallet: id });
+});
+```
 - O painel web ainda não lista os eventos customizados; eles ficam no Umami.
 
 ### 3.5 Ad blockers

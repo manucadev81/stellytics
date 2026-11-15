@@ -8,7 +8,9 @@
 
 O [ADR 0008](0008-eventos-customizados-e-wallets-kit.md) entregou `window.notify.event` e deixou a captura dos eventos do Stellar Wallets Kit pendente, listando como alternativa um adaptador em que o tenant passa o kit ao script. Este ADR registra essa alternativa implementada e corrige um erro do 0008.
 
-Fatos reconfirmados em 15/11/2026, na página oficial https://stellarwalletskit.dev/how-to/kit-events.html (lida por fetch nesta data) e na página da documentação do Stellar que aponta para o kit (`/docs/tools/developer-tools/wallets`, via MCP stellar-raven):
+Fatos reconfirmados em 15/11/2026, na página oficial https://stellarwalletskit.dev/how-to/kit-events.html (lida por fetch nesta data) As páginas do Stellar (`/docs/tools/developer-tools/wallets`, via MCP stellar-raven) são só um ponteiro para o kit e **não corroboram** a forma do evento: todos os fatos abaixo vêm de stellarwalletskit.dev, uma única fonte.
+
+Fatos:
 
 - `StellarWalletsKit.on(KitEventType.X, handler)` devolve a função de cancelamento (`const sub = ...on(...)`; "To unsubscribe from the updates, do this: `sub()`").
 - `KitEventType` tem `STATE_UPDATED = "STATE_UPDATE"` (o valor do texto não é o nome do membro), `WALLET_SELECTED = "WALLET_SELECTED"` e `DISCONNECT = "DISCONNECT"`.
@@ -20,9 +22,11 @@ Fatos reconfirmados em 15/11/2026, na página oficial https://stellarwalletskit.
 
 1. **O script ganha `window.notify.wallets(kit, KitEventType)` (v1.3.0).** O tenant chama **uma vez**, depois de iniciar o kit, passando o objeto do kit e o enum.
 2. **Isto NÃO é captura automática nem "sem configuração".** O critério original da #50 ("capturados automaticamente, sem configuração do tenant") continua **não atendido**: sem a chamada do tenant, nada é capturado, pelos motivos do ADR 0008 (o script é um bundle separado e não alcança o módulo do kit). A #50 não fecha por este ADR.
-3. **Só dois eventos são assinados:** `WALLET_SELECTED` envia `wallet_selected` com `{ wallet: id }`, onde `id` é o ID do módulo (por exemplo `freighter`) e passa pelo mesmo charset das chaves do gateway (`[A-Za-z0-9][A-Za-z0-9_.-]{0,39}`, o que rejeita endereço de 56 caracteres e qualquer texto com espaço); `DISCONNECT` envia `wallet_disconnected` sem dados. `STATE_UPDATED` **nunca** é assinado, e nada de endereço, chave pública, `networkPassphrase`, hash ou valor sai do navegador. Id ausente ou inválido: o evento não é enviado.
+3. **Só dois eventos são assinados:** `WALLET_SELECTED` envia `wallet_selected` com `{ wallet: id }`, onde `id` é o ID do módulo (por exemplo `freighter`) e passa pelo mesmo charset das chaves do gateway (`[A-Za-z0-9][A-Za-z0-9_.-]{0,31}`, no máximo 32 caracteres: rejeita endereço Stellar de 56, hash de 64, hex de 40 caracteres no formato EVM e texto com espaço); `DISCONNECT` envia `wallet_disconnected` sem dados. `STATE_UPDATED` **nunca** é assinado, e nada de endereço, chave pública, `networkPassphrase`, hash ou valor sai do navegador. Id ausente ou inválido: o evento não é enviado.
 4. **Comportamento defensivo:** idempotente por kit (guardado em `WeakMap`; segunda chamada devolve a mesma função de cancelar); kit ou enum inválidos, `on` que lança ou handler que lança nunca propagam (try/catch silencioso); se a segunda assinatura falhar, a primeira é desfeita; sem cookie nem storage; devolve a função que cancela as duas assinaturas (e é idempotente). O gateway não mudou: os eventos passam pelas mesmas regras de `name`/`data` do ADR 0008.
 5. Os nomes (`wallets`, `wallet_selected`, `wallet_disconnected`) não têm termos bloqueados por ad blockers.
+
+**Limitação:** o limite de 32 caracteres é uma heurística, não uma prova. Um valor curto qualquer que o kit devolva como `id` seria aceito; os IDs reais dos módulos do kit são curtos e genéricos (por exemplo `freighter`), mas não foi verificada a lista completa.
 
 ## Alternativas consideradas
 

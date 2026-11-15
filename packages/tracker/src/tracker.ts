@@ -86,9 +86,9 @@ export interface NotifyApi {
 }
 
 // ID genérico de módulo de carteira (freighter, albedo...). Mesmo charset das
-// chaves de propriedade do gateway e no máximo 40 caracteres: um endereço
-// (G..., 56 caracteres) nunca passa.
-const WALLET_ID = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,39}$/;
+// chaves de propriedade do gateway e no máximo 32 caracteres: um endereço
+// Stellar (56) ou hash (64) nunca passa, nem hex de 40 caracteres (formato EVM).
+const WALLET_ID = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,31}$/;
 
 // Lê o id de WALLET_SELECTED. Formato da documentação do kit (consulta de
 // 15/11/2026): { eventType, payload: { id } }. Só o id sai; o resto é ignorado.
@@ -235,8 +235,12 @@ export function start(script: HTMLScriptElement | null): () => void {
       const disconnect = t?.DISCONNECT;
       if (typeof on !== "function" || typeof selected !== "string" || typeof disconnect !== "string") return noop;
       if (selected === disconnect) return noop;
+      // Depois de cancelar, handlers antigos ainda vivos (o kit pode não ter
+      // desassinado, se `on` não devolveu função) não enviam mais nada.
+      let cancelled = false;
       const subscribe = (type: string, handler: (event: unknown) => void): (() => void) => {
         const off: unknown = on.call(kit, type, (event: unknown) => {
+          if (cancelled) return;
           try {
             handler(event);
           } catch {
@@ -253,10 +257,14 @@ export function start(script: HTMLScriptElement | null): () => void {
       try {
         offDisconnect = subscribe(disconnect, () => api.event("wallet_disconnected"));
       } catch {
-        offSelected();
+        cancelled = true;
+        try {
+          offSelected();
+        } catch {
+          // Já falhou; só garante que o handler antigo não envia mais.
+        }
         return noop;
       }
-      let cancelled = false;
       const cancel = () => {
         if (cancelled) return;
         cancelled = true;

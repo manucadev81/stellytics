@@ -260,6 +260,47 @@ describe("start", () => {
       expect(() => f.emit(Types.WALLET_SELECTED, null)).not.toThrow();
     });
 
+    it("on que não devolve função: cancelar silencia o handler antigo e reassinar não duplica", async () => {
+      stop = start(script({ src: SRC, "data-site": SITE }));
+      await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+      for (const ret of [undefined, Promise.resolve(() => {})]) {
+        const handlers: ((e: unknown) => void)[] = [];
+        const kit = { on: (_t: string, h: (e: unknown) => void) => { handlers.push(h); return ret; } };
+        const before = posts(fetchMock).length;
+        const cancel = wallets()(kit, Types);
+        const old = handlers.slice();
+        cancel();
+        wallets()(kit, Types);
+        // Os handlers do primeiro ciclo continuam vivos no kit, mas não enviam.
+        for (const h of old) h({ eventType: Types.WALLET_SELECTED, payload: { id: "freighter" } });
+        await vi.advanceTimersByTimeAsync(50);
+        expect(posts(fetchMock)).toHaveLength(before);
+        // Só o handler novo envia, uma vez.
+        handlers.slice(old.length)[0]!({ eventType: Types.WALLET_SELECTED, payload: { id: "freighter" } });
+        await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(before + 1));
+      }
+    });
+
+    it("payload com getter que lança, id objeto e off que lança não propagam", async () => {
+      stop = start(script({ src: SRC, "data-site": SITE }));
+      await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+      const handlers: ((e: unknown) => void)[] = [];
+      const kit = {
+        on: (_t: string, h: (e: unknown) => void) => {
+          handlers.push(h);
+          return () => { throw new Error("off quebrado"); };
+        },
+      };
+      const cancel = wallets()(kit, Types);
+      const boom = { get payload(): never { throw new Error("getter"); } };
+      expect(() => handlers[0]!(boom)).not.toThrow();
+      handlers[0]!({ payload: { id: { toString: () => "freighter" } } });
+      handlers[0]!({ payload: { id: "a".repeat(40) } });
+      await vi.advanceTimersByTimeAsync(50);
+      expect(posts(fetchMock)).toHaveLength(1);
+      expect(() => cancel()).not.toThrow();
+    });
+
     it("não usa cookie nem storage", async () => {
       stop = start(script({ src: SRC, "data-site": SITE }));
       await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
