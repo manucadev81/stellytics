@@ -31,6 +31,10 @@ type Config struct {
 	// SiteCacheTTL é quanto tempo uma resposta da ingest_site fica em memória.
 	// No máximo 1 minuto (spec do E2, seção 6).
 	SiteCacheTTL time.Duration
+	// SiteStaleTTL é por quanto tempo, depois de vencida, a última resposta
+	// conhecida de um site ainda vale quando a consulta ao banco falha. Zero
+	// (o padrão) desliga. No máximo 1 hora.
+	SiteStaleTTL time.Duration
 	// ProofSecret assina os desafios da prova de execução de JS (#25). Vazio,
 	// o gateway sorteia uma chave ao subir, e os tokens emitidos antes de um
 	// reinício (ou por outra réplica) deixam de valer.
@@ -91,6 +95,9 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	if c.SiteCacheTTL, err = parseDuration(getenv("SITE_CACHE_TTL"), time.Minute); err != nil || c.SiteCacheTTL < 0 || c.SiteCacheTTL > time.Minute {
 		errs = append(errs, fmt.Errorf("SITE_CACHE_TTL inválido: %q", getenv("SITE_CACHE_TTL")))
+	}
+	if c.SiteStaleTTL, err = parseDuration(getenv("SITE_STALE_TTL"), 0); err != nil || c.SiteStaleTTL < 0 || c.SiteStaleTTL > time.Hour {
+		errs = append(errs, fmt.Errorf("SITE_STALE_TTL inválido (0 a 1h): %q", getenv("SITE_STALE_TTL")))
 	}
 
 	if s := getenv("PROOF_SECRET"); s != "" {

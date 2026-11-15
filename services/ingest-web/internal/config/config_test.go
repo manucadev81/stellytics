@@ -18,7 +18,7 @@ func TestLoadDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	if c.ListenAddr != ":8080" || c.ClientIPHeader != "x-notify-client-ip" ||
-		c.RateLimit != 20 || c.RateBurst != 40 || c.SiteCacheTTL != time.Minute ||
+		c.RateLimit != 20 || c.RateBurst != 40 || c.SiteCacheTTL != time.Minute || c.SiteStaleTTL != 0 ||
 		c.ScriptDir != "" || len(c.TrustedProxies) != 0 || c.UmamiURL.Host != "umami:3000" ||
 		c.ProofSecret != nil || c.ProofBits != 12 || c.ProofTTL != 10*time.Minute ||
 		c.FingerprintLimit != 50 || c.FingerprintWindow != 10*time.Minute {
@@ -56,6 +56,9 @@ func TestLoadErrors(t *testing.T) {
 		"rajada ruim":      {"DATABASE_URL": "x", "UMAMI_URL": "http://u", "RATE_BURST": "-1"},
 		"ttl ruim":         {"DATABASE_URL": "x", "UMAMI_URL": "http://u", "SITE_CACHE_TTL": "1 minuto"},
 		"ttl longo":        {"DATABASE_URL": "x", "UMAMI_URL": "http://u", "SITE_CACHE_TTL": "2m"},
+		"stale ruim":       {"DATABASE_URL": "x", "UMAMI_URL": "http://u", "SITE_STALE_TTL": "1 hora"},
+		"stale longo":      {"DATABASE_URL": "x", "UMAMI_URL": "http://u", "SITE_STALE_TTL": "2h"},
+		"stale negativo":   {"DATABASE_URL": "x", "UMAMI_URL": "http://u", "SITE_STALE_TTL": "-1s"},
 		"segredo curto":    {"DATABASE_URL": "x", "UMAMI_URL": "http://u", "PROOF_SECRET": "curto"},
 		"bits demais":      {"DATABASE_URL": "x", "UMAMI_URL": "http://u", "PROOF_BITS": "25"},
 		"prova longa":      {"DATABASE_URL": "x", "UMAMI_URL": "http://u", "PROOF_TTL": "2h"},
@@ -67,5 +70,13 @@ func TestLoadErrors(t *testing.T) {
 		if _, err := Load(env(m)); err == nil {
 			t.Errorf("%s: sem erro", name)
 		}
+	}
+}
+
+func TestLoadSiteStaleTTL(t *testing.T) {
+	env := map[string]string{"DATABASE_URL": "x", "UMAMI_URL": "http://u", "SITE_STALE_TTL": "1h"}
+	c, err := Load(func(k string) string { return env[k] })
+	if err != nil || c.SiteStaleTTL != time.Hour {
+		t.Fatalf("SITE_STALE_TTL=1h: %v %v", c.SiteStaleTTL, err)
 	}
 }

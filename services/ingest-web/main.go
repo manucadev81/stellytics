@@ -80,8 +80,13 @@ func run(log *slog.Logger) error {
 	fps := fingerprint.New(cfg.FingerprintLimit, cfg.FingerprintWindow)
 	go fps.Run(ctx, time.Minute)
 
+	sites := site.NewCached(site.PG{Pool: pool}, cfg.SiteCacheTTL).WithStale(cfg.SiteStaleTTL)
+	if cfg.SiteStaleTTL > 0 {
+		go logStale(ctx, log, sites, time.Minute)
+	}
+
 	g := &gateway{
-		sites:   site.NewCached(site.PG{Pool: pool}, cfg.SiteCacheTTL),
+		sites:   sites,
 		relay:   relay.NewClient(cfg.UmamiURL, cfg.ClientIPHeader, &http.Client{Timeout: 10 * time.Second}),
 		limits:  limits,
 		ips:     clientip.Resolver{Trusted: cfg.TrustedProxies},
@@ -115,6 +120,26 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	return nil
+}
+
+// logStale registra, no máximo uma vez por intervalo, quantas respostas
+// vencidas foram servidas por falha do banco. Só o total vai ao log: nada de
+// IP, User-Agent nem ID de site.
+func logStale(ctx context.Context, log *slog.Logger, sites *site.Cached, every time.Duration) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	var last uint64
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if n := sites.StaleServed(); n != last {
+				log.Warn("ingest_site vencida servida por falha do banco", "respostas", n-last, "total", n)
+				last = n
+			}
+		}
+	}
 }
 
 // checkHealth faz o papel de curl/wget na imagem sem shell.
