@@ -51,6 +51,30 @@ Regras que os testes precisam cobrir:
 - Só adote releases com pelo menos 14 dias. O pnpm já recusa versões mais novas (`minimumReleaseAge`), e o Renovate segue a mesma regra.
 - Actions do GitHub fixadas por SHA, com a tag em comentário.
 
+### Alertas de dependências e licenças
+
+O workflow `dependencies` (`.github/workflows/dependencies.yml`) roda nos PRs que mexem em manifestos ou lockfiles, na `main` e todo dia. Ele não faz parte do check `ci`, porque um advisory novo muda o resultado sem mudança no código; um vermelho na `main` precisa de alguém olhando. Para rodar as checagens localmente:
+
+```bash
+# de services/: vulnerabilidades alcançáveis (use o Go dos Dockerfiles)
+go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+# da raiz: vulnerabilidades do pnpm (high e critical falham; sai 2 se não consultou)
+node scripts/deps/audit-pnpm.mjs
+# da raiz, depois de pnpm install: licenças
+pnpm licenses list --json --prod > /tmp/npm-licenses.json
+(cd services && go run github.com/google/go-licenses/v2@v2.0.1 report ./... --template ../scripts/licenses/go-licenses.tpl --ignore github.com/romulospl/notify/services) > /tmp/go-licenses.tsv
+node scripts/deps/check-licenses.mjs --npm /tmp/npm-licenses.json --go /tmp/go-licenses.tsv
+node --test scripts/deps   # testes dos conferidores
+```
+
+**Vulnerabilidade.** Leia o pacote, a versão corrigida e o caminho (o relatório mostra de quem a dependência vem). Prefira subir a versão, respeitando os 14 dias de espera. Se a correção ainda não tem 14 dias e a vulnerabilidade é alcançável, decida no PR entre esperar com mitigação e abrir mão da espera só para essa atualização de segurança, registrando a escolha na descrição. Para uma dependência transitiva, suba a que a traz ou use `pnpm.overrides` com versão exata. `moderate` e `low` do `pnpm audit` não falham o job, mas aparecem no log: trate quando houver correção. Nunca silencie um alerta `high` ou `critical`, nem troque o limite do `audit`, para deixar o job verde. Um job vermelho com "Nao consegui consultar" não é vulnerabilidade: é falha do endpoint ou da rede, rode de novo.
+
+**Licença fora da lista.** A allowlist é `scripts/licenses/allowed.json` (ids SPDX). Expressão com `OR` (dual license) passa se uma alternativa estiver na lista; com `AND`, todas precisam estar; `X WITH exceção` vale como `X`. Sem licença, `UNLICENSED`, `Unknown` e `SEE LICENSE IN ...` falham sempre. O que fazer, em ordem:
+
+1. Trocar a dependência por uma com licença permitida.
+2. Se a licença é aprovada pela [OSI](https://opensource.org/licenses) e compatível com o projeto, acrescentar o id SPDX em `allowed` no PR, com a justificativa na descrição. Copyleft forte (GPL, AGPL) não entra na lista geral.
+3. Se é um caso pontual (por exemplo, dados e não código), acrescentar uma entrada em `exceptions` com `ecosystem` (`npm` ou `go`), `package` (nome npm ou caminho do módulo Go), `license` (exatamente a que o conferidor mostrou), `reason`, `date` e `expires` (no máximo seis meses). A exceção vale só para aquele pacote e aquela licença, em qualquer versão, e **vence**: depois da data o job volta a falhar, para forçar a revisão. Exceção sem uso aparece como aviso e deve ser removida.
+
 ## Commits e pull requests
 
 Commits seguem o [Conventional Commits 1.0.0-beta.4](https://www.conventionalcommits.org/pt-br/v1.0.0-beta.4/), **sempre em inglês**:
