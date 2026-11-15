@@ -81,7 +81,7 @@ Os trechos acima são os mesmos de [`examples/README.md`](../examples/README.md)
 
 - Cada versão publicada (`/s/vX.Y.Z/n.js`) **nunca muda**: o arquivo é servido com cache imutável de um ano e o hash vem de `sri.json`. Se o conteúdo mudasse, o navegador recusaria o script pelo `integrity`.
 - O script **nunca se atualiza sozinho**. Para trocar de versão, mude o caminho e o `integrity` no seu HTML.
-- Use sempre a versão **v1.1.0 ou mais nova**. A v1.0.0 não faz a prova de execução de JS, e o gateway **descarta os eventos dela**.
+- Use sempre a versão **v1.1.0 ou mais nova** (a **v1.2.0** acrescenta eventos customizados). A v1.0.0 não faz a prova de execução de JS, e o gateway **descarta os eventos dela**.
 - `crossorigin="anonymous"` é obrigatório junto com `integrity`; o gateway responde com `Access-Control-Allow-Origin: *` para isso.
 
 ### 3.4 Requisitos e o que o script faz
@@ -91,6 +91,26 @@ Os trechos acima são os mesmos de [`examples/README.md`](../examples/README.md)
 - Um page view carrega: ID do site, hostname, caminho (mais só os parâmetros `utm_*`), referenciador sem query nem fragmento, título, idioma e tamanho de tela.
 - **Não ponha dado pessoal em caminhos ou títulos** (por exemplo `/perfil/maria@exemplo.com`): eles seriam gravados.
 - Site arquivado ou projeto removido: o gateway responde como se tivesse aceitado e descarta o evento. Se os números não aparecem, confira o ID do site antes de qualquer outra coisa.
+
+### 3.4.1 Eventos customizados (v1.2.0)
+
+Com a v1.2.0, `window.notify.event(nome, propriedades)` registra uma ação (clique, conexão de carteira etc.) na página atual:
+
+```js
+window.notify?.event("signup_clicked", { plan: "pro", seats: 3 });
+```
+
+- Nome: 1 a 50 caracteres entre letras, números e `_ . : -`, começando por letra ou número. Propriedades: até 10, com chave de até 40 caracteres e valor texto (até 100 bytes), número ou verdadeiro/falso. O que fugir disso é ignorado.
+- **Não envie dado pessoal nem de carteira:** endereço, chave pública, hash de transação, valor transferido, e-mail. O gateway limita só tipo e tamanho; o conteúdo é responsabilidade do projeto.
+- `window.notify` só existe depois que o script carrega, e **não há fila**: uma chamada antes disso se perde. Use sempre `window.notify?.event(...)`.
+- A captura automática dos eventos do Stellar Wallets Kit **não existe** (ver [ADR 0008](adr/0008-eventos-customizados-e-wallets-kit.md)). Se quiser medir a escolha de carteira, assine você mesmo, só com o `id` (nunca `STATE_UPDATED`, que traz o endereço):
+
+```js
+StellarWalletsKit.on(KitEventType.WALLET_SELECTED, (e) => {
+  if (e.id) window.notify?.event("wallet_selected", { wallet: e.id });
+});
+```
+- O painel web ainda não lista os eventos customizados; eles ficam no Umami.
 
 ### 3.5 Ad blockers
 

@@ -162,8 +162,8 @@ func TestEventRelayedToUmami(t *testing.T) {
 func TestEventDropsFieldsOutsideAllowlist(t *testing.T) {
 	s := newSetup(t)
 	body := `{"type":"event","extra":1,` + proofField(activeSite) + `,"payload":{"website":"` + activeSite + `","url":"/",` +
-		`"id":"user-42","ip":"203.0.113.77","userAgent":"curl","timestamp":1,"data":{"a":1},` +
-		`"browser":"x","os":"y","device":"z","name":"signup","tag":"t"}}`
+		`"id":"user-42","ip":"203.0.113.77","userAgent":"curl","timestamp":1,` +
+		`"browser":"x","os":"y","device":"z","tag":"t"}}`
 	if resp := post(t, s, "text/plain", body); resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
@@ -173,6 +173,69 @@ func TestEventDropsFieldsOutsideAllowlist(t *testing.T) {
 	wantJSON, _ := json.Marshal(want)
 	if string(gotJSON) != string(wantJSON) {
 		t.Errorf("payload repassado = %s\nquero %s", gotJSON, wantJSON)
+	}
+}
+
+func TestCustomEventForwardsOnlyNameAndData(t *testing.T) {
+	s := newSetup(t)
+	body := `{"type":"event",` + proofField(activeSite) + `,"payload":{"website":"` + activeSite + `","url":"/","name":"wallet_connected",` +
+		`"data":{"wallet":"freighter","n":3,"ok":true},"id":"user-42","ip":"203.0.113.77","timestamp":1}}`
+	if resp := post(t, s, "text/plain", body); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	got, _ := json.Marshal(s.umami.received()[0].body)
+	want := `{"payload":{"data":{"n":3,"ok":true,"wallet":"freighter"},"name":"wallet_connected","url":"/","website":"` + activeSite + `"},"type":"event"}`
+	if string(got) != want {
+		t.Errorf("payload repassado = %s\nquero %s", got, want)
+	}
+}
+
+func TestCustomEventLimitsAccepted(t *testing.T) {
+	s := newSetup(t)
+	body := `{"type":"event",` + proofField(activeSite) + `,"payload":{"website":"` + activeSite + `","url":"/","name":"x","data":{"` +
+		strings.Repeat("k", relay.MaxDataKey) + `":"` + strings.Repeat("a", relay.MaxDataString) + `"}}}`
+	if resp := post(t, s, "text/plain", body); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, quero 204", resp.StatusCode)
+	}
+	if n := len(s.umami.received()); n != 1 {
+		t.Fatalf("umami recebeu %d eventos, quero 1", n)
+	}
+}
+
+func TestCustomEventRejected(t *testing.T) {
+	long := strings.Repeat("a", relay.MaxDataString+1)
+	many := `{"k0":1`
+	for i := 1; i <= relay.MaxDataKeys; i++ {
+		many += `,"k` + strings.Repeat("x", i) + `":1`
+	}
+	many += `}`
+	for name, extra := range map[string]string{
+		"nome com espaço":     `"name":"a b"`,
+		"nome longo":          `"name":"` + strings.Repeat("a", relay.MaxName+1) + `"`,
+		"nome com símbolo":    `"name":"<script>"`,
+		"data sem nome":       `"data":{"a":1}`,
+		"valor aninhado":      `"name":"x","data":{"a":{"b":1}}`,
+		"valor lista":         `"name":"x","data":{"a":[1]}`,
+		"valor nulo":          `"name":"x","data":{"a":null}`,
+		"__proto__":           `"name":"x","data":{"__proto__":1}`,
+		"chave de 41":         `"name":"x","data":{"` + strings.Repeat("k", relay.MaxDataKey+1) + `":1}`,
+		"valor de 101":        `"name":"x","data":{"a":"` + strings.Repeat("a", relay.MaxDataString+1) + `"}`,
+		"número 1e999":        `"name":"x","data":{"a":1e999}`,
+		"número gigante":      `"name":"x","data":{"a":` + strings.Repeat("9", 200) + `}`,
+		"valor longo":         `"name":"x","data":{"a":"` + long + `"}`,
+		"chave inválida":      `"name":"x","data":{"a b":1}`,
+		"propriedades demais": `"name":"x","data":` + many,
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := newSetup(t)
+			body := `{"type":"event",` + proofField(activeSite) + `,"payload":{"website":"` + activeSite + `","url":"/",` + extra + `}}`
+			if resp := post(t, s, "text/plain", body); resp.StatusCode != http.StatusBadRequest {
+				t.Errorf("status = %d, quero 400", resp.StatusCode)
+			}
+			if n := len(s.umami.received()); n != 0 {
+				t.Errorf("umami recebeu %d eventos", n)
+			}
+		})
 	}
 }
 

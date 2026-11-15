@@ -34,7 +34,8 @@ Nenhuma resposta grava cookie.
 
 - `type` precisa ser `event`, `website` um UUID e `url` não pode faltar.
 - Tamanhos máximos: `url` e `referrer` 2048 bytes, `title` 500, `hostname` 253, `language` 35, `screen` 16.
-- O payload repassado ao Umami é montado de novo só com esses campos. Qualquer outro (`id`, `ip`, `userAgent`, `timestamp`, `data`...) é descartado, porque o Umami deixaria o cliente trocar o IP, o UA ou a identidade da sessão com eles.
+- **Evento customizado (#50, ADR 0008):** `payload.name` e `payload.data` opcionais. `name`: 1 a 50 caracteres `[A-Za-z0-9_.:-]`, começando por letra ou dígito. `data`: objeto plano com até 10 propriedades, chave de até 40 caracteres `[A-Za-z0-9_.-]` começando por letra ou dígito começando por letra ou dígito, valor string (até 100 bytes), número finito (literal de até 32 caracteres) ou booleano; nulo, lista, objeto aninhado e `data` sem `name` dão `400`. Só esses dois campos, já validados, são repassados ao Umami.
+- O payload repassado ao Umami é montado de novo só com esses campos. Qualquer outro (`id`, `ip`, `userAgent`, `timestamp`...) é descartado, porque o Umami deixaria o cliente trocar o IP, o UA ou a identidade da sessão com eles.
 - Só os headers `Content-Type`, `User-Agent` e o de `CLIENT_IP_HEADER` chegam ao Umami.
 
 ### Respostas de erro

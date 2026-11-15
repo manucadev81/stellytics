@@ -44,7 +44,44 @@ export interface EventPayload {
     title: string;
     language: string;
     screen: string;
+    // Evento customizado (#50); ausentes no page view.
+    name?: string;
+    data?: Record<string, EventValue>;
   };
+}
+
+// Valores aceitos nas propriedades de um evento customizado.
+export type EventValue = string | number | boolean;
+
+// Mesmos limites do gateway (services/ingest-web/internal/relay). O gateway é
+// quem manda; aqui só se evita enviar o que ele recusaria.
+const NAME = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,49}$/;
+const KEY = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,39}$/;
+const MAX_DATA_KEYS = 10;
+const MAX_DATA_STRING = 100;
+
+// Valida nome e propriedades de um evento customizado. Devolve as propriedades
+// limpas ou nulo se algo estiver fora do contrato (o evento então não é enviado).
+export function validateCustomEvent(name: unknown, data?: unknown): Record<string, EventValue> | null {
+  if (typeof name !== "string" || !NAME.test(name)) return null;
+  const out: Record<string, EventValue> = {};
+  if (data === undefined || data === null) return out;
+  if (typeof data !== "object" || Array.isArray(data)) return null;
+  const entries = Object.entries(data);
+  if (entries.length > MAX_DATA_KEYS) return null;
+  for (const [key, value] of entries) {
+    if (!KEY.test(key)) return null;
+    const okString = typeof value === "string" && new TextEncoder().encode(value).length <= MAX_DATA_STRING;
+    const okNumber = typeof value === "number" && Number.isFinite(value);
+    if (!okString && !okNumber && typeof value !== "boolean") return null;
+    out[key] = value as EventValue;
+  }
+  return out;
+}
+
+// API pública do script, em window.notify.
+export interface NotifyApi {
+  event(name: string, data?: Record<string, EventValue>): void;
 }
 
 export function pageUrl(location: Location | URL): string {
@@ -125,7 +162,7 @@ export function start(script: HTMLScriptElement | null): () => void {
     return proof;
   };
 
-  const send = (url: string, referrer: string) => {
+  const send = (url: string, referrer: string, custom?: { name: string; data: Record<string, EventValue> }) => {
     // O payload é lido agora (título, URL), antes de esperar a prova.
     const payload: EventPayload["payload"] = {
       website,
@@ -136,6 +173,10 @@ export function start(script: HTMLScriptElement | null): () => void {
       language: navigator.language,
       screen: `${screen.width}x${screen.height}`,
     };
+    if (custom) {
+      payload.name = custom.name;
+      if (Object.keys(custom.data).length > 0) payload.data = custom.data;
+    }
     getProof().then((p) => {
       if (!p) return;
       const body: EventPayload = { type: "event", p, payload };
@@ -151,6 +192,19 @@ export function start(script: HTMLScriptElement | null): () => void {
   };
 
   let current = pageUrl(location);
+
+  // window.notify.event(nome, propriedades): evento customizado na página atual.
+  // Nome ou propriedades fora do contrato são ignorados em silêncio. Nunca passe
+  // dado pessoal, endereço de carteira nem hash de transação nas propriedades.
+  const api: NotifyApi = {
+    event(name, data) {
+      const clean = validateCustomEvent(name, data);
+      if (!clean) return;
+      send(pageUrl(location), "", { name, data: clean });
+    },
+  };
+  (window as unknown as { notify?: NotifyApi }).notify = api;
+
   send(current, cleanReferrer(document.referrer, location.hostname));
 
   // Navegação de SPA: um page view por mudança de rota, com a rota anterior como referenciador.
@@ -177,6 +231,7 @@ export function start(script: HTMLScriptElement | null): () => void {
   addEventListener("popstate", onNavigate);
 
   return () => {
+    delete (window as unknown as { notify?: NotifyApi }).notify;
     clearTimeout(timer);
     history.pushState = pushState;
     history.replaceState = replaceState;
