@@ -55,13 +55,16 @@ for db in notify umami; do
 done
 
 # 3. Nada rodando além do Postgres (e do S3 do teste).
-running=$($COMPOSE ps --status running --services | grep -v -E '^(postgres|s3)$' || true)
+# O `ps` falhar (diretório ou COMPOSE errados) tem de abortar, não passar como "nada rodando".
+services=$($COMPOSE ps --status running --services) || abort "não consegui listar os serviços (COMPOSE=$COMPOSE; está em /opt/notify/infra/compose?)"
+running=$(printf '%s\n' "$services" | grep -v -E '^(postgres|s3)$' || true)
 if [ -n "$running" ]; then
   abort "pare antes: $(echo "$running" | tr '\n' ' ')(docker compose -f prod.yaml stop ...)"
 fi
 
 # 4. O destino está vazio? (sem a tabela, ou com 0 tenants)
-tenants=$(pg psql -X -At -d notify -c "select case when to_regclass('public.tenant') is null then 0 else (select count(*) from tenant) end" 2>/dev/null || echo 0)
+# Se o psql falhar, aborta: tratar falha como "0 tenants" deixaria passar a origem.
+tenants=$(pg psql -X -At -d notify -c "select case when to_regclass('public.tenant') is null then 0 else (select count(*) from tenant) end") || abort "não consegui consultar o destino (o Postgres está de pé? o banco notify existe?)"
 if [ "$tenants" != 0 ] && [ "$force" != 1 ]; then
   abort "o destino tem $tenants tenant(s): isto não parece um destino vazio (é a origem?). Use --force-nonempty se for de propósito."
 fi
