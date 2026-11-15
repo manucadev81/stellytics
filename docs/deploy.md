@@ -2,7 +2,7 @@
 
 Como recriar a produção do notify do zero, só com este repositório e os segredos ([#14](https://github.com/romulospl/notify/issues/14)). As decisões estão no [ADR 0004](adr/0004-hospedagem-e-backup.md); os arquivos, em [`infra/`](../infra/README.md).
 
-> **Escopo.** Este guia sobe o que está em [`infra/compose/prod.yaml`](../infra/compose/prod.yaml): Caddy, portal, gateway de ingestão web, Umami e Postgres com backup, mais o monitoramento externo. **O coletor de API e o job de consolidação não entram** (ver [O que o guia ainda não cobre](#o-que-o-guia-ainda-não-cobre)): em produção, hoje, só as métricas web funcionam. Ninguém de fora seguiu este guia de ponta a ponta ainda; o que foi conferido sem credenciais está em [Como este guia foi conferido](#como-este-guia-foi-conferido).
+> **Escopo.** Este guia sobe o que está em [`infra/compose/prod.yaml`](../infra/compose/prod.yaml): Caddy, portal, gateway de ingestão web, Umami e Postgres com backup, mais o monitoramento externo. **O coletor de API e o job de consolidação não entram** (ver [O que o guia ainda não cobre](#o-que-o-guia-ainda-não-cobre)): em produção, hoje, só as métricas web funcionam. **A [#42](https://github.com/romulospl/notify/issues/42) ainda não está cumprida:** o critério de aceite (alguém de fora faz o deploy seguindo só o guia) só será cumprido quando alguém de fora seguir o guia numa conta real. Ninguém seguiu de ponta a ponta ainda; o que foi conferido sem credenciais está em [Como este guia foi conferido](#como-este-guia-foi-conferido).
 
 ## Visão geral
 
@@ -49,7 +49,7 @@ O local é a variável `location` do OpenTofu. Se mudar, mude também `walg_s3_e
 
 **Ferramentas na sua máquina:**
 
-- `git`, `ssh` e `openssl`;
+- `git`, `ssh` e `openssl`; opcionalmente a CLI `hcloud` (para `hcloud server-type list`; sem ela, veja os tipos no console da Hetzner);
 - OpenTofu 1.13.2 ou mais novo (ou o contêiner `ghcr.io/opentofu/opentofu:1.13.2`) e Ansible (ansible-core 2.21; o deploy usa só `ansible.builtin`, sem coleções extras);
 - Docker com buildx e `jq`, para ler os digests das imagens (ou pegue os digests na página do pacote no GitHub);
 - Node 24 ou mais novo e pnpm 10.34.5 (`corepack enable`), para os comandos de administração do passo 5.
@@ -161,7 +161,7 @@ Ele pode rodar de novo quantas vezes for preciso; sem mudança, não altera nada
 3. **Conta de serviço do Umami** (o portal usa a chave dela), da raiz do clone e com o túnel aberto:
 
    ```bash
-   read -rs UMAMI_ADMIN_PASSWORD && export UMAMI_ADMIN_PASSWORD   # a senha nova do passo 2
+   read -rs UMAMI_ADMIN_PASSWORD && export UMAMI_ADMIN_PASSWORD   # bash ou zsh; a senha nova do passo 2
    UMAMI_URL=http://127.0.0.1:13001 pnpm --filter @notify/portal umami:service-account
    ```
 
@@ -169,7 +169,7 @@ Ele pode rodar de novo quantas vezes for preciso; sem mudança, não altera nada
 4. **Primeiro operador do SCF** (conta com visão global; nasce com e-mail já confirmado), também com o túnel aberto:
 
    ```bash
-   read -rs OPERATOR_PASSWORD && export OPERATOR_PASSWORD   # mínimo de 12 caracteres
+   read -rs OPERATOR_PASSWORD && export OPERATOR_PASSWORD   # bash ou zsh; mínimo de 12 caracteres
    DATABASE_URL='postgresql://notify:<notify_db_password>@127.0.0.1:15432/notify' \
      pnpm --filter @notify/portal operator:create --email <e-mail> --name "<nome>"
    ```
@@ -195,12 +195,19 @@ curl -s -o /dev/null -w '%{http_code}\n' https://<ingest_host>/api/send    # 404
 curl -s -o /dev/null -w '%{http_code}\n' https://<portal_host>/api/send    # 404 também (é o portal, não o Umami)
 ```
 
+De fora da VM (o Docker da VM roda com `userland-proxy` desligado, então `ss` não mostra processo escutando nessas portas; confira pelo lado de fora e pelas regras do Docker):
+
+```bash
+nc -vz -w3 <ip-da-vm> 443    # deve abrir
+nc -vz -w3 <ip-da-vm> 5432   # deve falhar (o Postgres só escuta no loopback e o firewall não abre a porta)
+```
+
 Na VM (`ssh root@<ip-da-vm>`):
 
 ```bash
 cd /opt/notify/infra/compose
-docker compose -f prod.yaml ps            # todos healthy
-ss -tlnp | grep -E ':(80|443|5432) '      # 80/443 em todas as interfaces; 5432 só em 127.0.0.1
+docker compose -f prod.yaml ps            # todos healthy; coluna PORTS: só o Caddy publica 80/443 e o Postgres, só 127.0.0.1:5432
+iptables -t nat -S DOCKER                 # regras DNAT: 80 e 443 para o Caddy, 5432 só do loopback
 systemctl list-timers notify-backup.timer
 ```
 
@@ -222,7 +229,19 @@ Se algo falhar, os logs de cada serviço estão em `docker compose -f prod.yaml 
 
 **Voltar atrás (rollback).** Ponha em `group_vars/all.yml` os digests da versão anterior e rode o playbook de novo. Isso volta o código, **não o banco**: se a versão nova trouxe uma migração, o esquema continua o novo, e a versão antiga pode não funcionar com ele. Nesse caso, restaure o banco do backup anterior à atualização (seção "Restaurar o banco") antes de subir a imagem antiga. Versões do script de rastreamento já publicadas continuam disponíveis em `/s/` (são imutáveis), então páginas dos tenants não quebram.
 
-**Trocar um segredo.** Mudar uma senha em `secrets.yml` só atualiza o `.env`; os usuários do banco são criados uma vez, no volume vazio. Para `notify_ingest_db_password` e `notify_collector_db_password`, reaplique `02-ingest-roles.sh` (ver `CLAUDE.md`, "Ambiente local"; na VM: `docker compose -f prod.yaml exec -T postgres sh < /opt/notify/infra/compose/postgres/init/02-ingest-roles.sh`). Para `postgres`, `umami` e `notify`, rode `ALTER ROLE ... PASSWORD` por psql antes de aplicar o playbook. A `walg_libsodium_key` não pode ser trocada: os backups antigos deixariam de abrir.
+**Trocar um segredo.** Mudar uma senha em `secrets.yml` só atualiza o `.env`; os usuários do banco são criados uma vez, no volume vazio, e guardam a senha antiga. Na ordem:
+
+1. Edite o valor em `secrets.yml`.
+2. Rode `ansible-playbook site.yml -e @secrets.yml`. O Compose recria os contêineres cujo ambiente mudou (o Postgres, se mudou uma senha de banco) e entrega o `.env` novo. Se o `--wait` do playbook reclamar de um serviço não saudável, é esperado até o passo 3: rode o playbook de novo no fim.
+3. Na VM, em `/opt/notify/infra/compose`, atualize a senha no banco:
+   - `notify_ingest_db_password` e `notify_collector_db_password`: reaplique o script (idempotente): `docker compose -f prod.yaml exec -T postgres sh < /opt/notify/infra/compose/postgres/init/02-ingest-roles.sh`;
+   - `notify_db_password` e `umami_db_password`: `docker compose -f prod.yaml exec -T postgres psql -U postgres -c "ALTER ROLE notify PASSWORD '<nova>'"` (e `ALTER ROLE umami ...`);
+   - `postgres_password`: `ALTER ROLE postgres PASSWORD '<nova>'` da mesma forma.
+4. Reinicie quem guarda a conexão: `docker compose -f prod.yaml restart portal umami ingest-web`.
+
+Entre a recriação do Postgres (passo 2) e o `ALTER ROLE` (passo 3), o portal, o Umami e o gateway ficam sem conexão com o banco: faça fora do horário de pico. O gateway descarta os eventos desse intervalo.
+
+Efeito dos outros segredos: `portal_auth_secret` invalida todas as sessões do portal (todos entram de novo); `umami_app_secret` invalida as sessões do Umami (se o portal passar a receber 401 dele, gere outra chave com `pnpm --filter @notify/portal umami:service-account` e atualize `umami_api_key`); `ingest_proof_secret` invalida os desafios em circulação, e os navegadores pedem um novo no próximo carregamento ou em até 5 minutos, com alguns eventos descartados nesse meio tempo. A `walg_libsodium_key` não pode ser trocada: os backups antigos deixariam de abrir.
 
 ## Backup
 
@@ -239,6 +258,8 @@ Se algo falhar, os logs de cada serviço estão em `docker compose -f prod.yaml 
 - A restauração é testada a cada PR pelo job `infra` do CI (`infra/compose/test/prod-stack-test.sh`): ela restaura num contêiner novo e confere que voltou também o que foi gravado depois do backup base.
 
 ## Restaurar o banco
+
+**Janela de manutenção:** a restauração derruba o portal, a ingestão (eventos descartados) e o Umami até terminar. O backup novo é baixado para um diretório vazio enquanto os dados antigos ficam em `postgres.antes-*` no mesmo volume, então confira que há espaço livre para os dois (`df -h /srv/notify`) antes de começar.
 
 Na VM, como root:
 
@@ -321,7 +342,7 @@ Faça depois do deploy (passo 4) e do DNS, senão o monitor já nasce alertando.
 | `ProbeFailing` | O Prometheus não consegue nem pedir o teste de um alvo ao blackbox |
 | `ProberDown` | O blackbox exporter, que faz os testes, está fora do ar |
 
-Confira que o monitoramento enxerga a produção: no Prometheus (túnel abaixo), a página *Status → Targets* (ou a consulta `probe_success`) deve mostrar `1` para o portal e o gateway. Para testar o e-mail de alerta de verdade, na VM de produção rode `docker compose -f prod.yaml stop ingest-web`, espere uns 2 minutos pelo `EndpointDown` e suba de novo (`start ingest-web`). O Alertmanager e o Prometheus ficam só no loopback; para vê-los, abra um túnel e acesse `http://127.0.0.1:9090` e `http://127.0.0.1:9093`:
+Confira que o monitoramento enxerga a produção: no Prometheus (túnel abaixo), a página *Status → Targets* (ou a consulta `probe_success`) deve mostrar `1` para o portal e o gateway. Para testar o e-mail de alerta de verdade, na VM de produção rode `docker compose -f prod.yaml stop ingest-web`, espere uns 2 minutos pelo `EndpointDown` e suba de novo (`start ingest-web`). **Parar o `ingest-web` descarta os eventos reais que chegarem nesse intervalo.** Faça o teste no primeiro deploy, antes de haver tenants, ou aceite a perda. O Alertmanager e o Prometheus ficam só no loopback; para vê-los, abra um túnel e acesse `http://127.0.0.1:9090` e `http://127.0.0.1:9093`:
 
 ```bash
 ssh -N -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 root@<monitor_ipv4>
@@ -348,4 +369,4 @@ Sem credenciais da Hetzner, de DNS ou de SMTP, foi possível conferir:
 - os nomes de variáveis, saídas do OpenTofu, scripts (`pnpm umami:service-account`, `operator:create`) e caminhos citados, contra os arquivos do repositório;
 - o roteamento do Caddy, as portas, o backup cifrado e a restauração, pelo job `infra` do CI (`infra/compose/test/prod-stack-test.sh`), e os alertas, pelo job `monitoring`.
 
-**Não foi possível conferir** sem credenciais: o `tofu apply` e o `ansible-playbook` de verdade, a emissão do certificado, o envio de e-mail, o `cosign verify` contra imagens reais (ainda não há release publicada) e a visibilidade dos pacotes no GHCR. Os passos do console da Hetzner e do GitHub seguem a documentação dessas ferramentas e podem ter mudado de nome na interface.
+**Não foi possível conferir** sem credenciais: o `tofu apply` e o `ansible-playbook` de verdade, a emissão do certificado, o envio de e-mail, o `cosign verify` contra imagens reais (ainda não há release publicada) a visibilidade dos pacotes no GHCR e o bloco `backend "s3"` do estado do OpenTofu (`region = "nbg1"` e os `skip_*`). Os passos do console da Hetzner e do GitHub seguem a documentação dessas ferramentas e podem ter mudado de nome na interface.
