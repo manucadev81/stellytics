@@ -23,6 +23,13 @@ scrape_configs:
     file_sd_configs:
       - files: [/etc/prometheus/targets/*.yml]
     relabel_configs:
+      # Um alvo pode pedir outro módulo do blackbox pelo rótulo `module`
+      # (a ingestão de API usa otlp_401); sem o rótulo vale o http_2xx.
+      - source_labels: [module]
+        regex: (.+)
+        target_label: __param_module
+      - regex: module
+        action: labeldrop
       - source_labels: [__address__]
         target_label: __param_target
       - source_labels: [__param_target]

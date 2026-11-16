@@ -2,16 +2,20 @@
 # Teste da pilha de produção (#14), localmente e no job `prod-stack` do CI.
 #
 # Sobe compose/prod.yaml com um S3 local (test/prod-test.yaml) e confere:
-# 1. o Caddy publica o portal e só as rotas do gateway; nada leva ao Umami;
-# 2. Umami e Postgres não têm porta pública;
+# 1. o Caddy publica o portal, só as rotas do gateway e só o OTLP do coletor;
+#    nada leva ao Umami;
+# 2. Umami, Postgres, coletor e rollup não têm porta pública;
+# 2b. uma métrica OTLP enviada pelo Caddy com chave de ingestão cai em
+#    api_metric_1m no tenant da chave, e o rollup roda;
 # 3. o backup base e o WAL vão para o S3, cifrados;
 # 4. a restauração, seguindo docs/deploy.md, traz o banco de volta, inclusive
 #    o que foi gravado DEPOIS do backup base (recuperação pelo WAL arquivado).
 #
-# Uso, da raiz do repositório, com as imagens do portal e do gateway já
-# construídas (docker compose build portal ingest-web):
+# Uso, da raiz do repositório, com as imagens já construídas
+# (docker compose build portal ingest-web collector rollup):
 #   infra/compose/test/prod-stack-test.sh
-# PORTAL_IMAGE e INGEST_WEB_IMAGE trocam as imagens (padrão: as do ambiente local).
+# PORTAL_IMAGE, INGEST_WEB_IMAGE, COLLECTOR_IMAGE e ROLLUP_IMAGE trocam as
+# imagens (padrão: as do ambiente local).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -37,8 +41,11 @@ WALG_S3_SECRET_KEY=$(rand)
 WALG_LIBSODIUM_KEY=$(rand 32)
 PORTAL_IMAGE=${PORTAL_IMAGE:-notify-portal:dev}
 INGEST_WEB_IMAGE=${INGEST_WEB_IMAGE:-notify-ingest-web:dev}
+COLLECTOR_IMAGE=${COLLECTOR_IMAGE:-notify-collector:dev}
+ROLLUP_IMAGE=${ROLLUP_IMAGE:-notify-rollup:dev}
 PORTAL_HOST=portal.localhost
 INGEST_HOST=ingest.localhost
+API_HOST=api.localhost
 ACME_EMAIL=ops@example.org
 SMTP_URL=smtp://127.0.0.1:25
 MAIL_FROM=notify <no-reply@example.org>
@@ -79,7 +86,27 @@ done
 # No host do portal, /api/heartbeat é do Next (404), não do Umami.
 [ "$(curl -sk --resolve portal.localhost:443:127.0.0.1 https://portal.localhost/api/heartbeat)" != "ok" ] \
   || fail "o host do portal chega ao Umami"
-ok "Caddy publica o portal e só as rotas do gateway"
+
+# Host da API (ADR 0012): só o OTLP, e só com chave de ingestão.
+post() { curl -sk -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' \
+  --resolve api.localhost:443:127.0.0.1 "https://api.localhost$1"; }
+for path in /v1/traces /v1/metrics /v1/logs; do
+  [ "$(post "$path")" = 401 ] || fail "OTLP sem chave em $path deveria dar 401"
+done
+for path in / /healthz /e /api/send /v1/metrics; do
+  [ "$(get api.localhost "$path")" = 404 ] || fail "host da API deveria dar 404 no GET $path"
+done
+[ "$(post /api/send)" = 404 ] || fail "host da API chega a outra rota por POST"
+# gRPC pela 443: sem chave, o coletor responde Unauthenticated (grpc-status 16).
+# O corpo é uma mensagem gRPC vazia (5 bytes de cabeçalho): o servidor lê a
+# mensagem antes de conferir a chave.
+grpc_status=$(printf '\0\0\0\0\0' | curl -sk --http2 -o /dev/null -D - -X POST --data-binary @- \
+  -H 'Content-Type: application/grpc' -H 'TE: trailers' \
+  --resolve api.localhost:443:127.0.0.1 \
+  https://api.localhost/opentelemetry.proto.collector.metrics.v1.MetricsService/Export |
+  tr -d '\r' | awk 'tolower($1) == "grpc-status:" { print $2 }')
+[ "$grpc_status" = 16 ] || fail "gRPC sem chave deveria dar grpc-status 16 e veio '$grpc_status'"
+ok "Caddy publica o portal, só as rotas do gateway e só o OTLP (HTTP e gRPC) do coletor"
 
 # Logs do Caddy sem IP, cabeçalhos nem URL, também nos de erro: com o gateway
 # parado, o pedido dá 502 e o Caddy registra o erro.
@@ -98,13 +125,42 @@ ok "logs do Caddy sem IP, cabeçalhos nem URL"
 
 # 2. Sem porta pública além do Caddy.
 bindings() { docker inspect -f '{{json .HostConfig.PortBindings}}' "$(compose ps -q "$1")"; }
-for svc in umami portal ingest-web s3; do
+for svc in umami portal ingest-web collector rollup s3; do
   b=$(bindings "$svc")
   [ "$b" = "{}" ] || [ "$b" = "null" ] || fail "$svc com porta publicada: $b"
 done
 pg_port=$(compose port postgres 5432)
 case "$pg_port" in 127.0.0.1:*) ;; *) fail "Postgres publicado fora do loopback: $pg_port" ;; esac
-ok "Umami sem porta; Postgres só no loopback"
+ok "Umami, coletor e rollup sem porta; Postgres só no loopback"
+
+# 2b. Ingestão de API de ponta a ponta, pelo Caddy: a chave define o tenant.
+suffix=$(rand 5)
+prefix=$(LC_ALL=C tr -dc 'a-z2-7' </dev/urandom | head -c 8 || true)
+key="ntf_${prefix}_$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 43 || true)"
+psql_notify "insert into \"user\" (id, name, email, email_verified)
+  values ('prodtest-$suffix', 'prodtest', 'prodtest-$suffix@example.invalid', true)" >/dev/null
+tenant=$(psql_notify "insert into tenant (name, slug, status) values ('prodtest-$suffix', 'prodtest-$suffix', 'active') returning id" | head -1)
+service=$(psql_notify "insert into api_service (tenant_id, name) values ('$tenant', 'prodtest') returning id" | head -1)
+psql_notify "insert into ingest_key (api_service_id, tenant_id, prefix, key_hash, created_by)
+  values ('$service', '$tenant', '$prefix', sha256(convert_to('$key', 'UTF8')), 'prodtest-$suffix')" >/dev/null
+now=$(date +%s)000000000
+code=$(curl -sk -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $key" -H 'Content-Type: application/json' \
+  --resolve api.localhost:443:127.0.0.1 https://api.localhost/v1/traces \
+  -d '{"resourceSpans":[{"scopeSpans":[{"spans":[{"traceId":"5b8efff798038103d269b633813fc60c","spanId":"eee19b7ec3c1b174","name":"GET","kind":2,"startTimeUnixNano":"'"$now"'","endTimeUnixNano":"'"$now"'","attributes":[{"key":"http.request.method","value":{"stringValue":"GET"}},{"key":"http.route","value":{"stringValue":"/prodtest/{id}"}},{"key":"http.response.status_code","value":{"intValue":"200"}}]}]}]}]}')
+[ "$code" = 200 ] || fail "OTLP com chave válida respondeu $code"
+for _ in $(seq 1 30); do
+  n=$(psql_notify "select count(*) from api_metric_1m where route = '/prodtest/{id}' and tenant_id = '$tenant' and api_service_id = '$service'")
+  [ "$n" -ge 1 ] && break
+  sleep 2
+done
+[ "$n" -ge 1 ] || fail "a métrica enviada pelo Caddy não chegou a api_metric_1m"
+[ "$(curl -sk -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer ntf_aaaaaaaa_invalida' -H 'Content-Type: application/json' -d '{}' \
+  --resolve api.localhost:443:127.0.0.1 https://api.localhost/v1/traces)" = 401 ] || fail "chave inválida deveria dar 401"
+if compose logs --no-color caddy collector | grep -q "$key"; then fail "a chave de ingestão apareceu num log"; fi
+# O rollup criou as partições do mês (api_metric_maintain) ao subir.
+[ "$(psql_notify "select count(*) from pg_class where relname = 'api_metric_1h_p$(date -u +%Y%m)'")" = 1 ] ||
+  fail "o rollup não criou a partição do mês em api_metric_1h"
+ok "OTLP pelo Caddy grava em api_metric_1m no tenant da chave; rollup no ar"
 
 # 3. Backup base e WAL no S3.
 psql_notify "create table restore_check (note text primary key)"
@@ -154,7 +210,7 @@ ok "backup cifrado: sem a chave, a restauração falha"
 # 4. Restauração, com os mesmos comandos de docs/deploy.md ("Restaurar o
 # banco"): guarda os dados atuais, restaura numa pasta vazia e sobe de novo.
 restore_db() {
-  compose stop caddy portal ingest-web umami postgres >/dev/null
+  compose stop caddy portal ingest-web collector rollup umami postgres >/dev/null
   docker run --rm -v "$work/data:/d" alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f \
     sh -c "mv /d/postgres /d/postgres.antes-$1 && mkdir /d/postgres"
   compose run --rm --no-deps -e BACKUP="$2" -e TARGET="${3:-}" --entrypoint sh postgres -c \

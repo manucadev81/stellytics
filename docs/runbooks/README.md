@@ -15,9 +15,9 @@ Procedimentos para operar a produção do notify ([#53](https://github.com/romul
 
 ## Convenções
 
-- **Na VM** quer dizer `ssh root@<ip-da-vm>` e, a partir daí, `cd /opt/notify/infra/compose`. Os serviços do `prod.yaml` são `postgres`, `umami`, `portal`, `ingest-web` e `caddy` (o projeto se chama `notify`; os contêineres são `notify-<serviço>-1`).
+- **Na VM** quer dizer `ssh root@<ip-da-vm>` e, a partir daí, `cd /opt/notify/infra/compose`. Os serviços do `prod.yaml` são `postgres`, `umami`, `portal`, `ingest-web`, `collector`, `rollup` e `caddy` (o projeto se chama `notify`; os contêineres são `notify-<serviço>-1`).
 - **Pelo túnel** quer dizer com [`infra/scripts/admin-tunnel.sh <ip-da-vm>`](../../infra/scripts/admin-tunnel.sh) aberto: Postgres em `127.0.0.1:15432` e Umami em `http://127.0.0.1:13001`.
 - **Na VM de monitoramento** os arquivos ficam em `/opt/notify-monitor` (`monitor_root`), com `docker compose` a partir dessa pasta.
 - Logs de serviço: `docker compose -f prod.yaml logs --tail 200 <serviço>`. Eles não guardam IP nem cabeçalhos dos visitantes; não os procure lá.
-- O coletor de API e o `rollup` **não estão em produção** (ver `docs/deploy.md`). Alertas ou procedimentos sobre eles só valem depois que entrarem no `prod.yaml`.
+- O coletor de API e o `rollup` estão no `prod.yaml` desde 16/11/2026 (ADR 0012), mas os runbooks ainda não têm procedimento próprio para eles: use a triagem geral de `incidentes.md` (`ps`, `logs collector`, `logs rollup`).
 - Quem escala: hoje a operação é de uma pessoa só (a que mantém o repositório). "Escalar" nos runbooks quer dizer registrar o incidente por escrito (relato de segurança do GitHub, se envolver vulnerabilidade, ou uma nota datada) e acionar suporte do provedor quando o problema for dele (Hetzner, Let's Encrypt, SMTP).

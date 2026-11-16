@@ -4,7 +4,7 @@ Para quem vai medir um projeto do ecossistema Stellar na plataforma: do cadastro
 
 > **Estado da validação.** Os trechos deste guia foram conferidos contra os exemplos do repositório e contra o código das telas (ver o PR #108). A validação com um **piloto real** (critério de aceite 2 da #43) **ainda não aconteceu**: depende dos pilotos das issues #45 e #46. Até lá, trate o guia como não validado por um projeto externo.
 
-Convenções: `<gateway>` é o host de ingestão web e `<coletor>` o endereço do coletor de API que o operador da instância informa. Hoje o coletor existe no Compose local (`127.0.0.1:4318` HTTP e `4317` gRPC), mas **ainda não está na produção** (`docs/andamento.md`); confirme o endereço com quem opera a instância antes de configurar.
+Convenções: `<gateway>` é o host de ingestão web e `<coletor>` o endereço do coletor de API que o operador da instância informa. No Compose local ele fica em `127.0.0.1:4318` (HTTP) e `4317` (gRPC); em produção é `https://<api_host>`, na porta 443, para OTLP/HTTP e gRPC (ADR 0012). Nenhuma produção real foi aplicada ainda (`docs/andamento.md`); confirme o endereço com quem opera a instância antes de configurar.
 
 ## 1. Visão geral
 

@@ -47,7 +47,9 @@
         that:
           - portal_image is regex('@sha256:[0-9a-f]{64}$')
           - ingest_web_image is regex('@sha256:[0-9a-f]{64}$')
-        fail_msg: "portal_image e ingest_web_image precisam terminar em @sha256:<digest>."
+          - collector_image is regex('@sha256:[0-9a-f]{64}$')
+          - rollup_image is regex('@sha256:[0-9a-f]{64}$')
+        fail_msg: "portal_image, ingest_web_image, collector_image e rollup_image precisam terminar em @sha256:<digest>."
         quiet: true
 
   roles:
