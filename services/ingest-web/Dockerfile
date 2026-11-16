@@ -2,7 +2,7 @@
 # Imagem do gateway de ingestão web. O contexto do build é a raiz do repositório:
 #   docker build -f services/ingest-web/Dockerfile .
 
-FROM golang:1.26.9-alpine@sha256:3082400e369fa24d5fc60bca20edab3f6d604e0c5a690ec66b295eff4dd87ade AS build
+FROM golang:1.26.11-alpine@sha256:ecb67f987aa1a57794c91d19ade7ae0209f2f0f5496aaef9e6ae85ddf92d02ab AS build
 WORKDIR /src/services
 COPY services/go.mod services/go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download

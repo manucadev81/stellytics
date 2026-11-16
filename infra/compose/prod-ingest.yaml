@@ -31,6 +31,11 @@ services:
       RATE_LIMIT: ${INGEST_RATE_LIMIT:-20}
       RATE_BURST: ${INGEST_RATE_BURST:-40}
       FINGERPRINT_LIMIT: ${INGEST_FINGERPRINT_LIMIT:-50}
+      # Desligados por padrão (docs/deploy.md). Não ligue o limite de repasses
+      # antes de decidir o 503 sob saturação (ADR 0011).
+      SITE_STALE_TTL: ${INGEST_SITE_STALE_TTL:-0}
+      RELAY_MAX_INFLIGHT: ${INGEST_RELAY_MAX_INFLIGHT:-0}
+      RELAY_QUEUE_WAIT: ${INGEST_RELAY_QUEUE_WAIT:-250ms}
     healthcheck:
       test: ["CMD", "/ingest-web", "-healthcheck"]
       interval: 10s
