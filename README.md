@@ -62,9 +62,9 @@ flowchart LR
 
 | Componente | Stack | Papel |
 |---|---|---|
-| Portal | Next.js | Cadastro self-service, painéis do tenant e painéis globais do SCF |
+| Portal | Next.js | Cadastro self-service (com aprovação prévia opcional), painéis do tenant, painéis globais do SCF e API somente leitura para o SCF (`/api/v1`) |
 | Script de rastreamento | TypeScript | Versão fixa e imutável (`/s/vX.Y.Z/n.js`), com SRI e nome que ad blockers não bloqueiam |
-| Gateway de ingestão web | Go | Anti-bot (prova de execução de JS, limite de fingerprints por IP) e truncamento do IP |
+| Gateway de ingestão web | Go | Anti-bot (limite de taxa, prova de execução de JS, limite de fingerprints por IP) e truncamento do IP |
 | [Umami](https://umami.is) v3.4.1 | Next.js | Motor de analytics web, usado sem fork |
 | Coletor de API | OpenTelemetry Collector + componentes Go | Autenticação por chave, normalização de rotas e gravação das métricas |
 | Rollup | Go | Consolida as métricas de API de 1 minuto em 1 hora e 1 dia e aplica a retenção |
@@ -104,12 +104,14 @@ services/            Módulo Go único (go.mod)
     components/      Autenticação por chave, normalização de rotas, exporter Postgres
   rollup/            Consolidação e retenção das métricas de API
   loadtest/          Ferramenta de carga (web e API)
-infra/               OpenTofu, Ansible, Docker Compose, Caddy e monitoramento
+  internal/          Código compartilhado dos testes Go (banco com as migrações do portal)
+infra/               OpenTofu, Ansible, Docker Compose, Caddy, monitoramento e scripts de operação
 examples/            Integrações de referência (HTML, SPA, SSR, backend com OTel)
+scripts/             Checagem de licenças e de vulnerabilidades das dependências
 docs/                ADRs, specs, guias, runbooks e registro de andamento
 ```
 
-Cada pasta tem um `README.md` com o papel dela.
+O portal, o script, cada serviço Go, `infra/` e `examples/` têm um `README.md` próprio.
 
 - **TypeScript:** pnpm workspaces (`apps/*`, `packages/*`, `examples/*`) e Turborepo. O pnpm só instala versões publicadas há pelo menos 14 dias (`minimumReleaseAge` no `pnpm-workspace.yaml`).
 - **Go:** um módulo só, em `services/`.
@@ -123,7 +125,16 @@ pnpm install
 docker compose up -d --wait   # banco, Umami, portal, gateway, coletor e rollup
 ```
 
-A primeira subida cria os bancos, aplica as migrações e constrói as imagens, sem passo manual. Para entrar no portal, crie um usuário como descrito em [`apps/portal`](apps/portal/README.md#criar-um-usuário).
+A primeira subida cria os bancos, aplica as migrações e constrói as imagens. Falta um passo manual, feito uma vez: gerar a chave com que o portal fala com o Umami. Sem ela o portal sobe, mas não cria sites nem mostra estatísticas web.
+
+```bash
+# Publica o Umami em 127.0.0.1:3001 (só para desenvolvimento) e gera a chave.
+docker compose -f compose.yaml -f infra/compose/umami-port.yaml up -d --wait
+UMAMI_ADMIN_PASSWORD=umami UMAMI_URL=http://127.0.0.1:3001 \
+  pnpm --filter @notify/portal umami:service-account
+```
+
+Ponha a chave impressa em `UMAMI_API_KEY`, no `.env` da raiz, e recrie o portal com `docker compose up -d portal`. Para entrar no portal, crie um usuário como descrito em [`apps/portal`](apps/portal/README.md#criar-um-usuário).
 
 | Serviço | Endereço |
 |---|---|
@@ -134,7 +145,7 @@ A primeira subida cria os bancos, aplica as migrações e constrói as imagens, 
 | PostgreSQL 17 | `localhost:5432` (`notify`/`notify` e `umami`/`umami`) |
 
 - Portas e senhas: copie `.env.example` para `.env`.
-- O Umami não publica porta; para abrir a interface dele, veja [`docs/umami.md`](docs/umami.md).
+- O Umami não publica porta por padrão; o override `infra/compose/umami-port.yaml` (usado acima) abre a interface dele em http://127.0.0.1:3001. Detalhes em [`docs/umami.md`](docs/umami.md).
 - `docker compose down -v` apaga os dados e a próxima subida recomeça do zero.
 - Testes: `pnpm lint`, `pnpm typecheck` e `pnpm test` na raiz; para o Go, `go test -race ./...` de dentro de `services/`.
 
@@ -148,7 +159,7 @@ Uma VM na Hetzner (UE) com o Caddy como única porta de entrada. Tudo sai deste 
 | 2. DNS | Apontar três nomes para a VM: portal, ingestão web e ingestão de API | seu provedor de DNS |
 | 3. Imagens | Publicar uma release no GitHub; as imagens saem assinadas | workflow `release.yml` |
 | 4. Deploy | Preencher o inventário, os segredos e os digests das imagens e aplicar | `ansible-playbook site.yml -e @secrets.yml` |
-| 5. Primeira subida | Trocar a senha do Umami, gerar a chave da conta de serviço e criar o primeiro operador do SCF | túnel `infra/scripts/admin-tunnel.sh` |
+| 5. Primeira subida | Trocar a senha do Umami, gerar a chave da conta de serviço, criar o primeiro operador do SCF e disparar o primeiro backup | túnel `infra/scripts/admin-tunnel.sh` |
 
 O playbook é idempotente: atualizar a aplicação é trocar os digests e rodar o passo 4 de novo. Ele só sobe imagens por digest e com a assinatura conferida.
 
@@ -158,10 +169,12 @@ O passo a passo completo, com segredos, restauração e o que ainda não foi tes
 
 ## CI e cadeia de suprimentos
 
-Todo PR roda o [`ci.yml`](.github/workflows/ci.yml): lint, tipos e testes de TypeScript e Go, os testes ponta a ponta no Compose local e a pilha de produção inteira com um S3 local (rotas do Caddy, backup e restauração). O check a exigir é o agregador `ci`.
+Todo PR roda o [`ci.yml`](.github/workflows/ci.yml): lint, tipos e testes de TypeScript e Go, os testes ponta a ponta no Compose local, a pilha de produção inteira com um S3 local (rotas do Caddy, backup e restauração) e a pilha de monitoramento. O check a exigir é o agregador `ci`.
 
 - **Dependências travadas** por lockfile, e só releases com pelo menos 14 dias (pnpm e [Renovate](renovate.json)).
 - **Licenças e vulnerabilidades** conferidas pelo [`dependencies.yml`](.github/workflows/dependencies.yml); só licenças aprovadas pela OSI.
+- **Ad blockers:** o [`adblock.yml`](.github/workflows/adblock.yml) confere todo dia se as listas de bloqueio mais usadas deixam passar o script e as rotas de ingestão.
+- Esses dois workflows ficam fora do agregador `ci`, porque o resultado deles muda sem mudança no código.
 - **Release:** cada imagem vai para `ghcr.io/romulospl/notify/<nome>`, assinada com cosign e com SBOM atestado.
 
 Para verificar uma imagem publicada:
