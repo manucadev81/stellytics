@@ -28,6 +28,7 @@ COPY --from=build --chown=app:app /repo/apps/portal/.next/standalone ./
 COPY --from=build --chown=app:app /repo/apps/portal/.next/static ./apps/portal/.next/static
 # Migrações aplicadas na subida quando RUN_MIGRATIONS=true (src/instrumentation.ts).
 COPY --from=build --chown=app:app /repo/apps/portal/drizzle ./apps/portal/drizzle
+COPY --from=build --chown=app:app /repo/apps/portal/drizzle-dev ./apps/portal/drizzle-dev
 USER app
 WORKDIR /app/apps/portal
 EXPOSE 3000
