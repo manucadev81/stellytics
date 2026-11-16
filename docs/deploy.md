@@ -125,7 +125,7 @@ O deploy só aceita imagens publicadas pelo workflow de release, assinadas com c
 2. Em `group_vars/all.yml`, preencha:
    - os hosts (`portal_host`, `ingest_host`, `api_host`), `acme_email` e `mail_from` (remetente dos e-mails do portal; o domínio dele precisa estar autorizado no seu SMTP);
    - `signup_approval` (`false` por padrão): com `true`, todo projeto novo fica `pending` até um operador aprovar em `/operator/approvals` ([ADR 0007](adr/0007-cadastro-com-aprovacao.md)). Ligar ou desligar vale só para cadastros novos e exige reaplicar o playbook (reinicia o portal); projetos já pendentes continuam na fila;
-   - `portal_image` e `ingest_web_image`, no formato `ghcr.io/romulospl/notify/portal@sha256:<digest>` (o playbook recusa imagem sem digest);
+   - `portal_image`, `ingest_web_image`, `collector_image` e `rollup_image`, no formato `ghcr.io/romulospl/notify/portal@sha256:<digest>` (o playbook recusa imagem sem digest);
    - `walg_s3_prefix`, com a saída `backup_s3_prefix`. O `walg_s3_endpoint` e o `walg_s3_region` já vêm certos para `nbg1`.
 3. Confira a conexão e rode, de `infra/ansible/`:
 

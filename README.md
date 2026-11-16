@@ -114,66 +114,55 @@ Cada pasta tem um `README.md` com o papel dela.
 - **TypeScript:** pnpm workspaces (`apps/*`, `packages/*`, `examples/*`) e Turborepo. O pnpm só instala versões publicadas há pelo menos 14 dias (`minimumReleaseAge` no `pnpm-workspace.yaml`).
 - **Go:** um módulo só, em `services/`.
 
-### Requisitos e comandos
+## Rodar localmente
 
-Node.js 24 ou mais novo, pnpm 10 (ative com `corepack enable`) e Go 1.26.
+Requer Node.js 24, pnpm 10 (`corepack enable`), Go 1.26 e Docker com Compose v2 e BuildKit.
 
 ```bash
 pnpm install
-pnpm build      # turbo run build
-pnpm lint
-pnpm test
+docker compose up -d --wait   # banco, Umami, portal, gateway, coletor e rollup
 ```
 
-Os testes de integração precisam do Postgres do ambiente local (abaixo) em `DATABASE_URL`. Para o Go, rode de dentro de `services/`: `go vet -tags e2e ./...` e `go test -race ./...`.
+A primeira subida cria os bancos, aplica as migrações e constrói as imagens, sem passo manual. Para entrar no portal, crie um usuário como descrito em [`apps/portal`](apps/portal/README.md#criar-um-usuário).
 
-### Ambiente local (Docker Compose)
-
-Requer Docker com o Compose v2. Na raiz do repositório:
-
-```bash
-docker compose up -d --wait
-```
-
-A primeira subida cria os bancos `umami` e `notify`, aplica as migrações do Umami e do portal e constrói as imagens do portal, do gateway, do coletor e do rollup, sem passo manual. O build exige o BuildKit (plugin `buildx` do Docker).
-
-| Serviço | Endereço | Acesso |
-|---|---|---|
-| Portal | http://localhost:3000 | crie um usuário com `pnpm user:create` (ver [`apps/portal`](apps/portal/README.md#criar-um-usuário)) |
-| Umami v3.4.1 | só na rede interna (`http://umami:3000`); http://127.0.0.1:3001 com o override abaixo | usuário `admin`, senha `umami` (padrão do Umami; só local) |
-| Gateway de ingestão web | http://localhost:3002 | `POST /e`, `GET /c`, `GET /s/` e `GET /healthz` |
-| Coletor de API | `localhost:4317` (gRPC) e http://localhost:4318 (HTTP) | OTLP com `Authorization: Bearer ntf_...` (chave criada em `/services`) |
-| Mailpit | http://localhost:8025 | caixa de entrada dos e-mails do portal (confirmação e redefinição de senha) |
-| PostgreSQL 17 | `localhost:5432` | `postgres`/`postgres` (superusuário), `umami`/`umami` e `notify`/`notify`, cada um dono do seu banco |
-
-- Para mudar portas ou senhas, copie `.env.example` para `.env` e edite.
-- O Umami não publica porta ([#62](https://github.com/romulospl/notify/issues/62), [docs/umami.md](docs/umami.md)). Para usar a interface dele, o script da conta de serviço ou o teste ponta a ponta do gateway, inclua o override de desenvolvimento: `docker compose -f compose.yaml -f infra/compose/umami-port.yaml up -d --wait` (ou `COMPOSE_FILE=compose.yaml:infra/compose/umami-port.yaml` no `.env`).
-- `docker compose down` para os serviços e mantém os dados. `docker compose down -v` apaga o volume, e a próxima subida recria os bancos do zero.
-- Os arquivos ficam em [`infra/compose/`](infra/compose/): `dev.yaml` é o ambiente local e `prod.yaml` a produção.
-- Os três exemplos de integração e o backend com OTel estão em [`examples/`](examples/README.md).
-
-### Integração contínua
-
-O workflow [`ci.yml`](.github/workflows/ci.yml) roda em todo push na `main` e em todo PR:
-
-| Job | O que faz |
+| Serviço | Endereço |
 |---|---|
-| `typescript` | `pnpm install --frozen-lockfile` (falha se o lockfile estiver desatualizado), `lint`, `typecheck`, `test` e `build`, com Postgres disponível em `DATABASE_URL` |
-| `go` | `gofmt`, `go mod tidy -diff`, `go vet` e `go test -race` em `services/`, também com Postgres |
-| `compose` | Sobe o ambiente local com `docker compose` e roda os testes ponta a ponta: exemplos num Chromium, gateway, privacidade (IP completo em lugar nenhum) e pipeline de API |
-| `infra` | Valida OpenTofu, Ansible e Caddyfile e sobe a pilha de produção com um S3 local: rotas do Caddy, portas, ingestão de API pelo host público, backup cifrado, restauração e replicação |
-| `monitoring` | Sobe o monitoramento externo e confere o alerta por e-mail quando um alvo cai e o de resolvido quando volta |
-| `ci` | Agrega os anteriores em um resultado só. A `main` não tem proteção de branch, então o check não bloqueia merge; se a proteção for ligada, é este o check a exigir |
+| Portal | http://localhost:3000 |
+| Gateway de ingestão web | http://localhost:3002 |
+| Coletor de API (OTLP) | http://localhost:4318 (HTTP) e `localhost:4317` (gRPC) |
+| Mailpit (e-mails do portal) | http://localhost:8025 |
+| PostgreSQL 17 | `localhost:5432` (`notify`/`notify` e `umami`/`umami`) |
 
-As actions são fixadas por SHA, com a tag em comentário.
+- Portas e senhas: copie `.env.example` para `.env`.
+- O Umami não publica porta; para abrir a interface dele, veja [`docs/umami.md`](docs/umami.md).
+- `docker compose down -v` apaga os dados e a próxima subida recomeça do zero.
+- Testes: `pnpm lint`, `pnpm typecheck` e `pnpm test` na raiz; para o Go, `go test -race ./...` de dentro de `services/`.
 
-Fora do agregador, porque dependem de dados externos que mudam sem mudança no código: [`adblock.yml`](.github/workflows/adblock.yml) confere todo dia que as listas de bloqueio não barram o script nem os endpoints, e [`dependencies.yml`](.github/workflows/dependencies.yml) roda `govulncheck`, `pnpm audit` e a conferência de licenças (só aprovadas pela OSI).
+## Deploy em produção
 
-### Cadeia de suprimentos
+Uma VM na Hetzner (UE) com o Caddy como única porta de entrada. Tudo sai deste repositório, em cinco passos:
 
-- **Dependências travadas:** `pnpm-lock.yaml` e `services/go.sum` commitados; o CI falha com lockfile ausente ou desatualizado.
-- **Espera de 14 dias:** o pnpm recusa versões mais novas (`minimumReleaseAge`) e o [Renovate](renovate.json) só abre PR para releases com pelo menos 14 dias. O Umami nunca é atualizado em grupo nem automaticamente. Versões maiores só viram PR depois de aprovadas no Dependency Dashboard (um issue mantido pelo Renovate); correções de segurança passam direto.
-- **Release:** ao publicar uma release no GitHub (tag `vX.Y.Z`), o workflow [`release.yml`](.github/workflows/release.yml) anexa um SBOM (SPDX, gerado com syft) e, para cada `Dockerfile` em `apps/*` e `services/*`, publica a imagem em `ghcr.io/romulospl/notify/<nome>`, assinada com cosign (keyless) e com o SBOM da imagem como atestado.
+| Passo | O que fazer | Ferramenta |
+|---|---|---|
+| 1. Infraestrutura | Criar a VM, o firewall, o volume e o bucket de backup | `tofu -chdir=infra/opentofu apply` |
+| 2. DNS | Apontar três nomes para a VM: portal, ingestão web e ingestão de API | seu provedor de DNS |
+| 3. Imagens | Publicar uma release no GitHub; as imagens saem assinadas | workflow `release.yml` |
+| 4. Deploy | Preencher o inventário, os segredos e os digests das imagens e aplicar | `ansible-playbook site.yml -e @secrets.yml` |
+| 5. Primeira subida | Trocar a senha do Umami, gerar a chave da conta de serviço e criar o primeiro operador do SCF | túnel `infra/scripts/admin-tunnel.sh` |
+
+O playbook é idempotente: atualizar a aplicação é trocar os digests e rodar o passo 4 de novo. Ele só sobe imagens por digest e com a assinatura conferida.
+
+O que vem junto: TLS automático, backup contínuo e cifrado do Postgres com restauração testada no CI, e monitoramento externo com alerta por e-mail numa VM separada.
+
+O passo a passo completo, com segredos, restauração e o que ainda não foi testado numa conta real, está em [`docs/deploy.md`](docs/deploy.md); os procedimentos de operação, nos [runbooks](docs/runbooks/README.md).
+
+## CI e cadeia de suprimentos
+
+Todo PR roda o [`ci.yml`](.github/workflows/ci.yml): lint, tipos e testes de TypeScript e Go, os testes ponta a ponta no Compose local e a pilha de produção inteira com um S3 local (rotas do Caddy, backup e restauração). O check a exigir é o agregador `ci`.
+
+- **Dependências travadas** por lockfile, e só releases com pelo menos 14 dias (pnpm e [Renovate](renovate.json)).
+- **Licenças e vulnerabilidades** conferidas pelo [`dependencies.yml`](.github/workflows/dependencies.yml); só licenças aprovadas pela OSI.
+- **Release:** cada imagem vai para `ghcr.io/romulospl/notify/<nome>`, assinada com cosign e com SBOM atestado.
 
 Para verificar uma imagem publicada:
 
@@ -183,11 +172,7 @@ cosign verify ghcr.io/romulospl/notify/<nome>:<versão> \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-Para conferir o SBOM atestado, troque `verify` por `verify-attestation --type spdxjson` no mesmo comando.
-
-## Produção
-
-A produção é uma VM na Hetzner (UE), descrita por inteiro em [`infra/`](infra/README.md): OpenTofu para a VM, o firewall e o bucket de backup, Ansible para a configuração e [`infra/compose/prod.yaml`](infra/compose/prod.yaml) para os serviços. O deploy só aceita imagens por digest e com a assinatura conferida. O passo a passo, a restauração do banco e o que ainda não foi testado numa conta real estão em [`docs/deploy.md`](docs/deploy.md).
+Os detalhes estão em [`docs/anti-bot-e-cadeia-de-suprimentos.md`](docs/anti-bot-e-cadeia-de-suprimentos.md).
 
 ## Privacidade
 
