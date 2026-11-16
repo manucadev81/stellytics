@@ -97,7 +97,7 @@ read -rs UMAMI_ADMIN_PASSWORD && export UMAMI_ADMIN_PASSWORD
 UMAMI_URL=http://127.0.0.1:3001 pnpm umami:service-account
 ```
 
-O Umami só fica em `127.0.0.1:3001` com o override de desenvolvimento (`infra/compose/umami-port.yaml`, ver o [README da raiz](../../README.md#ambiente-local-docker-compose)).
+O Umami só fica em `127.0.0.1:3001` com o override de desenvolvimento (`infra/compose/umami-port.yaml`, ver o [README da raiz](../../README.md#rodar-localmente)).
 
 Ponha a chave em `UMAMI_API_KEY` (no `.env` da raiz para o Compose) e recrie o portal (`docker compose up -d portal`). Para trocar a chave, rode de novo, atualize o portal e depois rode com `--revoke-old`, que deixa só a chave mais nova.
 
