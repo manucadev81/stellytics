@@ -2,7 +2,9 @@
 #
 # Regras conferidas na revisão da #14 (infra/README.md):
 # - nenhuma rota leva ao Umami, nem à interface nem à API (#62);
-# - o gateway publica só /e, /c, /s/ e /healthz; o resto responde 404.
+# - o gateway publica só /e, /c, /s/ e /healthz; o resto responde 404;
+# - o coletor publica só o OTLP (HTTP em /v1/traces, /v1/metrics e /v1/logs, e
+#   gRPC), sempre com chave de ingestão; o resto responde 404 (ADR 0012).
 #
 # O nome do host da ingestão não pode ter termos que ad blockers bloqueiam
 # (`umami`, `analytics`, `track`, `collect`; ver CLAUDE.md).
@@ -52,6 +54,30 @@
 	handle @gateway {
 		encode zstd gzip
 		reverse_proxy ingest-web:8080
+	}
+	handle {
+		respond 404
+	}
+}
+
+# Ingestão de API (ADR 0012): OTLP/HTTP e OTLP/gRPC no mesmo host, na 443. A
+# chave de ingestão vai no cabeçalho Authorization, que o log acima não guarda.
+{$API_HOST} {
+	import security_headers
+	@grpc {
+		method POST
+		header Content-Type application/grpc*
+		path /opentelemetry.proto.collector.*
+	}
+	handle @grpc {
+		reverse_proxy h2c://collector:4317
+	}
+	@otlp {
+		method POST
+		path /v1/traces /v1/metrics /v1/logs
+	}
+	handle @otlp {
+		reverse_proxy collector:4318
 	}
 	handle {
 		respond 404

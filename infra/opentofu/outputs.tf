@@ -1,10 +1,10 @@
 output "server_ipv4" {
-  description = "IPv4 da VM: registros A de PORTAL_HOST e INGEST_HOST."
+  description = "IPv4 da VM: registros A de PORTAL_HOST, INGEST_HOST e API_HOST."
   value       = hcloud_server.notify.ipv4_address
 }
 
 output "server_ipv6" {
-  description = "IPv6 da VM: registros AAAA de PORTAL_HOST e INGEST_HOST."
+  description = "IPv6 da VM: registros AAAA de PORTAL_HOST, INGEST_HOST e API_HOST."
   value       = hcloud_server.notify.ipv6_address
 }
 

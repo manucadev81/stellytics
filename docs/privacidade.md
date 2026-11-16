@@ -96,7 +96,7 @@ O portal envia por SMTP (`apps/portal/src/lib/mail.ts`, variável `SMTP_URL`) s�
 | `audit_log` | Para sempre (só inserção) | esquema |
 | Backups | Os 7 backups base mais recentes mais WAL contínuo (ADR 0004). Dados apagados continuam nos backups até saírem da janela | ADR 0004 |
 
-O serviço de consolidação (`services/rollup`) e o coletor estão no ambiente local, **ainda fora do `infra/compose/prod.yaml`** (`CLAUDE.md`, #34). Ou seja, a retenção de API descrita acima está implementada e testada, mas ainda não roda em produção.
+O serviço de consolidação (`services/rollup`) e o coletor estão no `infra/compose/prod.yaml` desde 16/11/2026 (ADR 0012). A retenção de API descrita acima está implementada e testada, mas nenhuma produção real foi aplicada ainda. O log do Caddy não guarda cabeçalhos, então a chave de ingestão (`Authorization`) não vai para log.
 
 ## 7. Direito ao apagamento e outros direitos: lacunas
 

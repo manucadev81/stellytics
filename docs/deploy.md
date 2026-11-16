@@ -2,7 +2,7 @@
 
 Como recriar a produção do notify do zero, só com este repositório e os segredos ([#14](https://github.com/romulospl/notify/issues/14)). As decisões estão no [ADR 0004](adr/0004-hospedagem-e-backup.md); os arquivos, em [`infra/`](../infra/README.md).
 
-> **Escopo.** Este guia sobe o que está em [`infra/compose/prod.yaml`](../infra/compose/prod.yaml): Caddy, portal, gateway de ingestão web, Umami e Postgres com backup, mais o monitoramento externo. **O coletor de API e o job de consolidação não entram** (ver [O que o guia ainda não cobre](#o-que-o-guia-ainda-não-cobre)): em produção, hoje, só as métricas web funcionam. **A [#42](https://github.com/romulospl/notify/issues/42) ainda não está cumprida:** o critério de aceite (alguém de fora faz o deploy seguindo só o guia) só será cumprido quando alguém de fora seguir o guia numa conta real. Ninguém seguiu de ponta a ponta ainda; o que foi conferido sem credenciais está em [Como este guia foi conferido](#como-este-guia-foi-conferido).
+> **Escopo.** Este guia sobe o que está em [`infra/compose/prod.yaml`](../infra/compose/prod.yaml): Caddy, portal, gateway de ingestão web, coletor de API, job de consolidação, Umami e Postgres com backup, mais o monitoramento externo. O coletor e o job de consolidação entraram em 16/11/2026 ([ADR 0012](adr/0012-ingestao-de-api-pelo-caddy.md)), testados só na pilha local do CI. **A [#42](https://github.com/romulospl/notify/issues/42) ainda não está cumprida:** o critério de aceite (alguém de fora faz o deploy seguindo só o guia) só será cumprido quando alguém de fora seguir o guia numa conta real. Ninguém seguiu de ponta a ponta ainda; o que foi conferido sem credenciais está em [Como este guia foi conferido](#como-este-guia-foi-conferido).
 
 ## Visão geral
 
@@ -41,7 +41,7 @@ O local é a variável `location` do OpenTofu. Se mudar, mude também `walg_s3_e
 | O quê | Para quê |
 |---|---|
 | Projeto na Hetzner Cloud, com o Object Storage habilitado | VMs, volume, firewall e o bucket do backup |
-| Um domínio com controle do DNS (qualquer provedor) | Dois nomes: portal e ingestão (passo 2) |
+| Um domínio com controle do DNS (qualquer provedor) | Três nomes: portal, ingestão web e ingestão de API (passo 2) |
 | Um provedor de SMTP (envio autenticado) | Confirmação de e-mail no cadastro e recuperação de senha do portal. **Sem ele ninguém consegue se cadastrar**, porque o e-mail confirmado é obrigatório. Formato da URL: `smtps://usuario:senha@host:465` |
 | Um e-mail para o Let's Encrypt (`acme_email`) | Avisos de certificado |
 | Uma conta no GitHub com permissão para publicar releases do repositório (ou o seu fork) | Gerar as imagens assinadas (passo 3) |
@@ -96,18 +96,19 @@ A VM, o volume e o bucket têm proteção contra remoção (`delete_protection`,
 
 ## 2. DNS
 
-Crie dois registros A (e AAAA, com o IPv6) apontando para a VM:
+Crie três registros A (e AAAA, com o IPv6) apontando para a VM:
 
 - o host do portal, por exemplo `app.<domínio>`;
-- o host da ingestão, por exemplo `e.<domínio>`. Ele não pode ter `umami`, `analytics`, `track` nem `collect`, que os bloqueadores de anúncio barram.
+- o host da ingestão, por exemplo `e.<domínio>`. Ele não pode ter `umami`, `analytics`, `track` nem `collect`, que os bloqueadores de anúncio barram;
+- o host da ingestão de API, por exemplo `otlp.<domínio>`: é o endpoint OTLP (HTTP e gRPC, na 443) que os tenants configuram no exportador ([ADR 0012](adr/0012-ingestao-de-api-pelo-caddy.md)).
 
-Use os IPs `server_ipv4` (A) e `server_ipv6` (AAAA). O Caddy só consegue o certificado depois que os dois nomes resolvem para a VM; confira com `dig +short app.<domínio>` antes do passo 4. Se o DNS ainda não propagou quando a pilha sobe, o Caddy tenta de novo sozinho; não precisa refazer o deploy.
+Use os IPs `server_ipv4` (A) e `server_ipv6` (AAAA). O Caddy só consegue o certificado de cada host depois que o nome resolve para a VM; confira com `dig +short app.<domínio>` antes do passo 4. Se o DNS ainda não propagou quando a pilha sobe, o Caddy tenta de novo sozinho; não precisa refazer o deploy.
 
 ## 3. Publicar as imagens
 
 O deploy só aceita imagens publicadas pelo workflow de release, assinadas com cosign e referenciadas por digest.
 
-1. Publique uma release no GitHub (`vX.Y.Z`; o repositório ainda não tem nenhuma). O workflow `release.yml` gera o SBOM e publica no GHCR uma imagem para cada `Dockerfile` de `apps/*` e `services/*`, assinada com cosign. Para o deploy interessam `ghcr.io/romulospl/notify/portal` e `ghcr.io/romulospl/notify/ingest-web`, com a tag **sem o `v`** (`X.Y.Z`); `collector` e `rollup` também são publicadas, mas não entram no deploy (ver o fim do guia). Acompanhe o workflow em Actions até todos os jobs ficarem verdes.
+1. Publique uma release no GitHub (`vX.Y.Z`; o repositório ainda não tem nenhuma). O workflow `release.yml` gera o SBOM e publica no GHCR uma imagem para cada `Dockerfile` de `apps/*` e `services/*`, assinada com cosign. O deploy usa as quatro: `ghcr.io/romulospl/notify/portal`, `ingest-web`, `collector` e `rollup`, com a tag **sem o `v`** (`X.Y.Z`); cada uma vai por digest em `portal_image`, `ingest_web_image`, `collector_image` e `rollup_image`. Acompanhe o workflow em Actions até todos os jobs ficarem verdes.
 2. **Deixe os pacotes públicos.** Pacotes novos do GHCR nascem privados, e a VM baixa as imagens e confere a assinatura sem `docker login`. Em GitHub → Packages → cada pacote (`notify/portal`, `notify/ingest-web`) → Package settings → Change visibility → Public. Sem isso, o passo 4 falha em `cosign verify` ou no `docker compose up` com `unauthorized`.
 3. Pegue os digests:
 
@@ -122,9 +123,9 @@ O deploy só aceita imagens publicadas pelo workflow de release, assinadas com c
    - copie `inventory/production.example.yml` para `inventory/production.yml` e preencha com as saídas do OpenTofu (`server_ipv4` e `data_volume_device` no host `notify`; `monitor_ipv4` no host `monitor`, usado só no passo de monitoramento);
    - copie `secrets.example.yml` para `secrets.yml` e preencha.
 2. Em `group_vars/all.yml`, preencha:
-   - os hosts (`portal_host`, `ingest_host`), `acme_email` e `mail_from` (remetente dos e-mails do portal; o domínio dele precisa estar autorizado no seu SMTP);
+   - os hosts (`portal_host`, `ingest_host`, `api_host`), `acme_email` e `mail_from` (remetente dos e-mails do portal; o domínio dele precisa estar autorizado no seu SMTP);
    - `signup_approval` (`false` por padrão): com `true`, todo projeto novo fica `pending` até um operador aprovar em `/operator/approvals` ([ADR 0007](adr/0007-cadastro-com-aprovacao.md)). Ligar ou desligar vale só para cadastros novos e exige reaplicar o playbook (reinicia o portal); projetos já pendentes continuam na fila;
-   - `portal_image` e `ingest_web_image`, no formato `ghcr.io/romulospl/notify/portal@sha256:<digest>` (o playbook recusa imagem sem digest);
+   - `portal_image`, `ingest_web_image`, `collector_image` e `rollup_image`, no formato `ghcr.io/romulospl/notify/portal@sha256:<digest>` (o playbook recusa imagem sem digest);
    - `walg_s3_prefix`, com a saída `backup_s3_prefix`. O `walg_s3_endpoint` e o `walg_s3_region` já vêm certos para `nbg1`.
 3. Confira a conexão e rode, de `infra/ansible/`:
 
@@ -194,6 +195,7 @@ curl -fsS https://<ingest_host>/healthz                # gateway: ok
 curl -fsS "https://<ingest_host>/c?s=00000000-0000-4000-8000-000000000000"  # desafio {"t":...,"d":12}
 curl -s -o /dev/null -w '%{http_code}\n' https://<ingest_host>/api/send    # 404: o Umami não tem rota pública
 curl -s -o /dev/null -w '%{http_code}\n' https://<portal_host>/api/send    # 404 também (é o portal, não o Umami)
+curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' -d '{}' https://<api_host>/v1/metrics  # 401: o coletor exige chave de ingestão
 ```
 
 De fora da VM (o Docker da VM roda com `userland-proxy` desligado, então `ss` não mostra processo escutando nessas portas; confira pelo lado de fora e pelas regras do Docker):
@@ -217,8 +219,9 @@ No navegador, o teste que prova o conjunto:
 1. Em `https://<portal_host>/sign-up`, crie uma conta com um e-mail seu, confirme pelo link recebido (se o e-mail não chega, o problema é o `smtp_url`/`mail_from`: `docker compose -f prod.yaml logs portal`), crie o projeto em `/onboarding` e cadastre um site em `/sites`.
 2. Instale no site o script (o gateway serve `https://<ingest_host>/s/v<versão>/n.js`; versões e hashes SRI em [`packages/tracker/published/sri.json`](../packages/tracker/published/sri.json); trechos de instalação em [`examples/README.md`](../examples/README.md)), abra uma página e, em alguns minutos, veja a visita no painel do site.
 3. Entre com a conta de operador em `/operator` e confira que o projeto aparece.
+4. Em `/services`, crie um serviço e uma chave de ingestão, aponte um backend para `https://<api_host>` (OTLP/HTTP; guia em [`examples/api-backend/README.md`](../examples/api-backend/README.md)) e veja as requisições no painel do serviço em um ou dois minutos.
 
-Se algo falhar, os logs de cada serviço estão em `docker compose -f prod.yaml logs <serviço>` (portal, ingest-web, umami, caddy, postgres). Os logs não guardam IP nem cabeçalhos dos visitantes.
+Se algo falhar, os logs de cada serviço estão em `docker compose -f prod.yaml logs <serviço>` (portal, ingest-web, collector, rollup, umami, caddy, postgres). Os logs não guardam IP nem cabeçalhos dos visitantes.
 
 ## Atualizar a aplicação
 
@@ -267,7 +270,7 @@ Na VM, como root:
 ```bash
 cd /opt/notify/infra/compose
 systemctl stop notify-backup.timer
-docker compose -f prod.yaml stop caddy portal ingest-web umami postgres
+docker compose -f prod.yaml stop caddy portal ingest-web collector rollup umami postgres
 
 # Guarda os dados atuais (não apague até conferir a restauração).
 mv /srv/notify/postgres /srv/notify/postgres.antes-$(date +%F-%H%M)
@@ -343,7 +346,7 @@ Faça depois do deploy (passo 4) e do DNS, senão o monitor já nasce alertando.
 | `ProbeFailing` | O Prometheus não consegue nem pedir o teste de um alvo ao blackbox |
 | `ProberDown` | O blackbox exporter, que faz os testes, está fora do ar |
 
-Confira que o monitoramento enxerga a produção: no Prometheus (túnel abaixo), a página *Status → Targets* (ou a consulta `probe_success`) deve mostrar `1` para o portal e o gateway. Para testar o e-mail de alerta de verdade, na VM de produção rode `docker compose -f prod.yaml stop ingest-web`, espere uns 2 minutos pelo `EndpointDown` e suba de novo (`start ingest-web`). **Parar o `ingest-web` descarta os eventos reais que chegarem nesse intervalo.** Faça o teste no primeiro deploy, antes de haver tenants, ou aceite a perda. O Alertmanager e o Prometheus ficam só no loopback; para vê-los, abra um túnel e acesse `http://127.0.0.1:9090` e `http://127.0.0.1:9093`:
+Confira que o monitoramento enxerga a produção: no Prometheus (túnel abaixo), a página *Status → Targets* (ou a consulta `probe_success`) deve mostrar `1` para o portal, o gateway e a ingestão de API (`ingest-api`, um POST sem chave que espera o 401 do coletor). Para testar o e-mail de alerta de verdade, na VM de produção rode `docker compose -f prod.yaml stop ingest-web`, espere uns 2 minutos pelo `EndpointDown` e suba de novo (`start ingest-web`). **Parar o `ingest-web` descarta os eventos reais que chegarem nesse intervalo.** Faça o teste no primeiro deploy, antes de haver tenants, ou aceite a perda. O Alertmanager e o Prometheus ficam só no loopback; para vê-los, abra um túnel e acesse `http://127.0.0.1:9090` e `http://127.0.0.1:9093`:
 
 ```bash
 ssh -N -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 root@<monitor_ipv4>
@@ -399,7 +402,7 @@ Limites e cuidados:
 
 ## O que o guia ainda não cobre
 
-- **Coletor de API e rollup não estão em produção.** O `prod.yaml` não tem os serviços `collector` ([#30](https://github.com/romulospl/notify/issues/30)) nem `rollup` ([#34](https://github.com/romulospl/notify/issues/34)), e o Caddyfile não tem rota OTLP, embora existam no `dev.yaml`. Efeito: o portal deixa criar chaves de ingestão em `/services`, mas nada as recebe; as tabelas `api_metric_*` ficam vazias e a consolidação e a retenção de métricas de API não rodam. O `notify_collector_db_password` é obrigatório só porque o script de criação dos usuários do banco o usa. A release publica as imagens `collector` e `rollup`, mas o deploy ignora ambas. Para ligá-los será preciso acrescentá-los ao `prod.yaml` (com digest e `cosign verify` no playbook), abrir 4317/4318 no firewall e no Caddy, e então definir `monitor_api_url`.
+- **Coletor de API:** está no `prod.yaml` e no Caddy ([ADR 0012](adr/0012-ingestao-de-api-pelo-caddy.md)), mas nunca rodou numa conta real. O Caddy não limita requisições por IP e o coletor não limita por chave; o teto de memória do contêiner é `collector_mem_limit` (padrão `512m`). As VMs extras de ingestão (`prod-ingest.yaml`) só têm o gateway web: a ingestão de API continua numa VM só.
 - **API de leitura do SCF (`/api/v1`, [#48](https://github.com/romulospl/notify/issues/48)):** é servida pelo portal, no mesmo host e pelo mesmo Caddy, sem rota nem porta própria. O Caddy **não limita requisições por IP** (a imagem não tem módulo de rate limit). O limite é do portal, em memória e por instância ([ADR 0006](adr/0006-api-de-leitura-do-scf.md)); um ataque distribuído não é contido. Não precisa de variável nova.
 - **Domínio e DNS na IaC:** hoje os registros são criados à mão (ADR 0004).
 - **SMTP de produção:** o guia exige um provedor, mas não escolhe nem configura nenhum (SPF, DKIM e DMARC do domínio do `mail_from` ficam com você).
@@ -416,7 +419,7 @@ Sem credenciais da Hetzner, de DNS ou de SMTP, foi possível conferir:
 - `tofu validate` (contêiner `ghcr.io/opentofu/opentofu:1.13.2`) em `infra/opentofu/`;
 - `ansible-playbook --syntax-check` de `site.yml`, `monitoring.yml`, `ingest.yml` e `standby.yml` (ansible-core 2.21) com os arquivos de exemplo;
 - os nomes de variáveis, saídas do OpenTofu, scripts (`pnpm umami:service-account`, `operator:create`) e caminhos citados, contra os arquivos do repositório;
-- o roteamento do Caddy, as portas, o backup cifrado e a restauração, pelo job `infra` do CI (`infra/compose/test/prod-stack-test.sh`), e os alertas, pelo job `monitoring`;
+- o roteamento do Caddy (portal, gateway e OTLP por HTTP e gRPC), as portas, uma métrica de API gravada pelo host público, o backup cifrado e a restauração, pelo job `infra` do CI (`infra/compose/test/prod-stack-test.sh`), e os alertas, pelo job `monitoring`;
 - a replicação, a promoção e a ingestão replicada, em Docker local, por `infra/compose/test/ha-replication-test.sh` (job `infra`).
 
 **Não foi possível conferir** sem credenciais: o `tofu apply` e o `ansible-playbook` de verdade, a emissão do certificado, o envio de e-mail, o `cosign verify` contra imagens reais (ainda não há release publicada) a visibilidade dos pacotes no GHCR e o bloco `backend "s3"` do estado do OpenTofu (`region = "nbg1"` e os `skip_*`). Os passos do console da Hetzner e do GitHub seguem a documentação dessas ferramentas e podem ter mudado de nome na interface.

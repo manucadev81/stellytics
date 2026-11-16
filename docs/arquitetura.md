@@ -49,7 +49,7 @@ flowchart LR
 > **Siglas deste diagrama:** *tenant* é um projeto cliente com dados isolados dos demais; *OTLP* é o formato aberto de envio de medições (OpenTelemetry, ou OTel); *dual-export* é mandar a mesma medição para dois destinos; *APM* é a ferramenta de monitoramento que o projeto cliente já usa; *TLS* é o cadeado HTTPS.
 
 
-Linha pontilhada: envio que o projeto já faz hoje para o próprio APM, sem passar pelo notify. Na produção, o Caddy só encaminha ao portal e ao gateway web; o coletor e o rollup ainda não estão no `infra/compose/prod.yaml` (ver [Estado atual](#estado-atual)), por isso o coletor aparece sem passar pelo Caddy neste desenho.
+Linha pontilhada: envio que o projeto já faz hoje para o próprio APM, sem passar pelo notify. Na produção, o OTLP também entra pelo Caddy, num host próprio na 443 ([ADR 0012](adr/0012-ingestao-de-api-pelo-caddy.md)); o desenho mostra o coletor sem o Caddy para não repetir o proxy.
 
 ## Fluxo web: de uma visita a um gráfico
 
@@ -155,7 +155,7 @@ Por que duas linguagens: TypeScript para tudo que tem tela e para o script do na
 
 Este documento descreve o que está na `main`. Diferenças em relação ao desenho acima:
 
-- O **coletor de API e o rollup** rodam no Compose de desenvolvimento, mas **ainda não estão em `infra/compose/prod.yaml`** nem no Caddyfile; entram na produção quando forem publicados ([`andamento.md`](andamento.md)).
-- O monitoramento da ingestão de API depende do coletor na produção ([ADR 0005](adr/0005-monitoramento-externo.md)).
+- O **coletor de API e o rollup** estão em `infra/compose/prod.yaml` e no Caddyfile desde 16/11/2026 ([ADR 0012](adr/0012-ingestao-de-api-pelo-caddy.md)), testados na pilha local do CI; nenhuma produção real foi aplicada ainda ([`andamento.md`](andamento.md)).
+- O monitoramento da ingestão de API testa o host OTLP com um POST sem chave (`monitor_api_url`, [ADR 0005](adr/0005-monitoramento-externo.md)).
 - O Grafana, previsto no ADR 0002, não foi adotado por enquanto; o ADR 0005 explica por quê.
 - Alta disponibilidade e metas de SLA ficam para depois do MVP (issue [#52](https://github.com/romulospl/notify/issues/52)).

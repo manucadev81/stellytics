@@ -9,6 +9,9 @@ notify_data_dir: /srv/notify
 # pode ter umami, analytics, track nem collect (CLAUDE.md).
 portal_host: app.example.org
 ingest_host: e.example.org
+# Host da ingestão de API (OTLP/HTTP e gRPC na 443, ADR 0012). É o endpoint que
+# os tenants põem no exportador OTLP.
+api_host: otlp.example.org
 acme_email: ops@example.org
 mail_from: "notify <no-reply@example.org>"
 # Cadastro com aprovação prévia (#49): true deixa projetos novos pendentes até
@@ -19,6 +22,10 @@ signup_approval: false
 # confere a assinatura de cada uma com cosign antes de subir.
 portal_image: ghcr.io/romulospl/notify/portal@sha256:CONFIRA
 ingest_web_image: ghcr.io/romulospl/notify/ingest-web@sha256:CONFIRA
+collector_image: ghcr.io/romulospl/notify/collector@sha256:CONFIRA
+rollup_image: ghcr.io/romulospl/notify/rollup@sha256:CONFIRA
+# Teto de memória do coletor; o memory_limiter dele recusa dados a 80% disso.
+collector_mem_limit: 512m
 cosign_identity_regexp: '^https://github.com/romulospl/notify/\.github/workflows/release\.yml@refs/tags/v'
 cosign_oidc_issuer: https://token.actions.githubusercontent.com
 
@@ -45,9 +52,9 @@ monitor_smtp_smarthost: smtp.example.org:587
 monitor_smtp_from: "notify monitor <monitor@example.org>"
 monitor_smtp_username: ""
 monitor_smtp_require_tls: true
-# URL OTLP da ingestão de API, quando o coletor (#30) estiver publicado na
-# produção. Vazia, a ingestão de API não é testada.
-monitor_api_url: ""
+# URL OTLP/HTTP da ingestão de API: o blackbox faz um POST sem chave e espera
+# o 401 do coletor (módulo otlp_401). Vazia, a ingestão de API não é testada.
+monitor_api_url: "https://{{ api_host }}/v1/metrics"
 
 # Alta disponibilidade (#52, ADR 0009). Tudo desligado por padrão: com estes
 # valores `site.yml` faz exatamente o que fazia antes. Os IPs vêm do OpenTofu

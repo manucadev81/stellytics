@@ -109,8 +109,6 @@ func run(log *slog.Logger) error {
 	defer srv.Close()
 
 	log.Info("rollup no ar", "interval", cfg.Interval.String(), "lookback", cfg.Lookback.String())
-	tick := time.NewTicker(cfg.Interval)
-	defer tick.Stop()
 	for {
 		start := time.Now()
 		runCtx, cancel := context.WithTimeout(ctx, cfg.Interval)
@@ -122,14 +120,31 @@ func run(log *slog.Logger) error {
 			lastOK.Store(time.Now().UnixNano())
 			log.Info("execução concluída", "duration", time.Since(start).String())
 		}
+		next := time.NewTimer(nextRun(cfg.Interval, err != nil))
 		select {
 		case <-ctx.Done():
+			next.Stop()
 			return nil
 		case err := <-errc:
+			next.Stop()
 			return err
-		case <-tick.C:
+		case <-next.C:
 		}
 	}
+}
+
+// retryDelay é a espera depois de uma execução que falhou.
+const retryDelay = 30 * time.Second
+
+// nextRun diz quanto esperar até a próxima execução. Depois de uma falha (o
+// banco reiniciando, as migrações ainda não aplicadas) tenta de novo logo, em
+// vez de ficar um intervalo inteiro sem consolidar e com o healthcheck
+// vermelho. O job é idempotente, então repetir não tem custo.
+func nextRun(interval time.Duration, failed bool) time.Duration {
+	if failed && retryDelay < interval {
+		return retryDelay
+	}
+	return interval
 }
 
 // checkHealth faz o papel de curl/wget na imagem sem shell.

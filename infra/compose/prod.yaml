@@ -1,19 +1,20 @@
 # Produção (#14, ADR 0004): uma VM na Hetzner, com o Caddy como única porta de
-# entrada (80 e 443). Postgres, Umami, portal e gateway ficam só na rede
-# interna. O Ansible copia este arquivo, o Caddyfile e o .env para a VM e sobe
+# entrada (80 e 443). Postgres, Umami, portal, gateway, coletor e rollup ficam
+# só na rede interna. O Ansible copia este arquivo, o Caddyfile e o .env para a VM e sobe
 # tudo com `docker compose -f prod.yaml up -d`.
 #
 # Diferenças do ambiente local (dev.yaml):
-# - imagens do portal e do gateway vêm do GHCR, por digest, já conferidas com
-#   cosign pelo Ansible (PORTAL_IMAGE e INGEST_WEB_IMAGE);
+# - imagens do portal, do gateway, do coletor e do rollup vêm do GHCR, por
+#   digest, já conferidas com cosign pelo Ansible (PORTAL_IMAGE,
+#   INGEST_WEB_IMAGE, COLLECTOR_IMAGE e ROLLUP_IMAGE);
 # - o Postgres é a variante Debian com WAL-G (postgres/Dockerfile), com o
 #   arquivamento contínuo de WAL no Object Storage;
 # - nenhuma porta publicada além das do Caddy; o Postgres escuta só no
 #   loopback da VM, para o túnel SSH de administração;
 # - sem Mailpit: o SMTP vem de SMTP_URL;
-# - todas as senhas e chaves são obrigatórias (sem valor padrão).
-#
-# O coletor OTLP (#30) entra aqui na issue que o cria.
+# - todas as senhas e chaves são obrigatórias (sem valor padrão);
+# - o coletor OTLP não publica 4317 nem 4318: sai pelo Caddy, em API_HOST, na
+#   443 (ADR 0012).
 
 # Nome fixo do projeto: contêineres notify-<serviço>-1 e rede notify_internal.
 name: notify
@@ -170,13 +171,64 @@ services:
     logging: *logging
     networks: [internal]
 
+  collector:
+    image: ${COLLECTOR_IMAGE:?}
+    environment:
+      # Usuário que só lê a ingest_key_active e grava em api_metric_1m.
+      DATABASE_URL: postgresql://notify_collector:${NOTIFY_COLLECTOR_DB_PASSWORD:?}@postgres:5432/notify
+      INGEST_KEY_CACHE_TTL: ${COLLECTOR_KEY_CACHE_TTL:-60s}
+    # O memory_limiter do coletor (80% do limite) só protege a VM se o
+    # contêiner tiver teto: sem ele, a conta é sobre a memória da VM inteira e o
+    # Postgres sofre antes de o coletor recusar dados.
+    mem_limit: ${COLLECTOR_MEM_LIMIT:-512m}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # A visão ingest_key_active vem das migrações que o portal aplica ao subir.
+      portal:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+    logging: *logging
+    networks: [internal]
+
+  # Consolidação 1m -> 1h -> 1d e retenção das métricas de API (#34).
+  rollup:
+    image: ${ROLLUP_IMAGE:?}
+    environment:
+      # Dono das tabelas de métricas: cria e apaga partições.
+      DATABASE_URL: postgresql://notify:${NOTIFY_DB_PASSWORD:?}@postgres:5432/notify
+      ROLLUP_INTERVAL: ${ROLLUP_INTERVAL:-15m}
+      ROLLUP_LOOKBACK: ${ROLLUP_LOOKBACK:-48h}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # As funções api_metric_* vêm das migrações que o portal aplica ao subir.
+      portal:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/rollup", "-healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+    logging: *logging
+    networks: [internal]
+
   caddy:
     # Caddy 2.11.7, fixado por digest. Única porta de entrada: TLS automático
-    # (Let's Encrypt) para PORTAL_HOST e INGEST_HOST.
+    # (Let's Encrypt) para PORTAL_HOST, INGEST_HOST e API_HOST.
     image: caddy:2.11.7-alpine@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5
     environment:
       PORTAL_HOST: ${PORTAL_HOST:?}
       INGEST_HOST: ${INGEST_HOST:?}
+      API_HOST: ${API_HOST:?}
       ACME_EMAIL: ${ACME_EMAIL:?}
     ports:
       - "80:80"
@@ -191,6 +243,8 @@ services:
       portal:
         condition: service_healthy
       ingest-web:
+        condition: service_healthy
+      collector:
         condition: service_healthy
     restart: unless-stopped
     logging: *logging

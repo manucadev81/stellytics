@@ -19,7 +19,7 @@ Fonte: RFP `scf-web-api-analytics` ("Web and API Analytics for Stellar Ecosystem
 | Item | Meta do RFP | Compromisso do projeto hoje | O que a arquitetura de hoje sustenta | O que exigiria (ADR 0009) |
 |---|---|---|---|---|
 | Ingestão web | 99,99% | **Nenhum número comprometido.** Melhor esforço, medido e relatado (seção 3) | Uma VM e um banco únicos: não sustenta 99,99%, e a 99,9% só depois de medir | Degrau 1 (ingestão replicada) para 99,9%; 99,99% exige banco com failover (três nós), deploy sem interrupção, medição e ensaios; não prometido |
-| Ingestão de API | 99,99% | **Não se aplica ainda:** o coletor e o `rollup` não estão em produção | Nada | Entrar no `prod.yaml` e no monitoramento (`monitor_api_url`) |
+| Ingestão de API | 99,99% | Coletor e `rollup` no `prod.yaml`, numa VM só, atrás do Caddy (ADR 0012); nunca aplicado numa conta real | Teste externo do host OTLP (`monitor_api_url`) | Réplica do coletor e medição numa produção real |
 | Painéis (portal e API de leitura) | 99,90% | **Nenhum número comprometido**, relato de medição | Uma VM: orçamento de 43 min/mês é consumido por um deploy ruim ou uma queda de VM | Degrau 2 (réplica e failover do banco, portal replicado) |
 | Vulnerabilidades críticas e altas | 24 h | **Hoje: 14 dias (crítica) e 30 dias (alta)** (`SECURITY.md`). Prazo de 24 h é meta, ver seção 5 | O processo técnico (release assinada, deploy por digest) pode ser rápido; o prazo de 24 h depende de uma pessoa disponível | Segunda pessoa de plantão e decisão do mantenedor de mudar `SECURITY.md` |
 

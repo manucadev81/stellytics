@@ -2,7 +2,7 @@
 
 Plataforma open source e multi-tenant de **analytics web e de API** para projetos do ecossistema [Stellar](https://stellar.org), proposta para o RFP *Web and API Analytics for Stellar Ecosystem Projects* do [Stellar Community Fund](https://communityfund.stellar.org) (SCF).
 
-> **Estado:** em desenvolvimento inicial. O monorepo já tem a estrutura de pastas e as decisões de arquitetura; os componentes entram pelas issues do épico [E1](https://github.com/romulospl/notify/issues/1) em diante.
+> **Estado:** o código do MVP está implementado e testado no CI: portal, script de rastreamento, gateway web, coletor de API, consolidação das métricas, painéis do tenant e do SCF e a infraestrutura de produção como código. **Nenhuma produção real foi aplicada ainda** e não há pilotos; o que falta está em [`docs/andamento.md`](docs/andamento.md).
 
 ## O problema
 
@@ -20,7 +20,8 @@ O notify oferece uma plataforma compartilhada e gratuita em que:
 - visualizações de página e visitantes únicos;
 - referenciadores;
 - duração da sessão e taxa de rejeição;
-- país, dispositivo e navegador.
+- país, dispositivo e navegador;
+- eventos customizados opcionais (`window.notify.event`), sem endereço de carteira, hash ou valor.
 
 **API**, a partir do OpenTelemetry que o projeto já envia ao próprio APM (dual-export):
 
@@ -43,6 +44,7 @@ flowchart LR
     G[Gateway de ingestão web<br/>Go]
     U[Umami<br/>headless]
     C[Coletor OTel<br/>Go]
+    R[Rollup<br/>Go]
     P[Portal<br/>Next.js]
     PG[(PostgreSQL)]
   end
@@ -52,6 +54,7 @@ flowchart LR
   A -->|OTLP| C
   U --> PG
   C -->|contadores e histogramas| PG
+  R -->|1 min → 1 h → 1 dia, retenção| PG
   P --> U
   P --> PG
   T[Tenant e operador SCF] --> P
@@ -60,17 +63,33 @@ flowchart LR
 | Componente | Stack | Papel |
 |---|---|---|
 | Portal | Next.js | Cadastro self-service, painéis do tenant e painéis globais do SCF |
-| Script de rastreamento | TypeScript | Versão fixa e imutável, com SRI e nome que ad blockers não bloqueiam |
+| Script de rastreamento | TypeScript | Versão fixa e imutável (`/s/vX.Y.Z/n.js`), com SRI e nome que ad blockers não bloqueiam |
 | Gateway de ingestão web | Go | Anti-bot (prova de execução de JS, limite de fingerprints por IP) e truncamento do IP |
 | [Umami](https://umami.is) v3.4.1 | Next.js | Motor de analytics web, usado sem fork |
 | Coletor de API | OpenTelemetry Collector + componentes Go | Autenticação por chave, normalização de rotas e gravação das métricas |
-| Banco | PostgreSQL | Analytics web e métricas de API, com retenção de 24 meses |
-| Infra | Terraform, Ansible, Docker Compose, Caddy | Hospedagem na União Europeia, recriável a partir deste repositório |
+| Rollup | Go | Consolida as métricas de API de 1 minuto em 1 hora e 1 dia e aplica a retenção |
+| Banco | PostgreSQL 17 | Bancos separados `umami` (analytics web) e `notify` (tenants, chaves e métricas de API, com 24 meses de agregados) |
+| Infra | OpenTofu, Ansible, Docker Compose, Caddy | Hospedagem na União Europeia (Hetzner), backup contínuo cifrado, recriável a partir deste repositório |
 
-Os detalhes e as alternativas descartadas estão nos ADRs:
+Em produção, o Caddy é a única porta de entrada, com três hosts na 443: portal, ingestão web e ingestão de API (OTLP por HTTP e gRPC). O Umami nunca é exposto.
+
+A visão completa, com os dois fluxos, está em [`docs/arquitetura.md`](docs/arquitetura.md). As decisões e as alternativas descartadas estão nos ADRs ([índice](docs/adr/README.md)); os de base são:
 
 - [0001 — Umami como ferramenta base](docs/adr/0001-ferramenta-base.md)
 - [0002 — Arquitetura e stack](docs/adr/0002-arquitetura-e-stack.md)
+- [0003 — Isolamento entre tenants é responsabilidade do portal](docs/adr/0003-isolamento-no-portal.md)
+- [0004 — Hospedagem na Hetzner, OpenTofu e backup com WAL-G](docs/adr/0004-hospedagem-e-backup.md)
+
+## Documentação
+
+| Para | Leia |
+|---|---|
+| Integrar um projeto (script, dual-export, painéis) | [`docs/onboarding-de-tenant.md`](docs/onboarding-de-tenant.md) e [`examples/`](examples/README.md) |
+| Subir e operar uma instância | [`docs/deploy.md`](docs/deploy.md) e os [runbooks](docs/runbooks/README.md) |
+| Privacidade e dados coletados | [`docs/privacidade.md`](docs/privacidade.md) |
+| Anti-bot e cadeia de suprimentos | [`docs/anti-bot-e-cadeia-de-suprimentos.md`](docs/anti-bot-e-cadeia-de-suprimentos.md) |
+| Disponibilidade e limites atuais | [`docs/sla.md`](docs/sla.md) e o [relatório de carga](docs/relatorios/carga-1m-dia.md) |
+| Andamento e pendências | [`docs/andamento.md`](docs/andamento.md) |
 
 ## Estrutura do repositório
 
@@ -83,68 +102,67 @@ services/            Módulo Go único (go.mod)
   ingest-web/        Gateway de ingestão web
   collector/         Coletor OpenTelemetry (manifesto do OCB)
     components/      Autenticação por chave, normalização de rotas, exporter Postgres
-infra/               Terraform, Ansible, Docker Compose, Caddy e monitoramento
+  rollup/            Consolidação e retenção das métricas de API
+  loadtest/          Ferramenta de carga (web e API)
+infra/               OpenTofu, Ansible, Docker Compose, Caddy e monitoramento
 examples/            Integrações de referência (HTML, SPA, SSR, backend com OTel)
-docs/                ADRs e registro de andamento
+docs/                ADRs, specs, guias, runbooks e registro de andamento
 ```
 
-Cada pasta tem um `README.md` com o papel dela e a issue que a cria.
+Cada pasta tem um `README.md` com o papel dela.
 
 - **TypeScript:** pnpm workspaces (`apps/*`, `packages/*`, `examples/*`) e Turborepo. O pnpm só instala versões publicadas há pelo menos 14 dias (`minimumReleaseAge` no `pnpm-workspace.yaml`).
 - **Go:** um módulo só, em `services/`.
 
-### Requisitos e comandos
+## Rodar localmente
 
-Node.js 24 ou mais novo, pnpm 10 (ative com `corepack enable`) e Go 1.26.
+Requer Node.js 24, pnpm 10 (`corepack enable`), Go 1.26 e Docker com Compose v2 e BuildKit.
 
 ```bash
 pnpm install
-pnpm build      # turbo run build
-pnpm lint
-pnpm test
+docker compose up -d --wait   # banco, Umami, portal, gateway, coletor e rollup
 ```
 
-Os comandos ainda não executam tarefas: elas aparecem conforme os pacotes forem criados.
+A primeira subida cria os bancos, aplica as migrações e constrói as imagens, sem passo manual. Para entrar no portal, crie um usuário como descrito em [`apps/portal`](apps/portal/README.md#criar-um-usuário).
 
-### Ambiente local (Docker Compose)
-
-Requer Docker com o Compose v2. Na raiz do repositório:
-
-```bash
-docker compose up -d --wait
-```
-
-A primeira subida cria os bancos `umami` e `notify`, aplica as migrações do Umami e do portal e constrói a imagem do portal, sem passo manual.
-
-| Serviço | Endereço | Acesso |
-|---|---|---|
-| Portal | http://localhost:3000 | crie um usuário com `pnpm user:create` (ver [`apps/portal`](apps/portal/README.md#criar-um-usuário)) |
-| Umami v3.4.1 | só na rede interna (`http://umami:3000`); http://127.0.0.1:3001 com o override abaixo | usuário `admin`, senha `umami` (padrão do Umami; só local) |
-| PostgreSQL 17 | `localhost:5432` | `postgres`/`postgres` (superusuário), `umami`/`umami` e `notify`/`notify`, cada um dono do seu banco |
-
-- Para mudar portas ou senhas, copie `.env.example` para `.env` e edite.
-- O Umami não publica porta ([#62](https://github.com/romulospl/notify/issues/62), [docs/umami.md](docs/umami.md)). Para usar a interface dele, o script da conta de serviço ou o teste ponta a ponta do gateway, inclua o override de desenvolvimento: `docker compose -f compose.yaml -f infra/compose/umami-port.yaml up -d --wait` (ou `COMPOSE_FILE=compose.yaml:infra/compose/umami-port.yaml` no `.env`).
-- `docker compose down` para os serviços e mantém os dados. `docker compose down -v` apaga o volume, e a próxima subida recria os bancos do zero.
-- Os arquivos ficam em [`infra/compose/`](infra/compose/). Gateway e coletor entram no Compose nas issues que os criam.
-
-### Integração contínua
-
-O workflow [`ci.yml`](.github/workflows/ci.yml) roda em todo push na `main` e em todo PR:
-
-| Job | O que faz |
+| Serviço | Endereço |
 |---|---|
-| `typescript` | `pnpm install --frozen-lockfile` (falha se o lockfile estiver desatualizado), `lint`, `typecheck`, `test` e `build`, com Postgres disponível em `DATABASE_URL` |
-| `go` | `gofmt`, `go mod tidy -diff`, `go vet` e `go test -race` em `services/`, também com Postgres |
-| `compose` | Sobe o ambiente local com `docker compose` (incluindo o build do portal) e confere os bancos, o Umami e o portal |
-| `ci` | Agrega os anteriores em um resultado só. A `main` não tem proteção de branch, então o check não bloqueia merge; se a proteção for ligada, é este o check a exigir |
+| Portal | http://localhost:3000 |
+| Gateway de ingestão web | http://localhost:3002 |
+| Coletor de API (OTLP) | http://localhost:4318 (HTTP) e `localhost:4317` (gRPC) |
+| Mailpit (e-mails do portal) | http://localhost:8025 |
+| PostgreSQL 17 | `localhost:5432` (`notify`/`notify` e `umami`/`umami`) |
 
-As actions são fixadas por SHA, com a tag em comentário.
+- Portas e senhas: copie `.env.example` para `.env`.
+- O Umami não publica porta; para abrir a interface dele, veja [`docs/umami.md`](docs/umami.md).
+- `docker compose down -v` apaga os dados e a próxima subida recomeça do zero.
+- Testes: `pnpm lint`, `pnpm typecheck` e `pnpm test` na raiz; para o Go, `go test -race ./...` de dentro de `services/`.
 
-### Cadeia de suprimentos
+## Deploy em produção
 
-- **Dependências travadas:** `pnpm-lock.yaml` e `services/go.sum` commitados; o CI falha com lockfile ausente ou desatualizado.
-- **Espera de 14 dias:** o pnpm recusa versões mais novas (`minimumReleaseAge`) e o [Renovate](renovate.json) só abre PR para releases com pelo menos 14 dias. O Umami nunca é atualizado em grupo nem automaticamente. Versões maiores só viram PR depois de aprovadas no Dependency Dashboard (um issue mantido pelo Renovate); correções de segurança passam direto.
-- **Release:** ao publicar uma release no GitHub (tag `vX.Y.Z`), o workflow [`release.yml`](.github/workflows/release.yml) anexa um SBOM (SPDX, gerado com syft) e, para cada `Dockerfile` em `apps/*` e `services/*`, publica a imagem em `ghcr.io/romulospl/notify/<nome>`, assinada com cosign (keyless) e com o SBOM da imagem como atestado.
+Uma VM na Hetzner (UE) com o Caddy como única porta de entrada. Tudo sai deste repositório, em cinco passos:
+
+| Passo | O que fazer | Ferramenta |
+|---|---|---|
+| 1. Infraestrutura | Criar a VM, o firewall, o volume e o bucket de backup | `tofu -chdir=infra/opentofu apply` |
+| 2. DNS | Apontar três nomes para a VM: portal, ingestão web e ingestão de API | seu provedor de DNS |
+| 3. Imagens | Publicar uma release no GitHub; as imagens saem assinadas | workflow `release.yml` |
+| 4. Deploy | Preencher o inventário, os segredos e os digests das imagens e aplicar | `ansible-playbook site.yml -e @secrets.yml` |
+| 5. Primeira subida | Trocar a senha do Umami, gerar a chave da conta de serviço e criar o primeiro operador do SCF | túnel `infra/scripts/admin-tunnel.sh` |
+
+O playbook é idempotente: atualizar a aplicação é trocar os digests e rodar o passo 4 de novo. Ele só sobe imagens por digest e com a assinatura conferida.
+
+O que vem junto: TLS automático, backup contínuo e cifrado do Postgres com restauração testada no CI, e monitoramento externo com alerta por e-mail numa VM separada.
+
+O passo a passo completo, com segredos, restauração e o que ainda não foi testado numa conta real, está em [`docs/deploy.md`](docs/deploy.md); os procedimentos de operação, nos [runbooks](docs/runbooks/README.md).
+
+## CI e cadeia de suprimentos
+
+Todo PR roda o [`ci.yml`](.github/workflows/ci.yml): lint, tipos e testes de TypeScript e Go, os testes ponta a ponta no Compose local e a pilha de produção inteira com um S3 local (rotas do Caddy, backup e restauração). O check a exigir é o agregador `ci`.
+
+- **Dependências travadas** por lockfile, e só releases com pelo menos 14 dias (pnpm e [Renovate](renovate.json)).
+- **Licenças e vulnerabilidades** conferidas pelo [`dependencies.yml`](.github/workflows/dependencies.yml); só licenças aprovadas pela OSI.
+- **Release:** cada imagem vai para `ghcr.io/romulospl/notify/<nome>`, assinada com cosign e com SBOM atestado.
 
 Para verificar uma imagem publicada:
 
@@ -154,20 +172,23 @@ cosign verify ghcr.io/romulospl/notify/<nome>:<versão> \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-Para conferir o SBOM atestado, troque `verify` por `verify-attestation --type spdxjson` no mesmo comando.
+Os detalhes estão em [`docs/anti-bot-e-cadeia-de-suprimentos.md`](docs/anti-bot-e-cadeia-de-suprimentos.md).
 
 ## Privacidade
 
 A meta é conformidade com a GDPR **sem banner de consentimento**:
 
-- **IP:** o último octeto do IPv4 (ou o equivalente no IPv6) é descartado antes da geolocalização. O IP completo nunca é gravado.
+- **IP:** o último octeto do IPv4 é descartado (no IPv6 fica só o /48) antes da geolocalização. O IP completo nunca é gravado, nem em log.
 - **Navegador:** nenhum cookie, `localStorage` ou identificador persistente.
 - **Umami:** gravação de sessão e heatmaps ficam desligados.
+- **API:** traces, spans e logs são descartados no coletor; ficam só contadores e histogramas por rota normalizada.
 - **Dados:** ficam armazenados na União Europeia.
+
+O detalhe, com retenção e lacunas conhecidas, está em [`docs/privacidade.md`](docs/privacidade.md).
 
 ## Roadmap
 
-O backlog está nas [issues](https://github.com/romulospl/notify/issues), organizado em épicos, e no [quadro do projeto](https://github.com/users/romulospl/projects/1).
+O código de E1 a E6 está implementado; os guias do E7 estão escritos, à espera de teste por alguém de fora; o E8 (pilotos) não começou e o E9 está parcial. O backlog está nas [issues](https://github.com/romulospl/notify/issues), organizado em épicos, e no [quadro do projeto](https://github.com/users/romulospl/projects/1).
 
 | Épico | Escopo |
 |---|---|
@@ -180,6 +201,7 @@ O backlog está nas [issues](https://github.com/romulospl/notify/issues), organi
 | [E7](https://github.com/romulospl/notify/issues/7) | Documentação, privacidade e conformidade |
 | [E8](https://github.com/romulospl/notify/issues/8) | Pilotos com projetos reais do SCF |
 | [E9](https://github.com/romulospl/notify/issues/9) | Pós-MVP: SLA, escala, chaves de API e transferência |
+| [E10](https://github.com/romulospl/notify/issues/63) | Proposta e submissão ao SCF |
 
 ## Contribuindo
 

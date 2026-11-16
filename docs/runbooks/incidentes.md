@@ -30,7 +30,7 @@ Serve para os quatro alertas reais do monitoramento externo ([`alerts.yml`](../.
 
 - Qual componente? Está no rótulo `component` do e-mail. Se só um caiu, o problema é do serviço dele; se todos caíram, é a VM, o Caddy ou a rede.
 - Na VM: `docker compose -f prod.yaml ps` (procure `unhealthy`, `restarting` ou ausente) e `docker compose -f prod.yaml logs --tail 200 <serviço>`.
-- Cadeia de dependências do `prod.yaml`: `caddy` depende de `portal` e `ingest-web`; `ingest-web` depende de `postgres`, `umami` e `portal`; `portal` e `umami` dependem de `postgres`. Comece pelo mais fundo que esteja ruim (normalmente `postgres`: `df -h /srv/notify`, disco cheio derruba tudo).
+- Cadeia de dependências do `prod.yaml`: `caddy` depende de `portal`, `ingest-web` e `collector`; `ingest-web` depende de `postgres`, `umami` e `portal`; `collector` e `rollup` dependem de `postgres` e `portal`; `portal` e `umami` dependem de `postgres`. Comece pelo mais fundo que esteja ruim (normalmente `postgres`: `df -h /srv/notify`, disco cheio derruba tudo).
 - Pelo Prometheus da VM de monitoramento (túnel `ssh -N -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 root@<monitor_ipv4>`, depois `http://127.0.0.1:9090`): a consulta `probe_success` e a página *Status → Targets* mostram qual alvo falha.
 
 **Ação.**
