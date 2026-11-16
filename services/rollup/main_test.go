@@ -32,6 +32,22 @@ func TestLoadConfig(t *testing.T) {
 }
 
 // Consolida um ponto de 1 minuto de duas horas atrás pela mesma chamada do serviço, duas vezes.
+func TestNextRun(t *testing.T) {
+	for _, c := range []struct {
+		interval time.Duration
+		failed   bool
+		want     time.Duration
+	}{
+		{15 * time.Minute, false, 15 * time.Minute},
+		{15 * time.Minute, true, retryDelay},
+		{10 * time.Second, true, 10 * time.Second},
+	} {
+		if got := nextRun(c.interval, c.failed); got != c.want {
+			t.Errorf("nextRun(%s, %v) = %s, quero %s", c.interval, c.failed, got, c.want)
+		}
+	}
+}
+
 func TestMaintain(t *testing.T) {
 	adminURL := os.Getenv("DATABASE_URL")
 	if adminURL == "" {
