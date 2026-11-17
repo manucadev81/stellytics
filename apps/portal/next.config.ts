@@ -7,6 +7,8 @@ const nextConfig: NextConfig = {
   // Monorepo: rastreia dependências a partir da raiz do repositório.
   outputFileTracingRoot: path.join(import.meta.dirname, "../.."),
   poweredByHeader: false,
+  // O portal não usa o otimizador de imagens; evita depender de libvips em execução.
+  images: { unoptimized: true },
 };
 
 export default nextConfig;
