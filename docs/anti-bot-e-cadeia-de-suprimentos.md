@@ -29,7 +29,7 @@ O `event` em [`handler.go`](../services/ingest-web/handler.go) executa as checag
 | 3 | Prova de execução de JavaScript | [`internal/proof`](../services/ingest-web/internal/proof/proof.go) | `PROOF_BITS` 12, `PROOF_TTL` 10 min | só o segredo; `PROOF_BITS` e `PROOF_TTL` não | `204`, evento descartado |
 | 4 | Site existe e aceita ingestão | [`internal/site`](../services/ingest-web/internal/site/site.go) (visão `ingest_site`) | cache de no máximo 1 min (`SITE_CACHE_TTL`) | não | `204`, evento descartado |
 | 5 | Limite de fingerprints distintas por IP e site | [`internal/fingerprint`](../services/ingest-web/internal/fingerprint/fingerprint.go) | `FINGERPRINT_LIMIT` 50 por `FINGERPRINT_WINDOW` de 10 min | só `FINGERPRINT_LIMIT`; a janela não | `204`, evento descartado |
-| 6 | Repasse ao Umami com payload remontado | [`internal/relay`](../services/ingest-web/internal/relay/relay.go) | só `website`, `hostname`, `url`, `referrer`, `title`, `language`, `screen`; opcional: `RELAY_MAX_INFLIGHT` repasses simultâneos (padrão 0, desligado) e `RELAY_QUEUE_WAIT` 250 ms ([ADR 0011](adr/0011-limite-de-repasses-ao-umami.md)) | não (`prod.yaml` ainda não repassa as variáveis) | `503` com `Retry-After` quando o limite de repasses está ligado e não há vaga; o evento se perde |
+| 6 | Repasse ao Umami com payload remontado | [`internal/relay`](../services/ingest-web/internal/relay/relay.go) | só `website`, `hostname`, `url`, `referrer`, `title`, `language`, `screen`; opcional: `RELAY_MAX_INFLIGHT` repasses simultâneos (padrão 0, desligado) e `RELAY_QUEUE_WAIT` 250 ms ([ADR 0011](adr/0011-limite-de-repasses-ao-umami.md)) | sim (padrão desligado) | `204` quando o limite de repasses está ligado e não há vaga; o evento se perde |
 
 Falhas das camadas 3, 4 e 5 respondem `204`, igual ao sucesso, para não dar pista de qual regra barrou nem de se um site existe (spec do E2, seção 6, em [`e2-tenants-e-controle-de-acesso.md`](specs/e2-tenants-e-controle-de-acesso.md)). Isso vale só para essas camadas; outras respostas de `handler.go` aparecem para quem testa:
 
@@ -41,9 +41,9 @@ Falhas das camadas 3, 4 e 5 respondem `204`, igual ao sucesso, para não dar pis
 | `429` | limite de taxa por IP truncado |
 | `503` | falha na consulta à `ingest_site` (o gateway não deixa passar evento sem conferir o site) |
 | `502` | falha no repasse ao Umami |
-| `503` (corpo `overloaded`, com `Retry-After`) | só com `RELAY_MAX_INFLIGHT` ligado: sem vaga de repasse ao Umami dentro de `RELAY_QUEUE_WAIT`; o evento é descartado. Só sai depois da prova de JS, da `ingest_site` e da cota de fingerprints, então site desconhecido, recusado ou com a cota cheia recebe `204` e não `503`; isso é uma pista (ver o parágrafo abaixo e o ADR 0011) |
+| `204` (saturação) | sem vaga de repasse dentro de `RELAY_QUEUE_WAIT`; o evento é descartado e contado no log agregado |
 
-Quem testa o endpoint consegue, portanto, distinguir volume excessivo, formato inválido e indisponibilidade; com o limite de repasses desligado (o padrão), não consegue distinguir prova inválida, site desconhecido e fingerprints demais. **Com `RELAY_MAX_INFLIGHT` ligado isso deixa de valer durante a saturação do repasse**: o `503` só sai para evento com prova válida, de site aceito e com fingerprint dentro da cota, então revela o status do site (ativo contra removido, pendente ou arquivado) e que a cota do IP não estava cheia. A decisão sobre aceitar isso está pendente com o mantenedor (ver [ADR 0011](adr/0011-limite-de-repasses-ao-umami.md), "Pistas que o `503` dá"). `GET /c` (o desafio) passa pelo mesmo limite de taxa da camada 1 e não consulta a `ingest_site`, então não revela se o site existe.
+A saturação responde `204`, assim como os descartes por site e fingerprint, evitando distingui-los pelo status. Diferenças de tempo entre os caminhos ainda podem fornecer pistas. `GET /c` passa pelo limite de taxa e não consulta a `ingest_site`.
 
 ### Prova de execução de JS (`internal/proof`)
 

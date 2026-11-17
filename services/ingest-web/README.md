@@ -76,13 +76,13 @@ O padrão é generoso (50 em 10 minutos) porque o IP truncado junta um /24 intei
 
 O Umami satura perto de 200 page views por segundo por instância (`docs/relatorios/carga-1m-dia.md`). Sem limite, o gateway segura cada `POST /e` até o Umami gravar: a 400/s a latência chegou a 5 a 10 s e a memória do gateway passou de 350 MB. Com `RELAY_MAX_INFLIGHT` maior que zero, só o **repasse ao Umami** passa por um semáforo; a prova de JS, `GET /c`, `GET /s/`, `GET /healthz`, o limite por IP, `ingest_site` e fingerprints não mudam, e a ordem delas também não.
 
-- Quem chega sem vaga espera até `RELAY_QUEUE_WAIT` por uma. Passado o prazo, o gateway responde **`503` com `Retry-After: 1`** (corpo `overloaded`) e **o evento é descartado: ele se perde.** O script do navegador usa `keepalive` e não tenta de novo, então o `Retry-After` serve a outros clientes, não ao nosso script. Perder o evento de forma explícita e contada é melhor que segurar a conexão por segundos e estourar a memória.
+- Quem chega sem vaga espera até `RELAY_QUEUE_WAIT`; depois recebe `204` e o evento é descartado. A perda é registrada no log agregado.
 - O descarte por saturação **não gasta a cota de fingerprints** do IP (a fingerprint que acabou de entrar na conta é removida).
-- O operador vê a taxa de descarte em um aviso de log por minuto, só quando o total muda: `eventos descartados por saturação do repasse ao umami` com `descartados`, `total` e `em_voo` (sem IP, `User-Agent` nem ID de site), e na contagem de `503` do proxy. O painel de métricas **não** mostra o que foi descartado: durante a saturação as visitas ficam subcontadas.
+- O operador vê a taxa de descarte em um aviso de log por minuto, só quando o total muda: `eventos descartados por saturação do repasse ao umami` com `descartados`, `total` e `em_voo` (sem IP, `User-Agent` nem ID de site). O painel de métricas **não** mostra o que foi descartado: durante a saturação as visitas ficam subcontadas.
 - A vaga volta em qualquer saída (erro, timeout, cancelamento, panic). Com `RELAY_MAX_INFLIGHT=0` o semáforo nem é montado e o comportamento é o de antes.
-- **Pistas para quem sonda (decisão pendente do mantenedor):** sob saturação o `503` só sai para evento com prova válida, de site aceito e com fingerprint dentro da cota; os demais recebem `204`. Isso revela o status do site (ativo contra removido, pendente ou arquivado) e que a cota do IP não estava cheia, e ~10 /24 distintos bastam para saturar. O ADR 0011 compara as alternativas (manter, `204` também na saturação, `503` para qualquer prova válida com o semáforo cheio). Quem ligar `RELAY_MAX_INFLIGHT` em produção deve decidir isso antes; o padrão é desligado.
+- A resposta `204` evita distinguir pelo status a saturação dos descartes por site ou fingerprint; diferenças de tempo ainda podem existir.
 - O limite é por processo: com várias instâncias do gateway, o total ao Umami é a soma. Também é global, não por site: um tenant em pico pode ocupar vagas dos outros (discussão no [ADR 0011](../../docs/adr/0011-limite-de-repasses-ao-umami.md)).
-- Medido a 400 page views/s por 60 s, nesta máquina: sem limite, 5,6 a 10 s de latência nos aceitos, 16.192 de 23.907 em `502` e 355 MB; com `RELAY_MAX_INFLIGHT=16` e `RELAY_QUEUE_WAIT=50ms`, p99 de 202 ms nos aceitos, 31 MB, e todo evento que recebeu `204` foi gravado no Umami (cerca de 53% das requisições recusadas, porque o limite não aumenta a capacidade do Umami). A 116/s (pico do RFP) com 16 vagas não houve `503`. Tabela completa, valores testados e o que não foi testado no ADR 0011. Não há padrão recomendado para produção ainda, e o `prod.yaml` não repassa as variáveis.
+- Medição histórica com resposta `503` na saturação, a 400 page views/s por 60 s, nesta máquina: sem limite, 5,6 a 10 s de latência nos aceitos, 16.192 de 23.907 em `502` e 355 MB; com `RELAY_MAX_INFLIGHT=16` e `RELAY_QUEUE_WAIT=50ms`, p99 de 202 ms nos aceitos, 31 MB, e todo evento que recebeu `204` foi gravado no Umami (cerca de 53% das requisições recusadas, porque o limite não aumenta a capacidade do Umami). A 116/s (pico do RFP) com 16 vagas não houve `503`. Tabela completa, valores testados e o que não foi testado no ADR 0011. Não há padrão recomendado para produção ainda, e as variáveis são repassadas pelo Compose e Ansible.
 
 ## Contrato com o banco: `ingest_site`
 
@@ -128,7 +128,7 @@ Vem do `RemoteAddr`. O `X-Forwarded-For` só é lido quando a conexão chega de 
 | `FINGERPRINT_LIMIT` | `50` | Fingerprints distintas por IP truncado e site na janela (0 a 1000; 0 desliga) |
 | `FINGERPRINT_WINDOW` | `10m` | Janela deslizante das fingerprints (1m a 24h) |
 | `RELAY_MAX_INFLIGHT` | `0` (desligado) | Máximo de repasses ao Umami ao mesmo tempo (0 a 100000); ver "Saturação do Umami" |
-| `RELAY_QUEUE_WAIT` | `250ms` | Quanto um evento espera por uma vaga de repasse antes de receber `503` (0 a 10s; `0` recusa na hora) |
+| `RELAY_QUEUE_WAIT` | `250ms` | Quanto um evento espera por uma vaga de repasse antes do descarte com `204` (0 a 10s; `0` recusa na hora) |
 
 ## Desenvolvimento
 
