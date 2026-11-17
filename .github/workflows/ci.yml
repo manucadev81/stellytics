@@ -89,6 +89,9 @@ jobs:
         with:
           go-version-file: services/go.mod
           cache-dependency-path: services/go.*
+      - name: Comparador de camadas de imagem
+        working-directory: .
+        run: python3 -m unittest discover -s scripts/reproducibility
       - name: gofmt
         run: |
           unformatted=$(gofmt -l .)

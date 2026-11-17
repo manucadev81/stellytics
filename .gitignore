@@ -41,3 +41,6 @@ infra/ansible/.ansible/
 # Estado do gerador de carga (guarda chaves ntf_ completas)
 state.json
 services/loadtest/*.json
+
+# Cache de testes Python
+__pycache__/
