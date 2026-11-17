@@ -61,7 +61,7 @@ func TestLogsWithoutIPOrUserAgent(t *testing.T) {
 
 	cases := map[string]func(*gateway){
 		"umami falha": func(g *gateway) {
-			g.relay = relay.NewClient(base, "x-notify-client-ip", brokenUmami.Client())
+			g.relay = relay.NewClient(base, "x-stellytics-client-ip", brokenUmami.Client())
 		},
 		"banco falha": func(g *gateway) { g.sites = failingSites{} },
 		"panic":       func(g *gateway) { g.sites = panicSites{} },

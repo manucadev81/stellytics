@@ -10,7 +10,7 @@ Seções verificadas diretamente no código: 3.1 (`tracker.ts`, `relay.go`), 3.3
 
 - **Visitantes dos sites dos tenants (analytics web):** sem cookie, sem `localStorage`/`sessionStorage`, sem identificador persistente no navegador. O IP completo nunca é gravado: o gateway trunca antes de repassar ao Umami.
 - **Chamadas de API dos tenants (analytics de API):** só contadores e histogramas por rota, método e status, a cada minuto. Traces, spans e logs são descartados.
-- **Usuários do portal (e-mail, nome, senha com hash):** são dados pessoais e ficam no banco `notify`. O portal não grava o IP de quem entra.
+- **Usuários do portal (e-mail, nome, senha com hash):** são dados pessoais e ficam no banco `stellytics`. O portal não grava o IP de quem entra.
 - **Onde ficariam:** a IaC fixa `nbg1` (Hetzner, Alemanha) por padrão para servidor, volume e backup; **a produção ainda não foi aplicada** (`docs/andamento.md`).
 - **Apagamento:** hoje **não há fluxo de apagamento** nem para visitantes nem para usuários. Para visitantes, a razão é que o IP completo e os identificadores persistentes não existem (seção 6), mas isso **não é o mesmo que "nenhum dado pessoal guardado"**: a seção 3 lista o que fica. Para usuários do portal, é uma lacuna (seção 7).
 
@@ -32,13 +32,13 @@ O script `packages/tracker` envia um page view por carregamento (e por troca de 
 
 O gateway (`services/ingest-web/internal/relay/relay.go`) remonta o payload só com esses campos e repassa ao Umami com o `User-Agent` original e o IP **já truncado** num header. Nunca repassa `ip`, `userAgent`, `id` nem `timestamp` vindos do cliente.
 
-O Umami (v3.4.1, sem patch, `docs/umami.md`) grava os eventos no banco `umami`. O que o Umami cria a partir disso (sessão, navegador, sistema, dispositivo, país/região/cidade pela geolocalização do IP truncado) é **comportamento do Umami e não foi lido aqui**. Foi verificado apenas que o país da sessão sai do IP truncado e que o IP completo não aparece em nenhuma coluna de texto dos bancos `umami` e `notify` (`services/ingest-web/e2e/privacy_test.go`, roda no job `compose` do CI).
+O Umami (v3.4.1, sem patch, `docs/umami.md`) grava os eventos no banco `umami`. O que o Umami cria a partir disso (sessão, navegador, sistema, dispositivo, país/região/cidade pela geolocalização do IP truncado) é **comportamento do Umami e não foi lido aqui**. Foi verificado apenas que o país da sessão sai do IP truncado e que o IP completo não aparece em nenhuma coluna de texto dos bancos `umami` e `stellytics` (`services/ingest-web/e2e/privacy_test.go`, roda no job `compose` do CI).
 
 Dois pontos de atenção: o `url` e o `title` são dados que a página do tenant define. Um caminho como `/perfil/maria@exemplo.com` ou um título com nome próprio seriam gravados. O script já descarta a query string (exceto `utm_*`), mas o tenant deve evitar dado pessoal em caminhos e títulos.
 
 ### 3.2 Analytics de API
 
-O coletor (`services/collector`) autentica pela chave de ingestão, grava o tenant da chave e ignora o que o cliente disser sobre isso. O exporter `notifypg` transforma spans de servidor HTTP e a métrica de duração em pontos por minuto na tabela `api_metric_1m`: tenant, serviço, rota normalizada, método, status, contagem, soma de durações e histograma (`docs/specs/e5-pipeline-de-api.md`, seção 4). Traces, spans e logs são descartados e não são gravados. Não há IP nem identificador de usuário final nas colunas.
+O coletor (`services/collector`) autentica pela chave de ingestão, grava o tenant da chave e ignora o que o cliente disser sobre isso. O exporter `stellyticspg` transforma spans de servidor HTTP e a métrica de duração em pontos por minuto na tabela `api_metric_1m`: tenant, serviço, rota normalizada, método, status, contagem, soma de durações e histograma (`docs/specs/e5-pipeline-de-api.md`, seção 4). Traces, spans e logs são descartados e não são gravados. Não há IP nem identificador de usuário final nas colunas.
 
 Ponto de atenção: a rota é texto. Segmentos numéricos, UUIDs, endereços Stellar e hashes hex viram marcadores (`{id}`, `{uuid}`, `{address}`, `{hash}`), mas outro segmento que carregue dado pessoal (por exemplo `/users/maria`) seria gravado como veio, e um `http.route` enviado pelo cliente vale como veio. Mitigação parcial: teto de 500 rotas por serviço e dia, depois `{other}`.
 

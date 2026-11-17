@@ -15,7 +15,7 @@ import { resolvePeriod } from "@/lib/period";
 import ServicePage from "@/app/(private)/services/[serviceId]/page";
 import KeysPage from "@/app/(private)/services/[serviceId]/keys/page";
 
-const DOMAIN = "@api-dashboard-test.notify.invalid";
+const DOMAIN = "@api-dashboard-test.stellytics.invalid";
 const SLUG = "api-dashboard-test-";
 const NOT_FOUND = { digest: expect.stringContaining("404") };
 // hourCut = 09:00 e dayCut = 14/11 00:00 (UTC).

@@ -1,10 +1,10 @@
 # Arquitetura e stack
 
-Visão de alto nível do notify ([#39](https://github.com/romulospl/notify/issues/39)): o que cada peça faz, como os dados andam e onde tudo roda. O texto vem primeiro, em linguagem simples; os detalhes técnicos estão nos [ADRs](adr/README.md) e nos links de cada seção.
+Visão de alto nível do stellytics ([#39](https://github.com/romulospl/notify/issues/39)): o que cada peça faz, como os dados andam e onde tudo roda. O texto vem primeiro, em linguagem simples; os detalhes técnicos estão nos [ADRs](adr/README.md) e nos links de cada seção.
 
 ## Em uma frase
 
-O notify mede o uso de sites e de APIs dos projetos do ecossistema Stellar. Cada projeto (um *tenant*) vê só os próprios números; as pessoas operadoras do SCF veem todos os projetos e podem compará-los.
+O stellytics mede o uso de sites e de APIs dos projetos do ecossistema Stellar. Cada projeto (um *tenant*) vê só os próprios números; as pessoas operadoras do SCF veem todos os projetos e podem compará-los.
 
 ## Visão geral
 
@@ -20,7 +20,7 @@ flowchart LR
 
   caddy["Caddy<br/>TLS e porta pública"]
 
-  subgraph vm["Servidor do notify (Hetzner, Alemanha)"]
+  subgraph vm["Servidor do stellytics (Hetzner, Alemanha)"]
     portal["Portal<br/>Next.js"]
     gw["Gateway web<br/>Go"]
     umami["Umami<br/>só rede interna"]
@@ -28,7 +28,7 @@ flowchart LR
     roll["Rollup<br/>Go"]
     subgraph pg["PostgreSQL"]
       dbu[("banco umami")]
-      dbn[("banco notify")]
+      dbn[("banco stellytics")]
     end
   end
 
@@ -49,7 +49,7 @@ flowchart LR
 > **Siglas deste diagrama:** *tenant* é um projeto cliente com dados isolados dos demais; *OTLP* é o formato aberto de envio de medições (OpenTelemetry, ou OTel); *dual-export* é mandar a mesma medição para dois destinos; *APM* é a ferramenta de monitoramento que o projeto cliente já usa; *TLS* é o cadeado HTTPS.
 
 
-Linha pontilhada: envio que o projeto já faz hoje para o próprio APM, sem passar pelo notify. Na produção, o OTLP também entra pelo Caddy, num host próprio na 443 ([ADR 0012](adr/0012-ingestao-de-api-pelo-caddy.md)); o desenho mostra o coletor sem o Caddy para não repetir o proxy.
+Linha pontilhada: envio que o projeto já faz hoje para o próprio APM, sem passar pelo stellytics. Na produção, o OTLP também entra pelo Caddy, num host próprio na 443 ([ADR 0012](adr/0012-ingestao-de-api-pelo-caddy.md)); o desenho mostra o coletor sem o Caddy para não repetir o proxy.
 
 ## Fluxo web: de uma visita a um gráfico
 
@@ -90,7 +90,7 @@ sequenceDiagram
   autonumber
   participant A as API do projeto
   participant C as Coletor de API
-  participant D as Banco notify
+  participant D as Banco stellytics
   participant R as Rollup
   participant P as Portal
 
@@ -105,7 +105,7 @@ sequenceDiagram
 
 Em palavras simples:
 
-1. O projeto já mede a própria API com OpenTelemetry (um padrão aberto). Ele passa a enviar a mesma medição também ao notify (*dual-export*), com uma chave de ingestão criada no portal.
+1. O projeto já mede a própria API com OpenTelemetry (um padrão aberto). Ele passa a enviar a mesma medição também ao stellytics (*dual-export*), com uma chave de ingestão criada no portal.
 2. A chave decide a quem o dado pertence. Qualquer identificação de projeto que venha dentro da medição é ignorada.
 3. O coletor junta as requisições por serviço, rota (com números e endereços trocados por marcadores, como `/accounts/{address}`), método, status e minuto, e guarda também a distribuição de tempos de resposta, que permite calcular p50 e p95.
 4. Traces, spans e logs são descartados: nada disso é gravado.
@@ -123,7 +123,7 @@ Mais detalhes: [`docs/specs/e5-pipeline-de-api.md`](specs/e5-pipeline-de-api.md)
 | Umami | Guarda e calcula as estatísticas web, sem interface pública | Umami 3.4.1, imagem oficial sem patch | [`docs/umami.md`](umami.md) |
 | Coletor de API | Recebe OTLP, autentica pela chave, normaliza rotas, grava métricas | OpenTelemetry Collector montado com OCB, componentes em Go | [`services/collector`](../services/collector/) |
 | Rollup | Consolida as métricas e aplica a retenção | Go, funções SQL | [`services/rollup`](../services/rollup/) |
-| Banco | Um PostgreSQL com dois bancos: `umami` (do Umami) e `notify` (tenants, chaves, métricas de API) | PostgreSQL 17 | [`infra/compose`](../infra/compose/) |
+| Banco | Um PostgreSQL com dois bancos: `umami` (do Umami) e `stellytics` (tenants, chaves, métricas de API) | PostgreSQL 17 | [`infra/compose`](../infra/compose/) |
 | Caddy | Única porta pública, certificado TLS automático | Caddy | [`infra/caddy`](../infra/caddy/Caddyfile) |
 | Infraestrutura | Cria o servidor e publica o sistema | OpenTofu, Ansible, Docker Compose | [`infra/`](../infra/README.md) |
 | Monitoramento | Avisa por e-mail se o portal ou a ingestão saírem do ar | Prometheus, blackbox, Alertmanager | [`infra/monitoring`](../infra/monitoring/) |

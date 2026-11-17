@@ -89,7 +89,7 @@ describe("consolidação", () => {
     expect((await rows("api_metric_1h")).filter((h) => h.at.startsWith("2020-03-11"))).toEqual([]);
   });
 
-  it("api_metric_maintain roda inteira como notify", async () => {
+  it("api_metric_maintain roda inteira como stellytics", async () => {
     await sql`SELECT api_metric_maintain()`;
   });
 
@@ -99,7 +99,7 @@ describe("consolidação", () => {
       "SELECT api_metric_rollup(now() - interval '1 day')",
       "SELECT api_metric_drop_partitions()",
     ]) {
-      await expect(asRole("notify_collector", q)).rejects.toThrow(/permission denied/);
+      await expect(asRole("stellytics_collector", q)).rejects.toThrow(/permission denied/);
     }
   });
 });

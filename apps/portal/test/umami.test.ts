@@ -14,7 +14,7 @@ import { provisionUmamiWebsite } from "@/lib/umami/provision";
 import { getSiteStats } from "@/lib/umami/stats";
 import { startFakeUmami, type FakeUmami } from "./fake-umami";
 
-const DOMAIN = "@umami-test.notify.invalid";
+const DOMAIN = "@umami-test.stellytics.invalid";
 const SLUG = "umami-test-";
 const RANGE = { startAt: new Date(0), endAt: new Date() };
 
@@ -82,7 +82,7 @@ describe("criação de site", () => {
     expect(normalizeDomain("localhost:3000")).toBe("localhost:3000");
   });
 
-  it("cria o site no Umami e grava o vínculo no notify", async () => {
+  it("cria o site no Umami e grava o vínculo no stellytics", async () => {
     const ctx = await createMember();
     const created = await createSite(ctx, { name: " Docs ", domain: "https://Docs.Example.org/start" });
 

@@ -174,23 +174,23 @@ describe("permissões", () => {
   const at = "2026-11-14T10:00:00Z";
 
   it("o coletor grava e acumula no balde de 1 minuto", async () => {
-    await asRole("notify_collector", upsert("api_metric_1m", at, "/coletor", 201, 1, 0.1, buckets({ 5: 1 })));
-    await asRole("notify_collector", upsert("api_metric_1m", at, "/ledgers/{id}", 200, 1, 0.1, buckets({ 5: 1 })));
+    await asRole("stellytics_collector", upsert("api_metric_1m", at, "/coletor", 201, 1, 0.1, buckets({ 5: 1 })));
+    await asRole("stellytics_collector", upsert("api_metric_1m", at, "/ledgers/{id}", 200, 1, 0.1, buckets({ 5: 1 })));
   });
 
   it("o coletor não apaga, não grava nos consolidados e não mexe em partições", async () => {
-    await expect(asRole("notify_collector", `DELETE FROM api_metric_1m WHERE tenant_id = '${tenantId}'`)).rejects.toThrow(
+    await expect(asRole("stellytics_collector", `DELETE FROM api_metric_1m WHERE tenant_id = '${tenantId}'`)).rejects.toThrow(
       /permission denied/,
     );
     await expect(
-      asRole("notify_collector", upsert("api_metric_1h", at, "/x", 200, 1, 0.1, buckets({ 5: 1 }))),
+      asRole("stellytics_collector", upsert("api_metric_1h", at, "/x", 200, 1, 0.1, buckets({ 5: 1 }))),
     ).rejects.toThrow(/permission denied/);
-    await expect(asRole("notify_collector", "SELECT api_metric_ensure_partitions(1)")).rejects.toThrow(
+    await expect(asRole("stellytics_collector", "SELECT api_metric_ensure_partitions(1)")).rejects.toThrow(
       /permission denied/,
     );
   });
 
   it("o gateway web não enxerga as métricas", async () => {
-    await expect(asRole("notify_ingest", "SELECT 1 FROM api_metric_1m LIMIT 1")).rejects.toThrow(/permission denied/);
+    await expect(asRole("stellytics_ingest", "SELECT 1 FROM api_metric_1m LIMIT 1")).rejects.toThrow(/permission denied/);
   });
 });

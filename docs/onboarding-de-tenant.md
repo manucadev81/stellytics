@@ -81,7 +81,7 @@ Os trechos acima são os mesmos de [`examples/README.md`](../examples/README.md)
 
 - Cada versão publicada (`/s/vX.Y.Z/n.js`) **nunca muda**: o arquivo é servido com cache imutável de um ano e o hash vem de `sri.json`. Se o conteúdo mudasse, o navegador recusaria o script pelo `integrity`.
 - O script **nunca se atualiza sozinho**. Para trocar de versão, mude o caminho e o `integrity` no seu HTML.
-- Use sempre a versão **v1.1.0 ou mais nova** (a **v1.2.0** acrescenta eventos customizados e a **v1.3.0**, `window.notify.wallets`). A v1.0.0 não faz a prova de execução de JS, e o gateway **descarta os eventos dela**.
+- Use sempre a versão **v1.1.0 ou mais nova** (a **v1.2.0** acrescenta eventos customizados e a **v1.3.0**, `window.notify.wallets`; **a v1.4.0 renomeia o objeto global para `window.stellytics`**). A v1.0.0 não faz a prova de execução de JS, e o gateway **descarta os eventos dela**.
 - `crossorigin="anonymous"` é obrigatório junto com `integrity`; o gateway responde com `Access-Control-Allow-Origin: *` para isso.
 
 ### 3.4 Requisitos e o que o script faz
@@ -94,30 +94,30 @@ Os trechos acima são os mesmos de [`examples/README.md`](../examples/README.md)
 
 ### 3.4.1 Eventos customizados (v1.2.0)
 
-Com a v1.2.0, `window.notify.event(nome, propriedades)` registra uma ação (clique, conexão de carteira etc.) na página atual:
+Com a v1.2.0, `window.stellytics.event(nome, propriedades)` registra uma ação (clique, conexão de carteira etc.) na página atual:
 
 ```js
-window.notify?.event("signup_clicked", { plan: "pro", seats: 3 });
+window.stellytics?.event("signup_clicked", { plan: "pro", seats: 3 });
 ```
 
 - Nome: 1 a 50 caracteres entre letras, números e `_ . : -`, começando por letra ou número. Propriedades: até 10, com chave de até 40 caracteres e valor texto (até 100 bytes), número ou verdadeiro/falso. O que fugir disso é ignorado.
 - **Não envie dado pessoal nem de carteira:** endereço, chave pública, hash de transação, valor transferido, e-mail. O gateway limita só tipo e tamanho; o conteúdo é responsabilidade do projeto.
-- `window.notify` só existe depois que o script carrega, e **não há fila**: uma chamada antes disso se perde. Use sempre `window.notify?.event(...)`.
-- **Eventos do Stellar Wallets Kit (v1.3.0, opt-in, não é automático):** o script **não** captura nada do kit sozinho. Ele só alcança o kit se **você** o entregar, com uma chamada, depois de iniciar o kit (ver [ADR 0010](adr/0010-adaptador-opt-in-do-wallets-kit.md)):
+- `window.stellytics` só existe depois que o script carrega, e **não há fila**: uma chamada antes disso se perde. Use sempre `window.stellytics?.event(...)`.
+- **Eventos do Stellar Wallets Kit (v1.4.0, opt-in, não é automático):** o script **não** captura nada do kit sozinho. Ele só alcança o kit se **você** o entregar, com uma chamada, depois de iniciar o kit (ver [ADR 0010](adr/0010-adaptador-opt-in-do-wallets-kit.md)):
 
 ```js
-window.notify?.wallets(StellarWalletsKit, KitEventType);
+window.stellytics?.wallets(StellarWalletsKit, KitEventType);
 ```
 
   - Chame **uma vez** (chamar de novo com o mesmo kit não duplica a assinatura). Ela devolve uma função que cancela a assinatura. Se o kit ou o enum forem inválidos, nada acontece e a página não quebra.
   - Só assina `WALLET_SELECTED` (envia `wallet_selected` com `{ wallet: "freighter" }`, o ID do módulo) e `DISCONNECT` (envia `wallet_disconnected`, sem dados). **Nunca** assina `STATE_UPDATED` e nunca envia endereço, chave pública, `networkPassphrase`, hash ou valor. Um ID que não seja um nome simples de módulo (até 32 caracteres) é ignorado.
-  - Como `window.notify` não tem fila, chame depois de o script carregar (`window.notify?.wallets(...)`; se o script puder demorar, repita a chamada no `load` da janela, ela é idempotente).
-  - Se preferir assinar à mão e usar `notify.event`, o handler recebe `{ eventType, payload }`: o id está em `e.payload.id`, **nunca** em `e.id`, e `STATE_UPDATED` continua proibido (traz o endereço):
+  - Como `window.stellytics` não tem fila, chame depois de o script carregar (`window.stellytics?.wallets(...)`; se o script puder demorar, repita a chamada no `load` da janela, ela é idempotente).
+  - Se preferir assinar à mão e usar `stellytics.event`, o handler recebe `{ eventType, payload }`: o id está em `e.payload.id`, **nunca** em `e.id`, e `STATE_UPDATED` continua proibido (traz o endereço):
 
 ```js
 StellarWalletsKit.on(KitEventType.WALLET_SELECTED, (e) => {
   const id = e?.payload?.id;
-  if (id) window.notify?.event("wallet_selected", { wallet: id });
+  if (id) window.stellytics?.event("wallet_selected", { wallet: id });
 });
 ```
 - O painel web ainda não lista os eventos customizados; eles ficam no Umami.
@@ -134,13 +134,13 @@ O script e os endpoints usam `/s/`, `/e` e `/c`, sem os termos que as listas pad
 2. A chave aparece **uma única vez**, num aviso "Copy your ingest key now. It won't be shown again". Copie e guarde num gerenciador de segredos. Ela tem o formato `ntf_<8 caracteres>_<segredo>`. O portal guarda só o hash; se você perder a chave, crie outra.
 3. Em `/services/[serviceId]/keys` (aba **Ingest keys**) você vê o prefixo, a data de criação e o status de cada chave (a coluna **Last used** mostra o dia, em UTC, da última autenticação da chave no coletor; "Never" quer dizer que ela ainda não foi usada), cria novas e revoga as antigas. Cada serviço pode ter até **5 chaves ativas**. Para trocar a chave sem perder dados: crie a nova, atualize a sua API e só então revogue a antiga.
 
-**Uma chave por serviço.** A chave define o projeto e o serviço de cada métrica. O `service.name` e qualquer atributo de tenant que a sua API mandar são **ignorados**: o coletor apaga os atributos `notify.*` que vierem do cliente.
+**Uma chave por serviço.** A chave define o projeto e o serviço de cada métrica. O `service.name` e qualquer atributo de tenant que a sua API mandar são **ignorados**: o coletor apaga os atributos `stellytics.*` que vierem do cliente.
 
 ### 4.2 O que o coletor precisa receber
 
 - **Endpoint:** OTLP/HTTP (`/v1/metrics`, `/v1/traces`) ou OTLP/gRPC, no `<coletor>`.
 - **Header:** `Authorization: Bearer ntf_...`. Sem chave válida (ou com chave revogada, ou de projeto removido), a resposta é `401` (HTTP) ou `Unauthenticated` (gRPC).
-- **Sinal:** o histograma `http.server.request.duration` (em segundos, o nome atual das convenções semânticas do OpenTelemetry; a antiga `http.server.duration`, em `ms`, também vale). Alternativa: spans de servidor HTTP. Se o serviço manda as duas coisas, o notify usa a métrica e ignora os spans, para não contar em dobro. Prefira a métrica: traces com amostragem (sampling) contam menos requisições do que as reais.
+- **Sinal:** o histograma `http.server.request.duration` (em segundos, o nome atual das convenções semânticas do OpenTelemetry; a antiga `http.server.duration`, em `ms`, também vale). Alternativa: spans de servidor HTTP. Se o serviço manda as duas coisas, o stellytics usa a métrica e ignora os spans, para não contar em dobro. Prefira a métrica: traces com amostragem (sampling) contam menos requisições do que as reais.
 - **Atributos lidos:** `http.request.method`, `http.response.status_code` e `http.route`. Sem `http.route`, o coletor usa o caminho (`url.path`) e o normaliza.
 - **Temporalidade:** prefira **delta**. Cumulativo também funciona (o coletor converte), mas um reinício do coletor pode perder um intervalo.
 
@@ -150,7 +150,7 @@ O script e os endpoints usam `/s/`, `/e` e `/c`, sem os termos que as listas pad
 
 ### 4.3 Dual-export pelo SDK
 
-Sua API continua mandando a telemetria para o APM atual e manda a mesma métrica ao notify. Cada destino é um `PeriodicExportingMetricReader` no mesmo `MeterProvider` (código completo em [`examples/api-backend/server.mjs`](../examples/api-backend/server.mjs)):
+Sua API continua mandando a telemetria para o APM atual e manda a mesma métrica ao stellytics. Cada destino é um `PeriodicExportingMetricReader` no mesmo `MeterProvider` (código completo em [`examples/api-backend/server.mjs`](../examples/api-backend/server.mjs)):
 
 ```js
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-proto";
@@ -164,7 +164,7 @@ const reader = (url, headers = {}) =>
 const provider = new MeterProvider({
   readers: [
     reader("https://apm.example.com/v1/metrics"), // backend próprio
-    reader("https://<coletor>/v1/metrics", { Authorization: `Bearer ${process.env.NOTIFY_INGEST_KEY}` }),
+    reader("https://<coletor>/v1/metrics", { Authorization: `Bearer ${process.env.STELLYTICS_INGEST_KEY}` }),
   ],
 });
 ```
@@ -177,20 +177,20 @@ Se a sua API já manda para um OTel Collector, basta acrescentar um exporter (ar
 
 ```yaml
 exporters:
-  otlp_http/notify:
-    endpoint: ${env:NOTIFY_OTLP_ENDPOINT}
+  otlp_http/stellytics:
+    endpoint: ${env:STELLYTICS_OTLP_ENDPOINT}
     headers:
-      Authorization: Bearer ${env:NOTIFY_INGEST_KEY}
+      Authorization: Bearer ${env:STELLYTICS_INGEST_KEY}
 
 service:
   pipelines:
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [debug, otlp_http/notify] # troque debug pelo exporter do seu APM
+      exporters: [debug, otlp_http/stellytics] # troque debug pelo exporter do seu APM
 ```
 
-Funciona com o Collector core (`otel/opentelemetry-collector`) a partir da v0.164.0; em versões mais antigas, o nome do exporter é `otlphttp`. Com o contrib, dá para usar uma pipeline separada com um processor `filter` antes do `otlp_http/notify`, mandando só o necessário. Mais detalhes, incluindo a execução local com Compose, em [`examples/api-backend/README.md`](../examples/api-backend/README.md); o contrato completo está em [`docs/specs/e5-pipeline-de-api.md`](specs/e5-pipeline-de-api.md).
+Funciona com o Collector core (`otel/opentelemetry-collector`) a partir da v0.164.0; em versões mais antigas, o nome do exporter é `otlphttp`. Com o contrib, dá para usar uma pipeline separada com um processor `filter` antes do `otlp_http/stellytics`, mandando só o necessário. Mais detalhes, incluindo a execução local com Compose, em [`examples/api-backend/README.md`](../examples/api-backend/README.md); o contrato completo está em [`docs/specs/e5-pipeline-de-api.md`](specs/e5-pipeline-de-api.md).
 
 ### 4.5 Conferir que chegou
 
@@ -222,7 +222,7 @@ Como ler os números e os limites:
 - **Atraso:** os dados novos aparecem em 1 a 2 minutos, dependendo do intervalo de exportação do SDK. Um job consolida os minutos em horas e dias a cada 15 minutos, só com horas fechadas há 5 minutos; enquanto isso o painel lê a parte recente direto dos minutos, então a diferença não deveria aparecer nos números.
 - **Retenção:** minutos por 35 dias, horas e dias por 25 meses. O painel lê cada trecho da tabela que o cobre: as horas consolidadas vêm do 1h, os dias do 1d e a parte recente, ainda não consolidada, do 1m.
 - **Lacunas** nos gráficos de latência são períodos sem requisições.
-- **Só HTTP de servidor:** o painel não mostra clientes, IPs, corpos nem traces; isso nunca chega ao notify.
+- **Só HTTP de servidor:** o painel não mostra clientes, IPs, corpos nem traces; isso nunca chega ao stellytics.
 - **Projeto removido:** um projeto removido pelo SCF vê apenas o aviso, e a ingestão (web e API) é recusada.
 
 ## 6. Problemas comuns

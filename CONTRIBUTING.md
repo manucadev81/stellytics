@@ -1,6 +1,6 @@
 # Como contribuir
 
-Obrigado pelo interesse no notify. Este guia explica como preparar o ambiente, rodar os testes e enviar mudanças.
+Obrigado pelo interesse no stellytics. Este guia explica como preparar o ambiente, rodar os testes e enviar mudanças.
 
 ## Antes de começar
 
@@ -36,7 +36,7 @@ go vet ./...
 go test -race ./...
 ```
 
-Testes de integração usam um Postgres real, lido de `DATABASE_URL` (no ambiente local, `postgresql://notify:notify@localhost:5432/notify`). O CI roda tudo isso em cada PR.
+Testes de integração usam um Postgres real, lido de `DATABASE_URL` (no ambiente local, `postgresql://stellytics:stellytics@localhost:5432/stellytics`). O CI roda tudo isso em cada PR.
 
 Regras que os testes precisam cobrir:
 

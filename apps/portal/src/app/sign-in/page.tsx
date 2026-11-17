@@ -20,7 +20,7 @@ export default async function SignInPage({
   if (session) redirect(next);
 
   return (
-    <AuthCard title="Sign in to notify" subtitle="Web and API analytics for Stellar projects.">
+    <AuthCard title="Sign in to stellytics" subtitle="Web and API analytics for Stellar projects.">
       {params.reset === "1" && (
         <p role="status" className="mt-4 text-sm text-emerald-700 dark:text-emerald-400">
           Your password was changed. Sign in with the new one.

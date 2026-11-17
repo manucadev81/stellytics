@@ -1,5 +1,5 @@
 #!/bin/sh
-# Gera o código da distribuição (collector/cmd/notify-collector) com o OCB.
+# Gera o código da distribuição (collector/cmd/stellytics-collector) com o OCB.
 #
 # O OCB sempre cria um go.mod próprio na pasta de saída. Como o ADR 0002 pede um
 # módulo Go só em services/, o script gera numa pasta temporária e copia só os
@@ -9,7 +9,7 @@
 set -eu
 
 OCB_VERSION=v0.164.0
-out=collector/cmd/notify-collector
+out=collector/cmd/stellytics-collector
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 

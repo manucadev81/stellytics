@@ -55,14 +55,14 @@ O spec do E2 e o ADR 0003 entraram junto, no commit `75658a7`.
 - **Visões e usuários de ingestão (D4)**, migração `drizzle/0002_ingest_views.sql`, escrita à mão:
   - `ingest_site` (para o gateway web): o ID do site no Umami e se ele aceita ingestão agora;
   - `ingest_key_active` (para o coletor): só chaves não revogadas, de serviço não arquivado e tenant ativo;
-  - `notify_ingest` e `notify_collector` leem só a própria visão, nenhuma tabela.
+  - `stellytics_ingest` e `stellytics_collector` leem só a própria visão, nenhuma tabela.
 - **Os dois usuários do banco são criados fora das migrações**, porque isso exige superusuário: `infra/compose/postgres/init/02-ingest-roles.sh`. A migração para com uma mensagem clara se eles não existirem. O CI roda o mesmo script antes dos testes.
-- O usuário `notify` pode assumir esses dois papéis (`SET ROLE`, sem herdar nada), só para os testes de permissão.
+- O usuário `stellytics` pode assumir esses dois papéis (`SET ROLE`, sem herdar nada), só para os testes de permissão.
 
 ### #58: Umami
 
 - **Pendência do ADR 0001 resolvida:** a chave de API do Umami 3.4.1 basta para a conta de serviço, sem a senha de administrador. Conferido no código do Umami e no Umami local, e registrado no ADR 0001.
-  - A conta de serviço é um usuário **comum** do Umami (`notify-portal`, papel `user`). Ela cria, lista, lê e apaga os próprios sites, e as rotas de usuários e de administração recusam a chave.
+  - A conta de serviço é um usuário **comum** do Umami (`stellytics-portal`, papel `user`). Ela cria, lista, lê e apaga os próprios sites, e as rotas de usuários e de administração recusam a chave.
   - **Limite:** a chave também consegue criar equipes no Umami. O portal não usa essa rota (ADR 0003).
 - **Script** `pnpm umami:service-account`: usa a senha de administrador uma vez, cria (ou atualiza) o usuário de serviço com uma senha aleatória que ninguém guarda, e imprime uma chave nova. Com `--revoke-old`, apaga as chaves anteriores.
 - **Cliente único** em `src/lib/umami/`:
@@ -138,7 +138,7 @@ O spec do E2 e o ADR 0003 entraram junto, no commit `75658a7`.
 ### #21: testes de isolamento
 
 - **Suíte única** em `apps/portal/test/isolation.test.ts`, com os casos da seção 8 do spec: dois tenants (A e B) com site, serviço e chave, um operador e um usuário sem projeto.
-- Os casos passam pelo que o navegador alcança (páginas e server actions, com a sessão simulada, inclusive o `update-user` do Better Auth) e pelo que a ingestão lê (as visões, consultadas como `notify_ingest` e `notify_collector`).
+- Os casos passam pelo que o navegador alcança (páginas e server actions, com a sessão simulada, inclusive o `update-user` do Better Auth) e pelo que a ingestão lê (as visões, consultadas como `stellytics_ingest` e `stellytics_collector`).
 - **A parte do coletor** fica no e2e dele: chave de tenant removido recusada (`services/collector/e2e/e2e_test.go`, da #30) e chave revogada ou tenant removido **depois** de aceitos, recusados em até o cache, com reativação (`isolation_test.go`).
 - **Chave de A dizendo ser de B** (`TestKeyOfAClaimingBIsStoredAsA`, no e2e do coletor, porque precisa do exporter da #31): a alegação vai com os IDs reais de B nos atributos de recurso, de escopo e de ponto ou span, em dois recursos no mesmo pedido, por HTTP (métricas) e por gRPC (spans). Tudo é gravado como o dono da chave, e B fica sem nenhuma linha em `api_metric_1m`.
 - **Conferido que o caso pega falhas:** com o `tenantattr` respeitando o tenant que o cliente manda, ou carimbando só o primeiro recurso do pedido, o teste falha.
@@ -209,19 +209,19 @@ O job `compose` do CI, além de subir o ambiente, confere as permissões dos usu
 | `UMAMI_API_KEY` | Chave da conta de serviço. Sem ela, o portal sobe, mas não cria sites |
 | `SMTP_URL` | Servidor SMTP. Sem ele, o portal sobe, mas os e-mails falham (o erro vai para o log) |
 | `MAIL_FROM` | Remetente dos e-mails |
-| `NOTIFY_INGEST_DB_PASSWORD`, `NOTIFY_COLLECTOR_DB_PASSWORD` | Senhas dos usuários de ingestão no Compose |
+| `STELLYTICS_INGEST_DB_PASSWORD`, `STELLYTICS_COLLECTOR_DB_PASSWORD` | Senhas dos usuários de ingestão no Compose |
 | `MAILPIT_PORT`, `MAILPIT_SMTP_PORT` | Portas locais do Mailpit |
 
 ## 7. Limites e pendências
 
 **Ficou para outros épicos:**
 
-- O `INSERT` do `notify_collector` nas tabelas de métricas entra no E5, junto com as tabelas.
+- O `INSERT` do `stellytics_collector` nas tabelas de métricas entra no E5, junto com as tabelas.
 - O SMTP de produção depende da IaC (#14, E1).
 
 **Limites conhecidos:**
 
-- `ingest_key.last_used_on` é gravado pelo coletor (migração `0008_ingest_key_last_used.sql`): a extensão `ingestkeyauth` chama, em segundo plano, a função `ingest_key_touch(prefixo)` na primeira autenticação do dia (UTC) de cada chave, uma vez por chave e dia por processo. A função é `SECURITY DEFINER`, só atualiza essa coluna e só de chave que está em `ingest_key_active`; o `notify_collector` tem apenas `EXECUTE` nela e continua sem acesso à tabela. Falha só gera um aviso no log, com o nome do tipo do erro.
+- `ingest_key.last_used_on` é gravado pelo coletor (migração `0008_ingest_key_last_used.sql`): a extensão `ingestkeyauth` chama, em segundo plano, a função `ingest_key_touch(prefixo)` na primeira autenticação do dia (UTC) de cada chave, uma vez por chave e dia por processo. A função é `SECURITY DEFINER`, só atualiza essa coluna e só de chave que está em `ingest_key_active`; o `stellytics_collector` tem apenas `EXECUTE` nela e continua sem acesso à tabela. Falha só gera um aviso no log, com o nome do tipo do erro.
 - Os limites de tentativa ficam em memória e usam o IP de `X-Forwarded-For`. Em produção, o portal precisa de uma instância só e do Caddy na frente.
 - O domínio de um site é único por tenant mesmo depois de arquivado, como diz o spec: um domínio arquivado não pode ser cadastrado de novo sem desarquivar.
 - A chave de API do Umami consegue criar equipes; só o código do portal impede isso.

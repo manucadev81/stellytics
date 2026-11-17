@@ -1,5 +1,5 @@
 {
-  "name": "notify",
+  "name": "stellytics",
   "private": true,
   "license": "MIT",
   "packageManager": "pnpm@10.34.5",
@@ -7,6 +7,8 @@
     "node": ">=24"
   },
   "scripts": {
+    "bootstrap": "./scripts/bootstrap.sh",
+    "setup": "./scripts/bootstrap.sh",
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",

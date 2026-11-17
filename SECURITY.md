@@ -1,6 +1,6 @@
 # Política de segurança
 
-O notify recebe dados de uso de vários projetos (tenants). Vulnerabilidades que permitam ler dados de outro tenant, burlar a chave de ingestão, persistir dados pessoais (como o IP completo) ou inflar métricas são tratadas como prioridade.
+O stellytics recebe dados de uso de vários projetos (tenants). Vulnerabilidades que permitam ler dados de outro tenant, burlar a chave de ingestão, persistir dados pessoais (como o IP completo) ou inflar métricas são tratadas como prioridade.
 
 ## Como relatar uma vulnerabilidade
 

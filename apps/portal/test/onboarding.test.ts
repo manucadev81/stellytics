@@ -9,7 +9,7 @@ import { db, sql } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
 import { auditLog, tenant, tenantMember, user } from "@/lib/db/schema";
 
-const DOMAIN = "@onboarding-test.notify.invalid";
+const DOMAIN = "@onboarding-test.stellytics.invalid";
 // Todo projeto destes testes tem nome com este prefixo, para a limpeza.
 const NAME = "Onboarding Test";
 

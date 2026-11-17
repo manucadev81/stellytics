@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "notify", template: "%s · notify" },
+  title: { default: "stellytics", template: "%s · stellytics" },
   description: "Web and API analytics for Stellar ecosystem projects",
 };
 

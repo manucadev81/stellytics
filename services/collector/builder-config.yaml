@@ -1,12 +1,12 @@
 # Manifesto do OCB (OpenTelemetry Collector Builder) da distribuição do coletor.
-# Gera collector/cmd/notify-collector dentro do módulo services/ (um módulo Go
+# Gera collector/cmd/stellytics-collector dentro do módulo services/ (um módulo Go
 # só, ADR 0002). Para regenerar, de dentro de services/:
 #   collector/generate.sh
 # Versões do core do Collector com pelo menos 14 dias, como as outras dependências.
 dist:
-  name: notify-collector
-  description: Coletor de métricas de API do notify
-  output_path: ./collector/cmd/notify-collector
+  name: stellytics-collector
+  description: Coletor de métricas de API do stellytics
+  output_path: ./collector/cmd/stellytics-collector
   version: 0.1.0
 
 extensions:

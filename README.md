@@ -1,4 +1,4 @@
-# notify
+# stellytics
 
 Plataforma open source e multi-tenant de **analytics web e de API** para projetos do ecossistema [Stellar](https://stellar.org), proposta para o RFP *Web and API Analytics for Stellar Ecosystem Projects* do [Stellar Community Fund](https://communityfund.stellar.org) (SCF).
 
@@ -8,7 +8,7 @@ Plataforma open source e multi-tenant de **analytics web e de API** para projeto
 
 O SCF não tem uma fonte confiável e unificada de dados de uso dos projetos que financia. Hoje os revisores dependem de números informados pelos próprios projetos para decidir quem entra em programas de continuidade.
 
-O notify oferece uma plataforma compartilhada e gratuita em que:
+O stellytics oferece uma plataforma compartilhada e gratuita em que:
 
 - cada projeto (tenant) mede o uso do seu site e da sua API e vê só os próprios dados;
 - operadores do SCF veem e comparam as métricas de todos os projetos.
@@ -21,7 +21,7 @@ O notify oferece uma plataforma compartilhada e gratuita em que:
 - referenciadores;
 - duração da sessão e taxa de rejeição;
 - país, dispositivo e navegador;
-- eventos customizados opcionais (`window.notify.event`), sem endereço de carteira, hash ou valor.
+- eventos customizados opcionais (`window.stellytics.event`), sem endereço de carteira, hash ou valor.
 
 **API**, a partir do OpenTelemetry que o projeto já envia ao próprio APM (dual-export):
 
@@ -40,7 +40,7 @@ flowchart LR
     A[API do tenant<br/>OpenTelemetry]
   end
 
-  subgraph notify
+  subgraph stellytics
     G[Gateway de ingestão web<br/>Go]
     U[Umami<br/>headless]
     C[Coletor OTel<br/>Go]
@@ -68,7 +68,7 @@ flowchart LR
 | [Umami](https://umami.is) v3.4.1 | Next.js | Motor de analytics web, usado sem fork |
 | Coletor de API | OpenTelemetry Collector + componentes Go | Autenticação por chave, normalização de rotas e gravação das métricas |
 | Rollup | Go | Consolida as métricas de API de 1 minuto em 1 hora e 1 dia e aplica a retenção |
-| Banco | PostgreSQL 17 | Bancos separados `umami` (analytics web) e `notify` (tenants, chaves e métricas de API, com 24 meses de agregados) |
+| Banco | PostgreSQL 17 | Bancos separados `umami` (analytics web) e `stellytics` (tenants, chaves e métricas de API, com 24 meses de agregados) |
 | Infra | OpenTofu, Ansible, Docker Compose, Caddy | Hospedagem na União Europeia (Hetzner), backup contínuo cifrado, recriável a partir deste repositório |
 
 Em produção, o Caddy é a única porta de entrada, com três hosts na 443: portal, ingestão web e ingestão de API (OTLP por HTTP e gRPC). O Umami nunca é exposto.
@@ -122,19 +122,27 @@ Requer Node.js 24, pnpm 10 (`corepack enable`), Go 1.26 e Docker com Compose v2 
 
 ```bash
 pnpm install
-docker compose up -d --wait   # banco, Umami, portal, gateway, coletor e rollup
+pnpm bootstrap    # ou ./scripts/bootstrap.sh
 ```
 
-A primeira subida cria os bancos, aplica as migrações e constrói as imagens. Falta um passo manual, feito uma vez: gerar a chave com que o portal fala com o Umami. Sem ela o portal sobe, mas não cria sites nem mostra estatísticas web.
+O comando de bootstrap prepara o `.env`, sobe o banco e o Umami, gera automaticamente a conta de serviço do portal e inicializa toda a stack.
+
+<details>
+<summary>Como fazer o passo a passo manual</summary>
 
 ```bash
+cp .env.example .env
+docker compose up -d --wait   # banco, Umami, portal, gateway, coletor e rollup
+
 # Publica o Umami em 127.0.0.1:3001 (só para desenvolvimento) e gera a chave.
 docker compose -f compose.yaml -f infra/compose/umami-port.yaml up -d --wait
 UMAMI_ADMIN_PASSWORD=umami UMAMI_URL=http://127.0.0.1:3001 \
-  pnpm --filter @notify/portal umami:service-account
+  pnpm --filter @stellytics/portal umami:service-account
 ```
 
-Ponha a chave impressa em `UMAMI_API_KEY`, no `.env` da raiz, e recrie o portal com `docker compose up -d portal`. Para entrar no portal, crie um usuário como descrito em [`apps/portal`](apps/portal/README.md#criar-um-usuário).
+Ponha a chave impressa em `UMAMI_API_KEY`, no `.env` da raiz, e recrie o portal com `docker compose up -d portal`.
+
+</details>
 
 | Serviço | Endereço |
 |---|---|
@@ -142,7 +150,7 @@ Ponha a chave impressa em `UMAMI_API_KEY`, no `.env` da raiz, e recrie o portal 
 | Gateway de ingestão web | http://localhost:3002 |
 | Coletor de API (OTLP) | http://localhost:4318 (HTTP) e `localhost:4317` (gRPC) |
 | Mailpit (e-mails do portal) | http://localhost:8025 |
-| PostgreSQL 17 | `localhost:5432` (`notify`/`notify` e `umami`/`umami`) |
+| PostgreSQL 17 | `localhost:5432` (`stellytics`/`stellytics` e `umami`/`umami`) |
 
 - Portas e senhas: copie `.env.example` para `.env`.
 - O Umami não publica porta por padrão; o override `infra/compose/umami-port.yaml` (usado acima) abre a interface dele em http://127.0.0.1:3001. Detalhes em [`docs/umami.md`](docs/umami.md).

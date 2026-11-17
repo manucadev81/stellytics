@@ -49,7 +49,7 @@ func newSlowUmami(t *testing.T) (*slowUmami, relay.Sender) {
 	}))
 	t.Cleanup(srv.Close)
 	base, _ := url.Parse(srv.URL)
-	return u, relay.NewClient(base, "x-notify-client-ip", srv.Client())
+	return u, relay.NewClient(base, "x-stellytics-client-ip", srv.Client())
 }
 
 func (u *slowUmami) open() {

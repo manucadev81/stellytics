@@ -1,5 +1,5 @@
 {
-  "name": "@notify/example-api-backend",
+  "name": "@stellytics/example-api-backend",
   "private": true,
   "type": "module",
   "scripts": {

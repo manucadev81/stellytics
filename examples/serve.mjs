@@ -2,11 +2,11 @@
 //
 //   node ../serve.mjs <pasta> [spa]
 //
-// Troca o comentário <!-- notify:script --> das páginas pela tag do script de
+// Troca o comentário <!-- stellytics:script --> das páginas pela tag do script de
 // rastreamento, montada a partir das variáveis de ambiente:
-//   NOTIFY_WEBSITE_ID   ID do site no Umami (obrigatório)
-//   NOTIFY_GATEWAY_URL  origem do gateway (padrão http://127.0.0.1:3002)
-//   NOTIFY_SCRIPT_VERSION  versão do script (padrão: a mais nova publicada)
+//   STELLYTICS_WEBSITE_ID   ID do site no Umami (obrigatório)
+//   STELLYTICS_GATEWAY_URL  origem do gateway (padrão http://127.0.0.1:3002)
+//   STELLYTICS_SCRIPT_VERSION  versão do script (padrão: a mais nova publicada)
 //   PORT                porta (padrão 4001)
 // No modo spa, caminhos sem arquivo devolvem o index.html (roteamento no navegador).
 import { readFile } from "node:fs/promises";
@@ -20,14 +20,14 @@ const port = Number(process.env.PORT ?? 4001);
 const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css" };
 
 async function scriptTag() {
-  const website = process.env.NOTIFY_WEBSITE_ID;
-  if (!website) throw new Error("defina NOTIFY_WEBSITE_ID com o ID do site no Umami");
-  const gateway = (process.env.NOTIFY_GATEWAY_URL ?? "http://127.0.0.1:3002").replace(/\/$/, "");
+  const website = process.env.STELLYTICS_WEBSITE_ID;
+  if (!website) throw new Error("defina STELLYTICS_WEBSITE_ID com o ID do site no Umami");
+  const gateway = (process.env.STELLYTICS_GATEWAY_URL ?? "http://127.0.0.1:3002").replace(/\/$/, "");
   const sri = JSON.parse(
     await readFile(new URL("../packages/tracker/published/sri.json", import.meta.url), "utf8"),
   );
   const version =
-    process.env.NOTIFY_SCRIPT_VERSION ??
+    process.env.STELLYTICS_SCRIPT_VERSION ??
     Object.keys(sri).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).at(-1);
   if (!sri[version]) throw new Error(`versão ${version} do script não publicada`);
   return (
@@ -63,6 +63,6 @@ createServer(async (req, res) => {
     body = await readFile(file);
   }
   const type = types[extname(file)] ?? "application/octet-stream";
-  if (extname(file) === ".html") body = body.toString().replace("<!-- notify:script -->", tag);
+  if (extname(file) === ".html") body = body.toString().replace("<!-- stellytics:script -->", tag);
   res.writeHead(200, { "content-type": type, "cache-control": "no-store" }).end(body);
 }).listen(port, "127.0.0.1", () => console.log(`http://127.0.0.1:${port}/ (${dir}${mode ? `, ${mode}` : ""})`));

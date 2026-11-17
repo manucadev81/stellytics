@@ -18,7 +18,7 @@ import { runMigrations } from "@/lib/db/migrate";
 import { apiService, auditLog, ingestKey, tenant, tenantMember, user } from "@/lib/db/schema";
 import { generateIngestKey, hashIngestKey, KEY_PATTERN } from "@/lib/ingest-key";
 
-const DOMAIN = "@keys-test.notify.invalid";
+const DOMAIN = "@keys-test.stellytics.invalid";
 const SLUG = "keys-test-";
 
 async function createMember(status: "active" | "removed" = "active"): Promise<TenantContext> {
@@ -32,13 +32,13 @@ async function createMember(status: "active" | "removed" = "active"): Promise<Te
   return (await loadTenantContext(userId))!;
 }
 
-// Lê a visão do coletor como o usuário notify_collector, numa transação desfeita.
+// Lê a visão do coletor como o usuário stellytics_collector, numa transação desfeita.
 class Rollback extends Error {}
 async function activeForCollector(prefix: string) {
   let rows: { prefix: string; tenant_id: string }[] = [];
   await sql
     .begin(async (tx) => {
-      await tx.unsafe("SET LOCAL ROLE notify_collector");
+      await tx.unsafe("SET LOCAL ROLE stellytics_collector");
       rows = await tx`select prefix, tenant_id from ingest_key_active where prefix = ${prefix}`;
       throw new Rollback();
     })
@@ -219,7 +219,7 @@ describe("isolamento e status do tenant", () => {
 });
 
 describe("último uso pelo coletor", () => {
-  // Roda como notify_collector numa transação desfeita; `check` roda de novo
+  // Roda como stellytics_collector numa transação desfeita; `check` roda de novo
   // como dono, ainda dentro da transação, para ler o efeito.
   async function asCollector<T>(
     run: (tx: typeof sql) => Promise<unknown>,
@@ -228,7 +228,7 @@ describe("último uso pelo coletor", () => {
     const out: { result?: unknown; error?: Error; checked?: T } = {};
     await sql
       .begin(async (tx) => {
-        await tx.unsafe("SET LOCAL ROLE notify_collector");
+        await tx.unsafe("SET LOCAL ROLE stellytics_collector");
         try {
           await tx.unsafe("SAVEPOINT s");
           out.result = await run(tx as unknown as typeof sql);
@@ -303,7 +303,7 @@ describe("último uso pelo coletor", () => {
     let denied: Error | undefined;
     await sql
       .begin(async (tx) => {
-        await tx.unsafe("SET LOCAL ROLE notify_ingest");
+        await tx.unsafe("SET LOCAL ROLE stellytics_ingest");
         try {
           await tx.unsafe(`select ingest_key_touch('${prefix}')`);
         } catch (error) {

@@ -7,10 +7,10 @@
 # Ponta a ponta do pipeline de API (#36): confere também status, latência
 # (buckets somando a contagem) e serviço; manda direto ao coletor um trace e um
 # log alegando ser de outro tenant e falha se a métrica cair no tenant errado
-# ou se o marcador do trace/log aparecer em coluna de texto do banco notify.
+# ou se o marcador do trace/log aparecer em coluna de texto do banco stellytics.
 set -eu
 
-psql() { docker compose exec -T postgres psql -U postgres -d notify -v ON_ERROR_STOP=1 -Atq "$@"; }
+psql() { docker compose exec -T postgres psql -U postgres -d stellytics -v ON_ERROR_STOP=1 -Atq "$@"; }
 
 suffix=$({ tr -dc 'a-z0-9' </dev/urandom 2>/dev/null; } | head -c 10)
 prefix=$({ tr -dc 'a-z2-7' </dev/urandom 2>/dev/null; } | head -c 8)
@@ -35,7 +35,7 @@ psql -c "INSERT INTO ingest_key (api_service_id, tenant_id, prefix, key_hash, cr
 decoy=$(psql -c "INSERT INTO tenant (name, slug, status) VALUES ('decoy-$suffix', 'decoy-$suffix', 'active') RETURNING id")
 
 cleanup() {
-  NOTIFY_INGEST_KEY=x docker compose -f compose.yaml -f infra/compose/api-example.yaml \
+  STELLYTICS_INGEST_KEY=x docker compose -f compose.yaml -f infra/compose/api-example.yaml \
     rm -sf example-api tenant-otelcol >/dev/null 2>&1 || true
   psql -c "DELETE FROM api_metric_1m WHERE tenant_id = '$tenant';
     DELETE FROM ingest_key WHERE tenant_id = '$tenant';
@@ -46,7 +46,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-NOTIFY_INGEST_KEY="$key" docker compose -f compose.yaml -f infra/compose/api-example.yaml \
+STELLYTICS_INGEST_KEY="$key" docker compose -f compose.yaml -f infra/compose/api-example.yaml \
   up -d --build --no-deps --wait --wait-timeout 180 example-api tenant-otelcol
 
 base=http://127.0.0.1:${EXAMPLE_API_PORT:-4010}
@@ -68,7 +68,7 @@ if [ "$total" -lt 9 ]; then
   docker compose -f compose.yaml -f infra/compose/api-example.yaml logs --tail 50 tenant-otelcol example-api || true
   exit 1
 fi
-# A rota sem padrão conhecido foi normalizada pelo coletor do notify.
+# A rota sem padrão conhecido foi normalizada pelo coletor do stellytics.
 psql -c "SELECT count(*) FROM api_metric_1m WHERE tenant_id = '$tenant' AND route = '/x/{id}' AND status_code = 404" | grep -qx 1
 # Status certo e latência: os buckets de cada linha somam a contagem.
 psql -c "SELECT count(*) FROM api_metric_1m WHERE tenant_id = '$tenant' AND route = '/ledgers/{sequence}' AND status_code = 200 AND request_count = 3" | grep -qx 1
@@ -80,9 +80,9 @@ psql -c "SELECT count(*) FROM api_metric_1m WHERE tenant_id = '$tenant' AND api_
 marker="e2emarker$suffix"
 trace=5b8efff798038103d269b633813fc60c
 now=$(date +%s)000000000
-claim='{"key":"notify.tenant.id","value":{"stringValue":"'$decoy'"}},{"key":"service.name","value":{"stringValue":"'$marker'"}}'
+claim='{"key":"stellytics.tenant.id","value":{"stringValue":"'$decoy'"}},{"key":"service.name","value":{"stringValue":"'$marker'"}}'
 otlp=http://127.0.0.1:${COLLECTOR_HTTP_PORT:-4318}
-curl -fsS -H "Authorization: Bearer $key2" -H 'Content-Type: application/json' "$otlp/v1/traces" -d '{"resourceSpans":[{"resource":{"attributes":['"$claim"']},"scopeSpans":[{"spans":[{"traceId":"'$trace'","spanId":"eee19b7ec3c1b174","name":"'$marker'","kind":2,"startTimeUnixNano":"'$now'","endTimeUnixNano":"'$now'","attributes":[{"key":"http.request.method","value":{"stringValue":"GET"}},{"key":"http.route","value":{"stringValue":"/'$marker'/{id}"}},{"key":"http.response.status_code","value":{"intValue":"201"}},{"key":"notify.tenant.id","value":{"stringValue":"'$decoy'"}}]}]}]}]}' >/dev/null
+curl -fsS -H "Authorization: Bearer $key2" -H 'Content-Type: application/json' "$otlp/v1/traces" -d '{"resourceSpans":[{"resource":{"attributes":['"$claim"']},"scopeSpans":[{"spans":[{"traceId":"'$trace'","spanId":"eee19b7ec3c1b174","name":"'$marker'","kind":2,"startTimeUnixNano":"'$now'","endTimeUnixNano":"'$now'","attributes":[{"key":"http.request.method","value":{"stringValue":"GET"}},{"key":"http.route","value":{"stringValue":"/'$marker'/{id}"}},{"key":"http.response.status_code","value":{"intValue":"201"}},{"key":"stellytics.tenant.id","value":{"stringValue":"'$decoy'"}}]}]}]}]}' >/dev/null
 curl -fsS -H "Authorization: Bearer $key2" -H 'Content-Type: application/json' "$otlp/v1/logs" -d '{"resourceLogs":[{"resource":{"attributes":['"$claim"']},"scopeLogs":[{"logRecords":[{"timeUnixNano":"'$now'","body":{"stringValue":"'$marker'-log"}}]}]}]}' >/dev/null
 
 for _ in $(seq 1 30); do

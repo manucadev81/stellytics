@@ -45,7 +45,7 @@ func TestFingerprintLimitPerIP(t *testing.T) {
 
 	var uas []string
 	for _, r := range s.umami.received() {
-		uas = append(uas, r.header.Get("User-Agent")+" @ "+r.header.Get("x-notify-client-ip"))
+		uas = append(uas, r.header.Get("User-Agent")+" @ "+r.header.Get("x-stellytics-client-ip"))
 	}
 	want := []string{
 		"bot/1 @ 203.0.113.0",

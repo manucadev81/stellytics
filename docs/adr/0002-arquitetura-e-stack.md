@@ -59,7 +59,7 @@ flowchart LR
 | Coletor de API | `services/collector` | Distribuição própria do OpenTelemetry Collector (OCB) | Receiver OTLP gRPC/HTTP, `memory_limiter`, `batch`, `spanmetrics` connector |
 | Componentes próprios do coletor | `services/collector/components` | Go | Extensão de autenticação por chave de ingestão (define o `tenant.id`), processor de normalização de rotas e exporter para PostgreSQL |
 | Umami | imagem oficial fixada | — | Ingestão, armazenamento e API das estatísticas web |
-| Banco | — | PostgreSQL | Um cluster com bancos separados: `umami` (gerenciado pelo Umami) e `notify` (tenants, chaves e métricas de API) |
+| Banco | — | PostgreSQL | Um cluster com bancos separados: `umami` (gerenciado pelo Umami) e `stellytics` (tenants, chaves e métricas de API) |
 | Infra | `infra/` | Terraform, Ansible, Docker Compose, Caddy | Provisionamento, deploy, TLS e proxy reverso |
 | Observabilidade | `infra/monitoring` | Prometheus, Grafana, Alertmanager | Saúde da ingestão e dos painéis, alertas |
 | Exemplos | `examples/` | HTML estático, SPA, Next.js SSR, backend com OTel | Integração de referência e testes de ponta a ponta |

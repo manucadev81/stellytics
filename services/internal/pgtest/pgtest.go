@@ -1,5 +1,5 @@
 // Package pgtest reúne o que os testes de integração Go precisam do banco
-// notify: um banco com as migrações do portal, sem nunca migrar o banco de
+// stellytics: um banco com as migrações do portal, sem nunca migrar o banco de
 // DATABASE_URL por fora do Drizzle, e conexões como os usuários de ingestão.
 package pgtest
 
@@ -43,7 +43,7 @@ func Database(t *testing.T, adminURL string) string {
 		_ = conn.QueryRow(ctx, `SELECT count(*) FROM drizzle.__drizzle_migrations`).Scan(&applied)
 		if total := len(migrationFiles(t)); applied < total {
 			t.Skipf("o banco de DATABASE_URL tem %d de %d migrações do portal e o usuário não pode criar um banco "+
-				"temporário: rode pnpm --filter @notify/portal db:migrate (ou suba o portal) ou use um usuário com CREATEDB",
+				"temporário: rode pnpm --filter @stellytics/portal db:migrate (ou suba o portal) ou use um usuário com CREATEDB",
 				applied, total)
 		}
 		return adminURL

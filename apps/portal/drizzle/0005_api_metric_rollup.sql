@@ -1,7 +1,7 @@
 -- Escrita à mão (drizzle-kit generate --custom). Spec do E5, seção 5 (#34).
 --
 -- Consolidação de api_metric_1m em api_metric_1h e api_metric_1d e retenção
--- por partição. Quem chama é o serviço services/rollup, como notify (dono das
+-- por partição. Quem chama é o serviço services/rollup, como stellytics (dono das
 -- tabelas), pela função api_metric_maintain().
 
 -- Consolida as horas fechadas a partir de `since`: as que terminaram há pelo

@@ -1,5 +1,5 @@
 // Teste de integração do modelo de tenants (#16) contra um Postgres real
-// (DATABASE_URL). Exige os papéis notify_ingest e notify_collector
+// (DATABASE_URL). Exige os papéis stellytics_ingest e stellytics_collector
 // (infra/compose/postgres/init/02-ingest-roles.sh).
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { eq, inArray, like } from "drizzle-orm";
@@ -9,7 +9,7 @@ import { runMigrations } from "@/lib/db/migrate";
 import { apiService, ingestKey, site, tenant, tenantMember, user } from "@/lib/db/schema";
 import { asRole } from "./helpers/as-role";
 
-const DOMAIN = "@tenant-test.notify.invalid";
+const DOMAIN = "@tenant-test.stellytics.invalid";
 const SLUG = "tenant-test-";
 
 // Prefixo de 8 caracteres em base32 minúsculo, como o da #59.
@@ -161,7 +161,7 @@ describe("visões de ingestão (D4)", () => {
     ]);
 
     const rows = await asRole<{ umami_website_id: string; accepts_ingest: boolean }>(
-      "notify_ingest",
+      "stellytics_ingest",
       `select umami_website_id, accepts_ingest from ingest_site
        where umami_website_id in ('${live}', '${archived}', '${ofRemoved}')`,
     );
@@ -180,7 +180,7 @@ describe("visões de ingestão (D4)", () => {
     const ofRemoved = await createKey(serviceOfRemoved.id, removed.id, userId);
 
     const rows = await asRole<{ prefix: string; tenant_id: string; service_name: string }>(
-      "notify_collector",
+      "stellytics_collector",
       `select prefix, tenant_id, service_name from ingest_key_active
        where prefix in ('${valid}', '${revoked}', '${ofRemoved}')`,
     );
@@ -189,12 +189,12 @@ describe("visões de ingestão (D4)", () => {
 
   it("os usuários de ingestão não leem as tabelas nem a visão do outro", async () => {
     const denied = [
-      ["notify_ingest", 'select 1 from "user"'],
-      ["notify_ingest", "select 1 from site"],
-      ["notify_ingest", "select 1 from ingest_key_active"],
-      ["notify_collector", "select 1 from ingest_key"],
-      ["notify_collector", "select 1 from session"],
-      ["notify_collector", "select 1 from ingest_site"],
+      ["stellytics_ingest", 'select 1 from "user"'],
+      ["stellytics_ingest", "select 1 from site"],
+      ["stellytics_ingest", "select 1 from ingest_key_active"],
+      ["stellytics_collector", "select 1 from ingest_key"],
+      ["stellytics_collector", "select 1 from session"],
+      ["stellytics_collector", "select 1 from ingest_site"],
     ] as const;
     for (const [role, query] of denied) {
       await expect(asRole(role, query), `${role}: ${query}`).rejects.toThrow(/permission denied/);

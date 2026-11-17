@@ -1,5 +1,5 @@
 {
-  "name": "@notify/examples-e2e",
+  "name": "@stellytics/examples-e2e",
   "private": true,
   "type": "module",
   "scripts": {

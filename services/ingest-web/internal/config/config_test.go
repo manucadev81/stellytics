@@ -11,13 +11,13 @@ func env(m map[string]string) func(string) string {
 
 func TestLoadDefaults(t *testing.T) {
 	c, err := Load(env(map[string]string{
-		"DATABASE_URL": "postgresql://notify_ingest:x@db/notify",
+		"DATABASE_URL": "postgresql://stellytics_ingest:x@db/stellytics",
 		"UMAMI_URL":    "http://umami:3000",
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.ListenAddr != ":8080" || c.ClientIPHeader != "x-notify-client-ip" ||
+	if c.ListenAddr != ":8080" || c.ClientIPHeader != "x-stellytics-client-ip" ||
 		c.RateLimit != 20 || c.RateBurst != 40 || c.SiteCacheTTL != time.Minute || c.SiteStaleTTL != 0 ||
 		c.ScriptDir != "" || len(c.TrustedProxies) != 0 || c.UmamiURL.Host != "umami:3000" ||
 		c.ProofSecret != nil || c.ProofBits != 12 || c.ProofTTL != 10*time.Minute ||

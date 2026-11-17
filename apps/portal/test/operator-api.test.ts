@@ -16,7 +16,7 @@ import { apiService, tenant, tenantMember, user } from "@/lib/db/schema";
 import { resolvePeriod } from "@/lib/period";
 import OperatorApiPage from "@/app/(private)/operator/api/page";
 
-const DOMAIN = "@operator-api-test.notify.invalid";
+const DOMAIN = "@operator-api-test.stellytics.invalid";
 const SLUG = "operator-api-test-";
 const NOT_FOUND = { digest: expect.stringContaining("404") };
 const NOW = new Date("2026-11-14T10:37:12.345Z");

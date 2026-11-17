@@ -36,7 +36,7 @@ func TestRecorderRecordsNothing(t *testing.T) {
 			site.RecorderEnabled, site.ReplayConfig)
 	}
 
-	registerSite(t, connect(t, notifyDB), websiteID)
+	registerSite(t, connect(t, stellyticsDB), websiteID)
 	time.Sleep(siteCacheTTL + time.Second)
 	start := time.Now().Add(-time.Minute)
 

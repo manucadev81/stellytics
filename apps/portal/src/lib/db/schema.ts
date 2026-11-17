@@ -1,8 +1,8 @@
-// Esquema do banco `notify`: tabelas do Better Auth (usuários, sessões, contas e
+// Esquema do banco `stellytics`: tabelas do Better Auth (usuários, sessões, contas e
 // verificações) e o modelo de tenants do spec do E2, seção 3
 // (docs/specs/e2-tenants-e-controle-de-acesso.md).
 // As visões lidas pelo gateway e pelo coletor e as permissões dos usuários
-// notify_ingest e notify_collector estão em SQL escrito à mão, em
+// stellytics_ingest e stellytics_collector estão em SQL escrito à mão, em
 // drizzle/0002_ingest_views.sql.
 import { sql } from "drizzle-orm";
 import {
@@ -212,7 +212,7 @@ export const ingestKey = pgTable(
 
 // Chave de leitura do SCF (#48, ADR 0006): dá acesso de leitura às métricas
 // globais pela API `/api/v1`. Só operador cria. Fica fora das visões de
-// notify_ingest e notify_collector, que não têm permissão nesta tabela.
+// stellytics_ingest e stellytics_collector, que não têm permissão nesta tabela.
 export const operatorApiKey = pgTable(
   "operator_api_key",
   {

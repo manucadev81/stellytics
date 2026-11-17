@@ -6,7 +6,7 @@ método em `docs/relatorios/carga-1m-dia.md`.
 ```sh
 cd services
 go build -o /tmp/loadtest ./loadtest
-/tmp/loadtest setup    -notify-db ... -umami-url ... -out state.json   # site no Umami, tenant, serviços e chaves
+/tmp/loadtest setup    -stellytics-db ... -umami-url ... -out state.json   # site no Umami, tenant, serviços e chaves
 /tmp/loadtest web      -state state.json -profile "11.6x10m,116x5m"    # GET /c, prova de JS, POST /e
 /tmp/loadtest api      -state state.json -profile "11.6x10m,116x5m"    # OTLP/HTTP (métricas e spans)
 /tmp/loadtest teardown -state state.json
@@ -34,7 +34,7 @@ go build -o /tmp/loadtest ./loadtest
 ## Segurança
 
 - `setup`, `teardown`, `web` e `api` recusam qualquer alvo que não seja
-  loopback (`-notify-db`, `-umami-url`, `-gateway`, `-umami-db`, `-collector`)
+  loopback (`-stellytics-db`, `-umami-url`, `-gateway`, `-umami-db`, `-collector`)
   sem `-allow-remote`, e imprimem host e banco antes de agir. Não aponte para
   produção.
 - O arquivo de estado (`state.json`, no `.gitignore`) guarda as chaves de

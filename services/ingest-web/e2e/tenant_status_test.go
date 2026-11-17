@@ -21,7 +21,7 @@ func TestRemovedTenantIsDropped(t *testing.T) {
 	websiteID := umamiCreateWebsite(t, token)
 	t.Cleanup(func() { umamiDo(t, token, http.MethodDelete, "/api/websites/"+websiteID, nil, nil) })
 
-	db := connect(t, notifyDB)
+	db := connect(t, stellyticsDB)
 	registerSite(t, db, websiteID)
 	time.Sleep(siteCacheTTL + time.Second)
 	start := time.Now().Add(-time.Minute)

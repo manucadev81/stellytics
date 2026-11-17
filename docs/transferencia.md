@@ -1,6 +1,6 @@
 # Transferência para um operador da comunidade
 
-Plano e procedimento para passar a operação do notify a um operador da comunidade (por exemplo, o próprio SCF ou uma equipe indicada por ele): repositório, imagens, infraestrutura, domínio, dados e responsabilidades ([#54](https://github.com/romulospl/notify/issues/54), épico [E9](https://github.com/romulospl/notify/issues/9)).
+Plano e procedimento para passar a operação do stellytics a um operador da comunidade (por exemplo, o próprio SCF ou uma equipe indicada por ele): repositório, imagens, infraestrutura, domínio, dados e responsabilidades ([#54](https://github.com/romulospl/notify/issues/54), épico [E9](https://github.com/romulospl/notify/issues/9)).
 
 > **Status.** O **plano** está escrito a partir do que o repositório tem hoje (`docs/deploy.md`, `docs/runbooks/`, `release.yml`, `infra/`). O **procedimento de migração de dados foi executado de verdade, localmente**, com os scripts e o resultado descritos em [Migração de dados](#migração-de-dados-testada). **Nada mais foi executado:** nenhuma transferência de repositório, de domínio ou de conta real, nenhuma restauração contra o Object Storage real da Hetzner, nenhum `tofu apply` ou `ansible-playbook` de verdade. A lista completa está em [O que não foi testado](#o-que-não-foi-testado). Pelo critério da issue, **a #54 só fecha quando o novo operador roda o sistema sozinho** ([Critérios de aceite](#critérios-de-aceite-da-transferência)); este documento não cumpre isso.
 >
@@ -14,12 +14,12 @@ Plano e procedimento para passar a operação do notify a um operador da comunid
 |---|---|---|
 | **Repositório GitHub** (código, issues, releases, tags, `SECURITY.md`) | Transferência em *Settings → Danger Zone → Transfer* para a organização do novo operador. O GitHub mantém redirecionamento das URLs do repositório e leva issues, releases e tags. **Não leva** o Project `romulospl/projects/1` (é do usuário) nem as configurações de segurança: reative o relato privado de vulnerabilidade (*Security → Report a vulnerability*) e confira os mantenedores. Os links `https://github.com/romulospl/notify/...` na documentação continuam funcionando pelo redirecionamento; troque-os depois, sem pressa | `.github/ISSUE_TEMPLATE/config.yml`, `SECURITY.md`, `README.md`, `CONTRIBUTING.md`, `docs/` |
 | **GitHub Actions e segredos** | Ligue o Actions na organização nova. Hoje nenhum workflow usa segredo do repositório além do `GITHUB_TOKEN` (conferido: não há `secrets.` fora dele em `.github/workflows/`), então **não há segredo de Actions para migrar**. O `release.yml` publica no GHCR com esse token e assina por OIDC; o `adblock.yml` roda por `cron` (`17 6 * * *`) e continua depois da transferência | `.github/workflows/` |
-| **Organização, pacotes GHCR e imagens** | O `release.yml` publica em `ghcr.io/${{ github.repository }}/<nome>`, então **a primeira release feita no repositório novo publica no namespace novo** (`ghcr.io/<org-nova>/notify/portal` etc.). As imagens antigas **ficam** em `ghcr.io/romulospl/notify/...`: não assuma que a transferência do repositório move os pacotes (confira, e, se precisar, transfira cada pacote pela página dele). Pacotes novos nascem **privados**: deixe `portal` e `ingest-web` públicos (`docs/deploy.md`, passo 3), senão a VM não baixa nem confere a assinatura | `.github/workflows/release.yml`, `infra/ansible/group_vars/all.yml` (`portal_image`, `ingest_web_image`) |
-| **Identidade do cosign** | A assinatura é keyless e carrega o caminho do workflow que a gerou. `cosign_identity_regexp` (hoje `^https://github.com/romulospl/notify/\.github/workflows/release\.yml@refs/tags/v`) **precisa passar a apontar para a organização nova**, e `portal_image` e `ingest_web_image` para os digests das imagens **novas**. As imagens assinadas pelo repositório antigo **não passam** na verificação nova (a identidade é outra), então a primeira implantação do novo operador sempre sai de uma release feita por ele. Para uma janela de transição, o regexp pode aceitar as duas origens (`^https://github.com/(romulospl|<org-nova>)/notify/...`); remova a antiga depois | `infra/ansible/group_vars/all.yml`, `infra/ansible/roles/notify/tasks/main.yml` (`cosign verify`) |
+| **Organização, pacotes GHCR e imagens** | O `release.yml` publica em `ghcr.io/${{ github.repository }}/<nome>`, então **a primeira release feita no repositório novo publica no namespace novo** (`ghcr.io/<org-nova>/stellytics/portal` etc.). As imagens antigas **ficam** em `ghcr.io/romulospl/notify/...`: não assuma que a transferência do repositório move os pacotes (confira, e, se precisar, transfira cada pacote pela página dele). Pacotes novos nascem **privados**: deixe `portal` e `ingest-web` públicos (`docs/deploy.md`, passo 3), senão a VM não baixa nem confere a assinatura | `.github/workflows/release.yml`, `infra/ansible/group_vars/all.yml` (`portal_image`, `ingest_web_image`) |
+| **Identidade do cosign** | A assinatura é keyless e carrega o caminho do workflow que a gerou. `cosign_identity_regexp` (hoje `^https://github.com/romulospl/notify/\.github/workflows/release\.yml@refs/tags/v`) **precisa passar a apontar para a organização nova**, e `portal_image` e `ingest_web_image` para os digests das imagens **novas**. As imagens assinadas pelo repositório antigo **não passam** na verificação nova (a identidade é outra), então a primeira implantação do novo operador sempre sai de uma release feita por ele. Para uma janela de transição, o regexp pode aceitar as duas origens (`^https://github.com/(romulospl|<org-nova>)/stellytics/...`); remova a antiga depois | `infra/ansible/group_vars/all.yml`, `infra/ansible/roles/stellytics/tasks/main.yml` (`cosign verify`) |
 | **App do Renovate** | O Renovate é um app do GitHub instalado na conta do dono: o novo dono instala o app na organização e habilita o repositório. O `renovate.json` (14 dias de espera, aprovação no Dependency Dashboard para versões maiores, Umami à parte) vai junto com o código. O Dependency Dashboard é uma issue e vem com o repositório | `renovate.json`, `docs/runbooks/atualizacao-do-umami.md` |
 | **Domínio e DNS** | Dois nomes, o do portal e o da ingestão. **É a parte que mais prende**: os scripts instalados nos sites dos tenants carregam o host da ingestão (ver [Decisão](#decisão-domínio-e-host-da-ingestão)). Os registros são criados à mão (ADR 0004), então nada na IaC os move | `docs/deploy.md` passo 2 |
 | **Conta Hetzner (Cloud)** | O novo operador cria o **próprio projeto** e roda o OpenTofu nele (`docs/deploy.md`, passo 1): a VM, o volume e o bucket da produção têm `delete_protection` e `prevent_destroy`, e o estado do OpenTofu (`terraform.tfstate`) é local, na máquina de quem aplicou. Não se transfere infraestrutura; recria-se e migra-se **os dados** (abaixo). A infraestrutura antiga fica ligada até o fim do período de reversão | `infra/opentofu/` |
-| **Object Storage e bucket de backup** | Bucket novo, na conta nova, com credenciais S3 novas (`backup_bucket`, `walg_s3_access_key`, `walg_s3_secret_key`, `walg_s3_prefix`). Os backups do operador antigo **não são migrados no caminho recomendado**: o novo operador começa a própria linha de backups com `systemctl start notify-backup` logo depois da migração. O bucket antigo é guardado pelo período de reversão e depois apagado, junto com a chave de cifra antiga | `docs/runbooks/backup-e-restauracao.md` |
+| **Object Storage e bucket de backup** | Bucket novo, na conta nova, com credenciais S3 novas (`backup_bucket`, `walg_s3_access_key`, `walg_s3_secret_key`, `walg_s3_prefix`). Os backups do operador antigo **não são migrados no caminho recomendado**: o novo operador começa a própria linha de backups com `systemctl start stellytics-backup` logo depois da migração. O bucket antigo é guardado pelo período de reversão e depois apagado, junto com a chave de cifra antiga | `docs/runbooks/backup-e-restauracao.md` |
 | **`walg_libsodium_key`** | Pelo caminho **lógico** (recomendado), o novo operador **gera uma chave nova** e a chave antiga **não passa de mãos**: quem a tem consegue ler os backups antigos, que contêm todos os dados (inclusive hashes de senha e sessões do portal), então ela some com o bucket antigo. Pelo caminho **físico** (WAL-G), a chave antiga é necessária para ler o bucket copiado e precisa ser entregue por canal seguro; depois da migração, comece um bucket e uma chave novos e descarte a antiga. Ela **não é rotacionável** (`docs/runbooks/rotacao-de-segredos.md`), por isso a troca de operador é a oportunidade natural de gerar outra | `infra/ansible/secrets.example.yml` |
 | **SMTP** | O novo operador contrata o próprio provedor e ajusta `smtp_url`, `mail_from` e SPF, DKIM e DMARC do domínio do remetente. Sem SMTP ninguém se cadastra (e-mail confirmado é obrigatório), e a recuperação de senha também depende dele | `docs/deploy.md` ("O que você precisa") |
 | **Segredos de `secrets.yml`** | Tabela abaixo: quase todos são **gerados de novo**, três merecem cuidado | `infra/ansible/secrets.example.yml` |
@@ -35,7 +35,7 @@ Plano e procedimento para passar a operação do notify a um operador da comunid
 
 | Segredo | Na migração |
 |---|---|
-| `postgres_password`, `umami_db_password`, `notify_db_password`, `notify_ingest_db_password`, `notify_collector_db_password` | **Gere de novo.** No caminho lógico os papéis do banco novo são criados pelos scripts de `infra/compose/postgres/init/` com as senhas novas; o teste usou senhas diferentes das da origem em todos eles |
+| `postgres_password`, `umami_db_password`, `stellytics_db_password`, `stellytics_ingest_db_password`, `stellytics_collector_db_password` | **Gere de novo.** No caminho lógico os papéis do banco novo são criados pelos scripts de `infra/compose/postgres/init/` com as senhas novas; o teste usou senhas diferentes das da origem em todos eles |
 | `portal_auth_secret` | **Mantenha** se quiser que os usuários continuem logados e os links de e-mail em andamento valham: no teste, a sessão criada na origem continuou válida no destino com o mesmo valor. Trocar derruba todas as sessões (efeito esperado, `rotacao-de-segredos.md`); a troca de valor **não foi testada** na migração |
 | `umami_app_secret` | **Mantenha.** Só se testou com o mesmo valor. O `rotacao-de-segredos.md` diz que trocá-lo derruba as sessões do Umami e pode invalidar a chave de API; o efeito sobre a contagem de visitantes do mês **não foi medido** |
 | `umami_api_key` | **Confira.** Se a chave vive no banco do Umami, ela migra e continua valendo; **isso não foi testado** (o teste não criou a conta de serviço). Se o portal receber 401 do Umami, gere outra (`docs/deploy.md`, passo 5, item 3) |
@@ -55,7 +55,7 @@ O script de rastreamento é instalado em sites de terceiros com `src="https://<h
 
 **A opção C exige uma mudança que o repositório ainda não tem.** O `infra/caddy/Caddyfile` conhece só `{$PORTAL_HOST}` e `{$INGEST_HOST}`. Para a transição seria preciso acrescentar um bloco do portal antigo (`redir https://<portal novo>{uri} permanent`) e fazer o bloco da ingestão atender os dois nomes (`{$INGEST_HOST}, {$LEGACY_INGEST_HOST} { ... }`), além de passar as variáveis pelo `prod.yaml`, pelo `env.j2` e pelo `group_vars`. **Isso é uma proposta, não está implementado nem testado**; se a opção C for a escolhida, abra uma issue e implemente antes da janela. Mudar o host do portal também derruba as sessões (o cookie é do host) e muda a `BETTER_AUTH_URL`.
 
-**Host neutro** ([`packages/tracker/docs/ad-blockers.md`](../packages/tracker/docs/ad-blockers.md)): o host da ingestão deve ser curto e neutro (`e.<domínio>` ou `gw.<domínio>`), sem `analytics`, `track`, `tracking`, `collect`, `umami`, `stats`, `metrics` nem `telemetry`, e o check do bloqueio deve rodar com ele (`pnpm --filter @notify/tracker check:adblock <host>`). Como o host é praticamente permanente, **decida o domínio e o dono final antes do primeiro deploy**: se a produção ainda não foi aplicada, registre o domínio já na conta do projeto ou da entidade que vai operar, e a opção A deixa de ser uma transferência e vira só uma troca de contato administrativo.
+**Host neutro** ([`packages/tracker/docs/ad-blockers.md`](../packages/tracker/docs/ad-blockers.md)): o host da ingestão deve ser curto e neutro (`e.<domínio>` ou `gw.<domínio>`), sem `analytics`, `track`, `tracking`, `collect`, `umami`, `stats`, `metrics` nem `telemetry`, e o check do bloqueio deve rodar com ele (`pnpm --filter @stellytics/tracker check:adblock <host>`). Como o host é praticamente permanente, **decida o domínio e o dono final antes do primeiro deploy**: se a produção ainda não foi aplicada, registre o domínio já na conta do projeto ou da entidade que vai operar, e a opção A deixa de ser uma transferência e vira só uma troca de contato administrativo.
 
 ## O que o novo operador precisa ter e saber
 
@@ -99,8 +99,8 @@ Antes de tocar nos dados, porque tudo o que sobe no destino precisa de imagens d
 3. Conferir a assinatura com a identidade nova, como o playbook fará:
 
    ```bash
-   cosign verify ghcr.io/<org-nova>/notify/portal@sha256:<digest> \
-     --certificate-identity-regexp '^https://github.com/<org-nova>/notify/\.github/workflows/release\.yml@refs/tags/v' \
+   cosign verify ghcr.io/<org-nova>/stellytics/portal@sha256:<digest> \
+     --certificate-identity-regexp '^https://github.com/<org-nova>/stellytics/\.github/workflows/release\.yml@refs/tags/v' \
      --certificate-oidc-issuer https://token.actions.githubusercontent.com
    ```
 
@@ -121,29 +121,29 @@ Janela sugerida: o horário de menor tráfego dos sites dos tenants, **longe do 
 
 Durante a janela, o portal fica fora do ar (ninguém entra nem cria nada) e **a ingestão web para: os eventos que chegarem entre a parada do gateway antigo e o gateway novo atender são descartados** (o `fetch` do script falha em silêncio) e **não são recuperados**. Os painéis terão um buraco desse tamanho. Avise isso aos tenants.
 
-Na VM **antiga**, como root (`cd /opt/notify/infra/compose`; os scripts estão em `../scripts/` depois de um `site.yml` com esta versão do repositório):
+Na VM **antiga**, como root (`cd /opt/stellytics/infra/compose`; os scripts estão em `../scripts/` depois de um `site.yml` com esta versão do repositório):
 
 1. `docker compose -f prod.yaml stop caddy portal ingest-web umami` (a ingestão para aqui).
-2. `systemctl stop notify-backup.timer`.
-3. `../scripts/db-export.sh /root/migracao`. Gera `notify.dump`, `umami.dump`, `fingerprint.txt` e `sha256sums` (permissão 600).
+2. `systemctl stop stellytics-backup.timer`.
+3. `../scripts/db-export.sh /root/migracao`. Gera `stellytics.dump`, `umami.dump`, `fingerprint.txt` e `sha256sums` (permissão 600).
 4. Copie a pasta para a VM nova sem passar por disco intermediário, pela máquina de quem administra:
 
    ```bash
    ssh root@<vm-antiga> 'tar -C /root -cf - migracao' | ssh root@<vm-nova> 'tar -C /root -xf -'
    ```
 
-Na VM **nova**, como root (`cd /opt/notify/infra/compose`), com a pilha já no ar e **vazia** (passo 4 do `docs/deploy.md`):
+Na VM **nova**, como root (`cd /opt/stellytics/infra/compose`), com a pilha já no ar e **vazia** (passo 4 do `docs/deploy.md`):
 
-5. `docker compose -f prod.yaml stop caddy portal ingest-web umami` e depois `../scripts/db-import.sh --yes /root/migracao`. **Antes de apagar qualquer coisa** ele confere que o `sha256sums` lista `notify.dump` e `umami.dump` e bate, que os dois dumps abrem (`pg_restore -l`), que **nenhum serviço além do Postgres está rodando** (ele não os para) e que o destino tem **0 tenants** (`--force-nonempty` só de propósito: sem isso, rodar o script na VM de origem por engano apagaria a produção). Restaura em bancos temporários (`notify_new`, `umami_new`) e só então troca pelos de verdade, reaplica o `02-ingest-roles.sh` e compara a impressão digital com a da origem. Só imprime `OK` se for idêntica; qualquer diferença aborta e você **não sobe a aplicação**.
+5. `docker compose -f prod.yaml stop caddy portal ingest-web umami` e depois `../scripts/db-import.sh --yes /root/migracao`. **Antes de apagar qualquer coisa** ele confere que o `sha256sums` lista `stellytics.dump` e `umami.dump` e bate, que os dois dumps abrem (`pg_restore -l`), que **nenhum serviço além do Postgres está rodando** (ele não os para) e que o destino tem **0 tenants** (`--force-nonempty` só de propósito: sem isso, rodar o script na VM de origem por engano apagaria a produção). Restaura em bancos temporários (`stellytics_new`, `umami_new`) e só então troca pelos de verdade, reaplica o `02-ingest-roles.sh` e compara a impressão digital com a da origem. Só imprime `OK` se for idêntica; qualquer diferença aborta e você **não sobe a aplicação**.
 6. `docker compose -f prod.yaml up -d --wait`.
 7. **Troque a senha do `admin` do Umami** pelo túnel (`infra/scripts/admin-tunnel.sh <ip-da-vm-nova>`, `http://127.0.0.1:13001`): ela veio do banco e o operador antigo a conhece.
-8. `systemctl start notify-backup` (o primeiro backup base da linha nova, no bucket novo) e confira com `backup-list`.
+8. `systemctl start stellytics-backup` (o primeiro backup base da linha nova, no bucket novo) e confira com `backup-list`.
 **Virada do DNS** (com o gateway novo já saudável por IP):
 
 10. Aponte `app.<domínio>` e o host da ingestão (A e AAAA) para os IPs da VM nova. Com TTL de 300 s a virada leva alguns minutos; o Caddy novo pega o certificado quando o nome passar a resolver para ele.
 11. Conferir de fora, com os comandos do passo 6 do `docs/deploy.md`; entrar no portal com uma conta de tenant e abrir o painel de um site; abrir `/operator`; instalar o script num site de teste e ver a visita no painel.
 12. Se o portal receber 401 do Umami, gere a chave de serviço de novo (`docs/deploy.md`, passo 5) e atualize `umami_api_key`.
-13. **Só depois de validar** (passos 11 e 12), apague os **dumps** (`notify.dump`, `umami.dump`; contêm hashes de senha e sessões) da VM nova e da antiga: `rm -f /root/migracao/*.dump`. Deixe o `fingerprint.txt` e o `sha256sums` até o fim do período de reversão. Até lá os dumps são a forma mais rápida de refazer a migração: guarde-os só se a decisão for explícita, e apague no fim.
+13. **Só depois de validar** (passos 11 e 12), apague os **dumps** (`stellytics.dump`, `umami.dump`; contêm hashes de senha e sessões) da VM nova e da antiga: `rm -f /root/migracao/*.dump`. Deixe o `fingerprint.txt` e o `sha256sums` até o fim do período de reversão. Até lá os dumps são a forma mais rápida de refazer a migração: guarde-os só se a decisão for explícita, e apague no fim.
 
 ### Fase 4: depois (T até T+30)
 
@@ -190,7 +190,7 @@ Até o fim do período de reversão (30 dias) o antigo operador mantém tudo o q
 
 | Em que ponto | Como voltar |
 |---|---|
-| **Antes da virada do DNS** (passos 1 a 8 da janela) | Abortar é seguro: na VM antiga, `docker compose -f prod.yaml up -d --wait` e `systemctl start notify-backup.timer`. A ingestão volta; os eventos do intervalo da janela já se perderam. Os dados da VM antiga não foram alterados (o `db-export.sh` só lê) |
+| **Antes da virada do DNS** (passos 1 a 8 da janela) | Abortar é seguro: na VM antiga, `docker compose -f prod.yaml up -d --wait` e `systemctl start stellytics-backup.timer`. A ingestão volta; os eventos do intervalo da janela já se perderam. Os dados da VM antiga não foram alterados (o `db-export.sh` só lê) |
 | **Depois da virada** | Aponte o DNS de volta para o IP antigo (TTL de 300 s) e suba a pilha antiga (comando acima). **O que o novo operador gravou desde a virada se perde**, a menos que seja trazido de volta: pare a aplicação nova, rode `db-export.sh` nela e `db-import.sh --yes` na antiga. Os scripts são os mesmos, **mas essa direção não foi testada** |
 | **Imagens** | A pilha antiga volta com as imagens antigas e a identidade antiga do cosign (`group_vars/all.yml` do operador antigo); não misture os dois `all.yml` |
 | **Repositório** | A transferência de volta é outra transferência no GitHub; não é preciso reverter para voltar a operar |
@@ -200,27 +200,27 @@ Se o problema aparecer depois dos 30 dias, a reversão deixa de ser um plano e v
 
 ## Migração de dados (testada)
 
-Procedimento para mover os bancos `notify` e `umami` de uma pilha para outra, com **três scripts** e um teste que roda os dois caminhos de ponta a ponta.
+Procedimento para mover os bancos `stellytics` e `umami` de uma pilha para outra, com **três scripts** e um teste que roda os dois caminhos de ponta a ponta.
 
 | Arquivo | Papel |
 |---|---|
 | [`infra/scripts/db-export.sh`](../infra/scripts/db-export.sh) | Na origem, com **tudo parado exceto o Postgres**: `pg_dump -Fc` de cada banco, confere que o arquivo abre, grava a impressão digital e o `sha256sums` |
 | [`infra/scripts/db-import.sh`](../infra/scripts/db-import.sh) | No destino: confere o `sha256sums`, exige a aplicação parada e o destino sem tenants, restaura em bancos temporários, troca pelos de verdade, reaplica o `02-ingest-roles.sh` e compara a impressão digital. **Destrutivo** (`--yes`) |
-| [`infra/scripts/db-fingerprint.sh`](../infra/scripts/db-fingerprint.sh) | Imprime, sem dados de ninguém e sem senhas, as linhas e um checksum de **cada tabela** (partições inclusas), as sequências, o hash do esquema (`pg_dump --schema-only`), as extensões, os papéis, as filiações e as ACLs dos bancos e as permissões de `notify_ingest` e `notify_collector` |
+| [`infra/scripts/db-fingerprint.sh`](../infra/scripts/db-fingerprint.sh) | Imprime, sem dados de ninguém e sem senhas, as linhas e um checksum de **cada tabela** (partições inclusas), as sequências, o hash do esquema (`pg_dump --schema-only`), as extensões, os papéis, as filiações e as ACLs dos bancos e as permissões de `stellytics_ingest` e `stellytics_collector` |
 | [`infra/compose/test/data-migration-test.sh`](../infra/compose/test/data-migration-test.sh) | O teste: sobe origem e destinos com as imagens de produção (Compose de produção por cima de `prod.yaml`), grava dados, migra e confere |
 
-Os scripts vão para a VM pelo `site.yml` (`/opt/notify/infra/scripts/`).
+Os scripts vão para a VM pelo `site.yml` (`/opt/stellytics/infra/scripts/`).
 
 ### Dois caminhos
 
 - **A. Lógico (`pg_dump`/`pg_restore`), o recomendado.** Funciona entre contas, não depende da chave de cifra antiga, deixa o destino com **senhas, chave de backup e bucket próprios** e não carrega os papéis do banco da origem (o destino cria os dele). O custo é a janela proporcional ao tamanho dos dados.
-- **B. Físico (WAL-G).** Copia o bucket de backup para o do novo operador e restaura com `notify-restore` (`docs/deploy.md`, "Restaurar o banco"). Serve se o volume de dados for tão grande que o dump não caiba na janela. Exige a **chave de cifra antiga** nas mãos do novo operador e **traz os papéis da origem, com as senhas da origem** (achado abaixo). Um backup base final mais o WAL arquivado fecham a diferença até a parada.
+- **B. Físico (WAL-G).** Copia o bucket de backup para o do novo operador e restaura com `stellytics-restore` (`docs/deploy.md`, "Restaurar o banco"). Serve se o volume de dados for tão grande que o dump não caiba na janela. Exige a **chave de cifra antiga** nas mãos do novo operador e **traz os papéis da origem, com as senhas da origem** (achado abaixo). Um backup base final mais o WAL arquivado fecham a diferença até a parada.
 
 **Passos do caminho B** (os que o teste executou, na ordem), com a pilha de destino **sem o Postgres iniciado** e o `.env` do destino com a `walg_libsodium_key` da origem e o `walg_s3_prefix` do bucket novo:
 
-1. Origem, janela aberta: `docker compose -f prod.yaml stop caddy portal ingest-web umami`; `docker compose -f prod.yaml exec -T -u postgres postgres notify-backup`; troque o segmento de WAL (`select pg_switch_wal()`) e espere o `pg_stat_archiver` arquivá-lo.
+1. Origem, janela aberta: `docker compose -f prod.yaml stop caddy portal ingest-web umami`; `docker compose -f prod.yaml exec -T -u postgres postgres stellytics-backup`; troque o segmento de WAL (`select pg_switch_wal()`) e espere o `pg_stat_archiver` arquivá-lo.
 2. Copie o prefixo do bucket antigo para o novo (o teste usou `rclone sync --checksum` entre dois endpoints S3 e conferiu a contagem e o tamanho dos objetos).
-3. Destino: `docs/deploy.md`, "Restaurar o banco", com a pasta de dados vazia (`notify-restore LATEST`), e suba o Postgres.
+3. Destino: `docs/deploy.md`, "Restaurar o banco", com a pasta de dados vazia (`stellytics-restore LATEST`), e suba o Postgres.
 4. Alinhe as senhas dos papéis ao `.env` do destino (achado 4 abaixo) e reaplique o `02-ingest-roles.sh`.
 5. Compare `db-fingerprint.sh` com o da origem e suba a aplicação.
 
@@ -239,7 +239,7 @@ Cada pilha de **destino** sobe vazia, com o Compose de produção, **senhas e ch
 
 Caminho **A**, como na janela: pilha de destino completa e vazia no ar (o portal migrou o banco vazio e o Umami criou o esquema dele), `db-export.sh` na origem, `db-import.sh --yes` no destino, depois a aplicação sobe sobre os dados migrados.
 
-Caminho **B**: backup base e WAL da origem no S3 local (SeaweedFS, o mesmo do job `infra` do CI), **cópia do bucket para o bucket de outro S3** (rclone, com credenciais diferentes; 22 objetos, 16,98 MB, mesma contagem e tamanho nos dois lados), `notify-restore LATEST` em pasta vazia, subida do Postgres, ajuste das senhas, aplicação por cima.
+Caminho **B**: backup base e WAL da origem no S3 local (SeaweedFS, o mesmo do job `infra` do CI), **cópia do bucket para o bucket de outro S3** (rclone, com credenciais diferentes; 22 objetos, 16,98 MB, mesma contagem e tamanho nos dois lados), `stellytics-restore LATEST` em pasta vazia, subida do Postgres, ajuste das senhas, aplicação por cima.
 
 ### Resultados
 
@@ -251,11 +251,11 @@ Depois, com a aplicação rodando no destino:
 - o Umami (sem fork) abriu o banco migrado e devolveu **as mesmas estatísticas** (`/stats`: 60 page views, 18 visitantes), e o login `admin` migrou junto;
 - a **chave de ingestão original** (SHA-256 de 32 bytes) continua aceita por `ingest_key_active`, e as outras três continuam fora dela;
 - o `audit_log` **continua só de inserção**: `UPDATE`, `DELETE` e `TRUNCATE` são recusados pelos gatilhos e o `INSERT` passa;
-- `notify_ingest` e `notify_collector` **entram pela rede com as senhas novas** e leem só `ingest_site` e `ingest_key_active`; `notify_ingest` **não** lê `tenant`; `notify_collector` insere em `api_metric_1m`;
+- `stellytics_ingest` e `stellytics_collector` **entram pela rede com as senhas novas** e leem só `ingest_site` e `ingest_key_active`; `stellytics_ingest` **não** lê `tenant`; `stellytics_collector` insere em `api_metric_1m`;
 - `api_metric_ensure_partitions(2)` roda, e as partições existem;
 - o `db-import.sh` **recusa**, sem tocar nos bancos do destino (OIDs iguais antes e depois), cada um destes casos: aplicação rodando, dump adulterado, dump truncado com `sha256sums` regenerado, `sha256sums` sem os dumps, e a própria origem como destino (tem tenants).
 
-**Tempos** (uma máquina de desenvolvimento, dados pequenos: `notify.dump` com 224 KB e `umami.dump` com 68 KB; **não extrapole para dados reais**):
+**Tempos** (uma máquina de desenvolvimento, dados pequenos: `stellytics.dump` com 224 KB e `umami.dump` com 68 KB; **não extrapole para dados reais**):
 
 | Passo | Tempo |
 |---|---|
@@ -265,7 +265,7 @@ Depois, com a aplicação rodando no destino:
 | A: aplicação no ar sobre os dados migrados | 17 s |
 | B: backup base final e último WAL na origem | 4 a 8 s (a primeira vez, 63 s) |
 | B: cópia do bucket entre dois S3 (17 MB) | 6 a 13 s |
-| B: `notify-restore LATEST` e o Postgres aplicando o WAL e abrindo | 1 s e 11 a 12 s |
+| B: `stellytics-restore LATEST` e o Postgres aplicando o WAL e abrindo | 1 s e 11 a 12 s |
 | B: aplicação no ar sobre os dados restaurados | 18 a 23 s |
 
 ### O que deu errado, e o que mudou no procedimento
@@ -273,18 +273,18 @@ Depois, com a aplicação rodando no destino:
 1. **O `pg_dump --schema-only` nunca dá o mesmo hash duas vezes.** O `pg_dump` 17 escreve uma linha `\restrict <token aleatório>` (e `\unrestrict`) em toda saída. A primeira comparação do esquema falhou nos dois bancos por causa **só** disso (conferido com `diff` dos dois esquemas). O `db-fingerprint.sh` agora tira essas linhas.
 2. **A impressão digital só conferia a primeira tabela.** O `docker compose exec -T` lê a entrada padrão e, dentro de `while read`, engolia a lista de tabelas; o teste passou com o destino "idêntico" olhando uma tabela por banco. Corrigido (`< /dev/null`), e o teste agora **compara o número de tabelas da impressão digital com o de `pg_class`** para que isso não volte em silêncio. **Os resultados acima são da execução depois da correção.**
 3. **A senha do banco não pode ser testada por dentro do contêiner do Postgres.** Na imagem oficial, o socket local e o `127.0.0.1` são `trust`: qualquer senha entra. A primeira versão do teste "provou" as senhas assim, sem provar nada. Agora o teste conecta **pela rede do Compose**, de um contêiner à parte (`pg_net`).
-4. **Achado do caminho B: as senhas dos papéis vêm da origem.** O restore físico traz o catálogo inteiro, inclusive os hashes de senha de `postgres`, `notify`, `umami`, `notify_ingest` e `notify_collector`. Com o `.env` do destino (senhas diferentes), o teste confirmou que **`notify` não entra** com a senha do destino. O procedimento do caminho B ganhou o passo de alinhar: `ALTER ROLE postgres|notify|umami PASSWORD '<do .env>'` (lendo a senha sem eco, como em `rotacao-de-segredos.md`) e reaplicar o `02-ingest-roles.sh`. Foi o que o teste fez, e a impressão digital passou depois disso. Se o destino reutilizasse as mesmas senhas da origem, o passo não seria necessário; mas aí as senhas antigas ficariam com o novo operador.
+4. **Achado do caminho B: as senhas dos papéis vêm da origem.** O restore físico traz o catálogo inteiro, inclusive os hashes de senha de `postgres`, `stellytics`, `umami`, `stellytics_ingest` e `stellytics_collector`. Com o `.env` do destino (senhas diferentes), o teste confirmou que **`stellytics` não entra** com a senha do destino. O procedimento do caminho B ganhou o passo de alinhar: `ALTER ROLE postgres|stellytics|umami PASSWORD '<do .env>'` (lendo a senha sem eco, como em `rotacao-de-segredos.md`) e reaplicar o `02-ingest-roles.sh`. Foi o que o teste fez, e a impressão digital passou depois disso. Se o destino reutilizasse as mesmas senhas da origem, o passo não seria necessário; mas aí as senhas antigas ficariam com o novo operador.
 5. **O que não vai no dump, por construção, e como o procedimento cobre:**
    - **papéis e senhas:** `pg_dump` não os leva; o destino os cria nos scripts de init (`01` e `02`) com as senhas dele;
-   - **permissão de `CONNECT` nos bancos** (`notify_ingest` e `notify_collector`): é ACL do banco, não vai no dump e some no `DROP`/`CREATE DATABASE`; por isso o `db-import.sh` reaplica o `02-ingest-roles.sh` (idempotente) e a impressão digital compara a ACL do banco. Não foi observada a falha sem essa reaplicação; é por construção;
+   - **permissão de `CONNECT` nos bancos** (`stellytics_ingest` e `stellytics_collector`): é ACL do banco, não vai no dump e some no `DROP`/`CREATE DATABASE`; por isso o `db-import.sh` reaplica o `02-ingest-roles.sh` (idempotente) e a impressão digital compara a ACL do banco. Não foi observada a falha sem essa reaplicação; é por construção;
    - **extensões:** vão no dump (`pgcrypto` do Umami) e o restore as recria como superusuário (`postgres`); funcionou;
    - **sequências:** só a do Drizzle existe nos dois bancos (os IDs são `uuid`), e o valor migrou;
-   - **o diário do Drizzle** (`drizzle.__drizzle_migrations`, 8 linhas) vem no dump do `notify`: o portal novo não reaplica migração (o log do portal diz só "migrações aplicadas" na subida);
-   - **certificados do Caddy** (`/srv/notify/caddy`): não se migram; o Caddy novo emite os dele;
-   - **histórico de backup do WAL-G e dados do Prometheus:** não migram; o destino começa linhas novas (`systemctl start notify-backup` depois da migração).
+   - **o diário do Drizzle** (`drizzle.__drizzle_migrations`, 8 linhas) vem no dump do `stellytics`: o portal novo não reaplica migração (o log do portal diz só "migrações aplicadas" na subida);
+   - **certificados do Caddy** (`/srv/stellytics/caddy`): não se migram; o Caddy novo emite os dele;
+   - **histórico de backup do WAL-G e dados do Prometheus:** não migram; o destino começa linhas novas (`systemctl start stellytics-backup` depois da migração).
 6. **Versão do destino.** O `db-import.sh` confere a impressão digital **antes** de a aplicação subir, então ela só bate se o destino restaurou exatamente o que a origem tinha. Se as imagens do destino forem **mais novas** e trouxerem migração, o portal as aplica na subida (comportamento normal do `RUN_MIGRATIONS`; **não foi testado na migração**). Nunca suba uma versão **mais antiga** que a da origem sobre os dados: as migrações só andam para frente (`docs/deploy.md`, "Atualizar a aplicação").
 7. **O destino precisa estar vazio de dados, não de estrutura.** Se o `site.yml` já subiu o portal e o Umami, eles criaram tabelas vazias, e o restore bateria nelas (não tentado). O `db-import.sh` por isso exige a aplicação parada, restaura em bancos temporários e troca pelos de verdade (é o caminho testado). Ele **recusa** um destino com tenants (a origem, por exemplo) sem `--force-nonempty`; com a opção, apaga esses dados: confira o host antes.
-8. **Falhas e reexecução.** O `db-import.sh` pode ser rodado de novo. Uma falha **antes** da troca (soma que não bate, dump que não abre, restore que falha, aplicação rodando, destino não vazio) deixa o destino **como estava** (testado: os OIDs dos bancos não mudam). Uma falha **depois** da troca (impressão digital diferente) deixa o destino com os dados restaurados e **a aplicação parada**: investigue ou rode de novo; não suba a aplicação. Se o `db-import.sh` for interrompido à força (queda da máquina) no meio, podem sobrar `notify_new` ou `umami_new`, que a execução seguinte apaga.
+8. **Falhas e reexecução.** O `db-import.sh` pode ser rodado de novo. Uma falha **antes** da troca (soma que não bate, dump que não abre, restore que falha, aplicação rodando, destino não vazio) deixa o destino **como estava** (testado: os OIDs dos bancos não mudam). Uma falha **depois** da troca (impressão digital diferente) deixa o destino com os dados restaurados e **a aplicação parada**: investigue ou rode de novo; não suba a aplicação. Se o `db-import.sh` for interrompido à força (queda da máquina) no meio, podem sobrar `stellytics_new` ou `umami_new`, que a execução seguinte apaga.
 9. **`sha256sums` prova integridade, não autenticidade.** Quem consegue alterar a pasta altera também a soma; a autenticidade vem do canal (ssh entre as duas VMs, pela máquina de quem administra). O `db-export.sh` recusa uma pasta de saída que não esteja vazia: depois de uma exportação interrompida, apague a pasta parcial (`rm -rf`) antes de repetir.
 
 ### Reexecutar o teste
@@ -293,10 +293,10 @@ Da raiz do repositório, com a imagem do portal construída e Docker com Compose
 
 ```bash
 docker compose build portal   # ou a imagem de uma release
-PORTAL_IMAGE=notify-portal:dev infra/compose/test/data-migration-test.sh
+PORTAL_IMAGE=stellytics-portal:dev infra/compose/test/data-migration-test.sh
 ```
 
-Roda a origem e os dois destinos lado a lado (nomes de projeto `notify54-*`, portas no loopback `13541`–`13543`, `18333`–`18335` e `13641`–`13643`; troque com `PORT_BASE` e `S3_BASE`), derruba tudo e apaga os volumes no fim. `MODE=logical` ou `MODE=physical` roda só um caminho; `KEEP=1` não derruba. O teste usa imagens de contêiner baixadas na hora (`rclone/rclone`, `alpine`) e **não está no CI** (leva alguns minutos e precisa da imagem do portal): ligá-lo ao job `infra` é um próximo passo.
+Roda a origem e os dois destinos lado a lado (nomes de projeto `stellytics54-*`, portas no loopback `13541`–`13543`, `18333`–`18335` e `13641`–`13643`; troque com `PORT_BASE` e `S3_BASE`), derruba tudo e apaga os volumes no fim. `MODE=logical` ou `MODE=physical` roda só um caminho; `KEEP=1` não derruba. O teste usa imagens de contêiner baixadas na hora (`rclone/rclone`, `alpine`) e **não está no CI** (leva alguns minutos e precisa da imagem do portal): ligá-lo ao job `infra` é um próximo passo.
 
 ## O que não foi testado
 
@@ -309,7 +309,7 @@ O critério "procedimento de migração de dados testado" vale **só para o que 
 - **Volume real de dados.** O Umami teve **60 eventos** e as métricas de API 34.567 linhas. Tempo de dump, de restore, de cópia e uso de disco com milhões de eventos **não foram medidos**, e o `db-fingerprint.sh` agrega o texto das linhas de cada tabela dentro do Postgres, o que pode ficar pesado em tabelas grandes (o hash é por linha, mas ele percorre tudo).
 - **Mudar `portal_auth_secret` ou `umami_app_secret` no destino.** O teste usou os mesmos valores (a sessão antiga continuar válida depende disso). O efeito de trocá-los, inclusive nos IDs de visitante do Umami, **não foi medido**.
 - **A chave de API do Umami** (`umami_api_key`): o teste não criou a conta de serviço, então não se sabe se a chave sobrevive à migração.
-- **Caddy, gateway `ingest-web` e coletor/`rollup`** como serviços. O gateway não subiu; o que ele lê (a visão `ingest_site`, como `notify_ingest`) foi conferido por SQL. O coletor e o `rollup` não estão em produção; as tabelas e funções deles migraram (partições, `api_metric_ensure_partitions`, GRANT de `notify_collector`).
+- **Caddy, gateway `ingest-web` e coletor/`rollup`** como serviços. O gateway não subiu; o que ele lê (a visão `ingest_site`, como `stellytics_ingest`) foi conferido por SQL. O coletor e o `rollup` não estão em produção; as tabelas e funções deles migraram (partições, `api_metric_ensure_partitions`, GRANT de `stellytics_collector`).
 - **A reversão** (`db-export.sh` na pilha nova e `db-import.sh` na antiga), a opção C do domínio e o bloco do Caddy que ela exige.
 - **Versão maior do Postgres** entre origem e destino (o teste usa a 17.11 nos dois lados).
 - **O tempo e as perdas reais da janela**, e a propagação do DNS.

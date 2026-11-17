@@ -18,8 +18,8 @@ import (
 )
 
 // Teste de integração do Store com a visão real ingest_key_active, como o
-// usuário notify_collector. Precisa de DATABASE_URL (veja internal/pgtest).
-// COLLECTOR_DATABASE_URL troca a conexão usada como notify_collector.
+// usuário stellytics_collector. Precisa de DATABASE_URL (veja internal/pgtest).
+// COLLECTOR_DATABASE_URL troca a conexão usada como stellytics_collector.
 func TestPGStoreIntegration(t *testing.T) {
 	adminURL := os.Getenv("DATABASE_URL")
 	if adminURL == "" {
@@ -46,7 +46,7 @@ func TestPGStoreIntegration(t *testing.T) {
 	ofArchived := createKey(t, admin, userID, active, archived, false)
 	ofRemoved := createKey(t, admin, userID, removed, svcOfRemoved, false)
 
-	pool, err := pgxpool.New(ctx, pgtest.RoleURL(t, adminURL, "notify_collector", "COLLECTOR_DATABASE_URL"))
+	pool, err := pgxpool.New(ctx, pgtest.RoleURL(t, adminURL, "stellytics_collector", "COLLECTOR_DATABASE_URL"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,13 +69,13 @@ func TestPGStoreIntegration(t *testing.T) {
 		}
 	}
 
-	// notify_collector só lê a visão.
+	// stellytics_collector só lê a visão.
 	_, err = pool.Exec(ctx, `SELECT 1 FROM ingest_key LIMIT 1`)
 	pgtest.AssertDenied(t, "SELECT na ingest_key", err)
 }
 
 // Último uso (migração 0008): a função grava o dia, uma vez por dia, só para
-// chave ativa, e o notify_collector não ganha mais nada na tabela.
+// chave ativa, e o stellytics_collector não ganha mais nada na tabela.
 func TestPGStoreTouch(t *testing.T) {
 	adminURL := os.Getenv("DATABASE_URL")
 	if adminURL == "" {
@@ -99,7 +99,7 @@ func TestPGStoreTouch(t *testing.T) {
 	ofRemoved := createKey(t, admin, userID, removed, svcOfRemoved, false)
 	prefix := func(key string) string { return key[4:12] }
 
-	pool, err := pgxpool.New(ctx, pgtest.RoleURL(t, adminURL, "notify_collector", "COLLECTOR_DATABASE_URL"))
+	pool, err := pgxpool.New(ctx, pgtest.RoleURL(t, adminURL, "stellytics_collector", "COLLECTOR_DATABASE_URL"))
 	if err != nil {
 		t.Fatal(err)
 	}

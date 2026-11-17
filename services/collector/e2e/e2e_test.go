@@ -5,11 +5,11 @@
 //	docker compose up -d --build --wait
 //	cd services && go test -tags e2e ./collector/e2e/...
 //
-// Cria no banco notify um tenant ativo e um removido, cada um com uma chave de
+// Cria no banco stellytics um tenant ativo e um removido, cada um com uma chave de
 // ingestão no formato do portal (#59), e manda OTLP ao contêiner do coletor por
 // HTTP e gRPC. A chave do tenant ativo passa; a do removido, uma chave errada e
 // a falta de chave recebem 401 / Unauthenticated. Os endereços podem ser
-// trocados por COLLECTOR_HTTP_URL, COLLECTOR_GRPC_ADDR e NOTIFY_DATABASE_URL.
+// trocados por COLLECTOR_HTTP_URL, COLLECTOR_GRPC_ADDR e STELLYTICS_DATABASE_URL.
 package e2e
 
 import (
@@ -41,14 +41,14 @@ func env(k, def string) string {
 }
 
 var (
-	httpURL  = env("COLLECTOR_HTTP_URL", "http://127.0.0.1:4318")
-	grpcAddr = env("COLLECTOR_GRPC_ADDR", "127.0.0.1:4317")
-	notifyDB = env("NOTIFY_DATABASE_URL", "postgresql://notify:notify@127.0.0.1:5432/notify")
+	httpURL      = env("COLLECTOR_HTTP_URL", "http://127.0.0.1:4318")
+	grpcAddr     = env("COLLECTOR_GRPC_ADDR", "127.0.0.1:4317")
+	stellyticsDB = env("STELLYTICS_DATABASE_URL", "postgresql://stellytics:stellytics@127.0.0.1:5432/stellytics")
 )
 
 func TestCollectorAuth(t *testing.T) {
 	ctx := context.Background()
-	db, err := pgx.Connect(ctx, notifyDB)
+	db, err := pgx.Connect(ctx, stellyticsDB)
 	if err != nil {
 		t.Fatal(err)
 	}

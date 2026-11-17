@@ -15,7 +15,7 @@ import (
 type Config struct {
 	// ListenAddr é o endereço HTTP do gateway (ex.: ":8080").
 	ListenAddr string
-	// DatabaseURL aponta para o banco notify com o usuário notify_ingest.
+	// DatabaseURL aponta para o banco stellytics com o usuário stellytics_ingest.
 	DatabaseURL string
 	// UmamiURL é a base do Umami na rede interna (ex.: "http://umami:3000").
 	UmamiURL *url.URL
@@ -60,7 +60,7 @@ func Load(getenv func(string) string) (Config, error) {
 	c := Config{
 		ListenAddr:     or(getenv("LISTEN_ADDR"), ":8080"),
 		DatabaseURL:    getenv("DATABASE_URL"),
-		ClientIPHeader: or(getenv("CLIENT_IP_HEADER"), "x-notify-client-ip"),
+		ClientIPHeader: or(getenv("CLIENT_IP_HEADER"), "x-stellytics-client-ip"),
 		ScriptDir:      getenv("SCRIPT_DIR"),
 	}
 	var errs []error

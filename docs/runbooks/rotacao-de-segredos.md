@@ -14,11 +14,11 @@ Todos listados em `infra/ansible/secrets.example.yml`.
 
 | Segredo | Efeito da troca | Passo extra além do `docs/deploy.md` |
 |---|---|---|
-| `postgres_password`, `notify_db_password`, `umami_db_password` | O Postgres é recriado; portal, Umami e gateway ficam sem banco até o `ALTER ROLE` | `ALTER ROLE ... PASSWORD` e `restart portal umami ingest-web` (no guia). **Não digite a senha na linha de comando**: ela iria para o histórico do shell e, se `log_statement` estiver ligado, para o log do Postgres. Leia a senha sem eco (`read -rs NOVA`), desligue o histórico da sessão (`unset HISTFILE`) e passe o comando por `psql` lendo da entrada padrão, por exemplo `printf "ALTER ROLE notify PASSWORD '%s'
+| `postgres_password`, `stellytics_db_password`, `umami_db_password` | O Postgres é recriado; portal, Umami e gateway ficam sem banco até o `ALTER ROLE` | `ALTER ROLE ... PASSWORD` e `restart portal umami ingest-web` (no guia). **Não digite a senha na linha de comando**: ela iria para o histórico do shell e, se `log_statement` estiver ligado, para o log do Postgres. Leia a senha sem eco (`read -rs NOVA`), desligue o histórico da sessão (`unset HISTFILE`) e passe o comando por `psql` lendo da entrada padrão, por exemplo `printf "ALTER ROLE stellytics PASSWORD '%s'
 " "$NOVA" \| docker compose -f prod.yaml exec -T postgres psql -U postgres` (não testado). Os eventos web do intervalo são descartados: faça fora do pico |
-| `notify_ingest_db_password`, `notify_collector_db_password` | Idem para o gateway | Reaplicar `02-ingest-roles.sh` (idempotente), como no guia |
+| `stellytics_ingest_db_password`, `stellytics_collector_db_password` | Idem para o gateway | Reaplicar `02-ingest-roles.sh` (idempotente), como no guia |
 | `portal_auth_secret` | Todas as sessões do portal caem, e também os links de confirmação de e-mail e de recuperação de senha em andamento deixam de valer (efeito esperado) | Avise os usuários |
-| `umami_app_secret` | As sessões do Umami caem; a chave de API pode deixar de valer | Se o portal receber 401 do Umami, gere nova com o túnel aberto: `UMAMI_URL=http://127.0.0.1:13001 pnpm --filter @notify/portal umami:service-account` (senha de admin em `UMAMI_ADMIN_PASSWORD`; o script usa `127.0.0.1:3001` por padrão, por isso a variável) e ponha em `umami_api_key`. Com `--revoke-old` o script apaga as outras chaves do usuário de serviço |
+| `umami_app_secret` | As sessões do Umami caem; a chave de API pode deixar de valer | Se o portal receber 401 do Umami, gere nova com o túnel aberto: `UMAMI_URL=http://127.0.0.1:13001 pnpm --filter @stellytics/portal umami:service-account` (senha de admin em `UMAMI_ADMIN_PASSWORD`; o script usa `127.0.0.1:3001` por padrão, por isso a variável) e ponha em `umami_api_key`. Com `--revoke-old` o script apaga as outras chaves do usuário de serviço |
 | `umami_api_key` | O portal usa a nova chave ao ser recriado | Rode o playbook de novo; revogue a antiga com `--revoke-old` (acima) ou pela interface do Umami (túnel) |
 | Senha de `admin` do Umami | Só vale pela interface, pelo túnel | Troque pela interface; ela nunca fica no `secrets.yml` |
 | `ingest_proof_secret` | Os desafios em circulação perdem a validade; os navegadores pedem um novo em `GET /c` no próximo evento | Nenhuma ação (mínimo de 32 caracteres) |
@@ -33,7 +33,7 @@ Todos listados em `infra/ansible/secrets.example.yml`.
 ## Diagnóstico depois da troca
 
 ```bash
-cd /opt/notify/infra/compose
+cd /opt/stellytics/infra/compose
 docker compose -f prod.yaml ps
 docker compose -f prod.yaml logs --tail 100 portal ingest-web umami
 ```

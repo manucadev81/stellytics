@@ -6,7 +6,7 @@ import { getApiService } from "./api-services";
 
 // Painel de API do tenant (#37): volume, status e latência p50/p95 por
 // endpoint de um serviço num período. Lê as tabelas do spec do E5 (seção 4)
-// direto do banco notify, sempre filtrando pelo tenant do contexto e pelo
+// direto do banco stellytics, sempre filtrando pelo tenant do contexto e pelo
 // serviço já conferido (ADR 0003): serviço de outro tenant devolve nulo sem
 // nenhuma leitura de métricas.
 

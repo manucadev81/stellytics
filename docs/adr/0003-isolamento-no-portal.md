@@ -14,13 +14,13 @@ O ADR 0002 mudou o cenário:
 - o portal é a única porta de entrada para tenants e operadores;
 - o Umami é usado como motor headless e fica só na rede interna (issue [#62](https://github.com/romulospl/notify/issues/62));
 - o portal lê as estatísticas com uma conta de serviço que enxerga todos os sites;
-- as métricas de API ficam no banco `notify`, fora do Umami.
+- as métricas de API ficam no banco `stellytics`, fora do Umami.
 
 Nessas condições, o controle de acesso do Umami nunca é exercido por um tenant: quem chama o Umami é sempre o portal, com acesso total. O isolamento precisa de um dono claro, porque é critério de avaliação do RFP e exige testes automatizados (issue [#21](https://github.com/romulospl/notify/issues/21)).
 
 ## Decisão
 
-O **portal é o único responsável pelo isolamento entre tenants**, tanto nos dados web (lidos do Umami) quanto nos dados de API (lidos do banco `notify`).
+O **portal é o único responsável pelo isolamento entre tenants**, tanto nos dados web (lidos do Umami) quanto nos dados de API (lidos do banco `stellytics`).
 
 - O tenant é resolvido **sempre pela sessão**, no servidor. Nenhum valor enviado pelo cliente escolhe o tenant.
 - Todo acesso a dados passa por uma **camada única**, que só aceita um contexto de acesso criado a partir da sessão. O ID de um site no Umami só é obtido por essa camada, depois de conferir que o site é do tenant.
@@ -34,7 +34,7 @@ O contrato detalhado está no [spec do E2](../specs/e2-tenants-e-controle-de-ace
 | Alternativa | Prós | Contras |
 |---|---|---|
 | Um usuário e uma equipe no Umami por tenant, com o portal lendo com o token de cada tenant | Segunda barreira: o próprio Umami recusaria a leitura de outro tenant | O portal teria de guardar uma credencial do Umami por tenant; dois cadastros de usuário para manter em sincronia; não cobre as métricas de API |
-| Row-Level Security do PostgreSQL no banco `notify` | Barreira no banco, independente do código do portal | Exige definir o tenant em cada conexão do pool; não cobre os dados do Umami. Pode ser somada depois, sem mudar esta decisão |
+| Row-Level Security do PostgreSQL no banco `stellytics` | Barreira no banco, independente do código do portal | Exige definir o tenant em cada conexão do pool; não cobre os dados do Umami. Pode ser somada depois, sem mudar esta decisão |
 | Expor a interface do Umami aos tenants | Painel web pronto | Contraria o ADR 0002; não dá painel comparativo, nem de API, nem cadastro aberto |
 
 ## Consequências

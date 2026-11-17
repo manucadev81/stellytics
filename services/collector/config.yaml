@@ -4,7 +4,7 @@
 # ingestkeyauth: sem chave de ingestão válida, 401 / Unauthenticated. O
 # processor tenantattr carimba o tenant e o serviço da chave em cada recurso e
 # precisa vir antes do batch, que perde o contexto do pedido. O exporter
-# notifypg (#31) transforma spans de servidor HTTP e o histograma
+# stellyticspg (#31) transforma spans de servidor HTTP e o histograma
 # http.server.request.duration em pontos de 1 minuto em api_metric_1m; o resto
 # dos traces e das métricas, e todos os logs, são descartados.
 extensions:
@@ -33,7 +33,7 @@ processors:
   batch: {}
 
 exporters:
-  notifypg:
+  stellyticspg:
     database_url: ${env:DATABASE_URL}
   nop: {}
 
@@ -46,11 +46,11 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, tenantattr, batch]
-      exporters: [notifypg]
+      exporters: [stellyticspg]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, tenantattr, batch]
-      exporters: [notifypg]
+      exporters: [stellyticspg]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, tenantattr, batch]

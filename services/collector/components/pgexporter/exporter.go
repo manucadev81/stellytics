@@ -2,7 +2,7 @@
 //
 // Recebe traces e métricas já carimbados pelo tenantattr, extrai os pontos de
 // 1 minuto com o pacote httpmetrics e faz o upsert em api_metric_1m (spec do
-// E5, seção 4) com o usuário notify_collector. Nada além desses pontos é
+// E5, seção 4) com o usuário stellytics_collector. Nada além desses pontos é
 // gravado: nenhum trace, span, log ou atributo de alta cardinalidade.
 package pgexporter
 
@@ -30,11 +30,11 @@ import (
 )
 
 // Type é o nome do exporter na configuração do coletor.
-var Type = component.MustNewType("notifypg")
+var Type = component.MustNewType("stellyticspg")
 
 // Config do exporter.
 type Config struct {
-	// DatabaseURL aponta para o banco notify com o usuário notify_collector.
+	// DatabaseURL aponta para o banco stellytics com o usuário stellytics_collector.
 	DatabaseURL string `mapstructure:"database_url"`
 }
 
@@ -112,7 +112,7 @@ func (e *pgExporter) start(ctx context.Context, _ component.Host) error {
 	}
 	pool, err := pgxpool.New(ctx, e.cfg.DatabaseURL)
 	if err != nil {
-		return fmt.Errorf("notifypg: database_url: %w", err)
+		return fmt.Errorf("stellyticspg: database_url: %w", err)
 	}
 	e.pool = pool
 	e.w = pgWriter{pool: pool}

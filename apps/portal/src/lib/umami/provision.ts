@@ -1,7 +1,7 @@
 import "server-only";
 import { umamiRequest } from "./http";
 
-// Cria o site no Umami e depois grava o vínculo no `notify` (spec do E2,
+// Cria o site no Umami e depois grava o vínculo no `stellytics` (spec do E2,
 // seção 7). Se a gravação falhar, apaga o site recém-criado no Umami. O
 // portal cria só sites, nunca usuários nem equipes (ADR 0003).
 //

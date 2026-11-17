@@ -6,9 +6,9 @@
 //	cd services && go test -tags e2e ./ingest-web/e2e/...
 //
 // Cria um website no Umami pela API e um tenant ativo com esse site no banco
-// notify (o que aparece na ingest_site), envia um page view ao gateway e
+// stellytics (o que aparece na ingest_site), envia um page view ao gateway e
 // confere que ele aparece no Umami, e que o evento enviado antes do cadastro não.
-// As URLs podem ser trocadas por GATEWAY_URL, UMAMI_URL, NOTIFY_DATABASE_URL e
+// As URLs podem ser trocadas por GATEWAY_URL, UMAMI_URL, STELLYTICS_DATABASE_URL e
 // UMAMI_DATABASE_URL. O teste de privacidade (privacy_test.go) exige que o
 // gateway confie no X-Forwarded-For da conexão do teste (INGEST_TRUSTED_PROXIES).
 package e2e
@@ -40,10 +40,10 @@ func env(k, def string) string {
 }
 
 var (
-	gatewayURL = env("GATEWAY_URL", "http://127.0.0.1:3002")
-	umamiURL   = env("UMAMI_URL", "http://127.0.0.1:3001")
-	notifyDB   = env("NOTIFY_DATABASE_URL", "postgresql://notify:notify@127.0.0.1:5432/notify")
-	umamiDB    = env("UMAMI_DATABASE_URL", "postgresql://umami:umami@127.0.0.1:5432/umami")
+	gatewayURL   = env("GATEWAY_URL", "http://127.0.0.1:3002")
+	umamiURL     = env("UMAMI_URL", "http://127.0.0.1:3001")
+	stellyticsDB = env("STELLYTICS_DATABASE_URL", "postgresql://stellytics:stellytics@127.0.0.1:5432/stellytics")
+	umamiDB      = env("UMAMI_DATABASE_URL", "postgresql://umami:umami@127.0.0.1:5432/umami")
 )
 
 // siteCacheTTL é o SITE_CACHE_TTL do gateway no Compose.
@@ -65,7 +65,7 @@ func TestEventReachesUmami(t *testing.T) {
 	websiteID := umamiCreateWebsite(t, token)
 	t.Cleanup(func() { umamiDo(t, token, http.MethodDelete, "/api/websites/"+websiteID, nil, nil) })
 
-	db, err := pgx.Connect(ctx, notifyDB)
+	db, err := pgx.Connect(ctx, stellyticsDB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestEventReachesUmami(t *testing.T) {
 	}
 }
 
-// registerSite cria um tenant ativo com o site no banco notify, o que o põe na
+// registerSite cria um tenant ativo com o site no banco stellytics, o que o põe na
 // ingest_site com accepts_ingest verdadeiro.
 func registerSite(t *testing.T, db *pgx.Conn, websiteID string) {
 	t.Helper()
@@ -242,7 +242,7 @@ func TestCustomEventReachesUmami(t *testing.T) {
 	websiteID := umamiCreateWebsite(t, token)
 	t.Cleanup(func() { umamiDo(t, token, http.MethodDelete, "/api/websites/"+websiteID, nil, nil) })
 
-	db, err := pgx.Connect(ctx, notifyDB)
+	db, err := pgx.Connect(ctx, stellyticsDB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,7 +323,7 @@ func TestCustomEventReachesUmami(t *testing.T) {
 	}
 }
 
-// TestWalletEventsReachUmami envia os dois eventos que window.notify.wallets
+// TestWalletEventsReachUmami envia os dois eventos que window.stellytics.wallets
 // (script v1.3.0, #50) produz e confere no banco do Umami que wallet_selected
 // leva só wallet=freighter e que wallet_disconnected não leva propriedade.
 func TestWalletEventsReachUmami(t *testing.T) {
@@ -332,7 +332,7 @@ func TestWalletEventsReachUmami(t *testing.T) {
 	websiteID := umamiCreateWebsite(t, token)
 	t.Cleanup(func() { umamiDo(t, token, http.MethodDelete, "/api/websites/"+websiteID, nil, nil) })
 
-	db, err := pgx.Connect(ctx, notifyDB)
+	db, err := pgx.Connect(ctx, stellyticsDB)
 	if err != nil {
 		t.Fatal(err)
 	}

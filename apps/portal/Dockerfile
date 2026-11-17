@@ -11,11 +11,11 @@ FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/portal/package.json apps/portal/
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --filter @notify/portal
+    pnpm install --frozen-lockfile --filter @stellytics/portal
 
 FROM deps AS build
 COPY apps/portal apps/portal
-RUN pnpm --filter @notify/portal build
+RUN pnpm --filter @stellytics/portal build
 
 FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS runner
 ENV NODE_ENV=production \

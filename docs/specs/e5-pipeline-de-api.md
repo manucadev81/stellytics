@@ -6,7 +6,7 @@
 - **Issues cobertas:** #30, #31, #32, #33, #34, #35 e #36
 - **Depende de:** [ADR 0002](../adr/0002-arquitetura-e-stack.md) e [spec do E2](e2-tenants-e-controle-de-acesso.md) (seção 5, chave de ingestão; seção 6, status do tenant)
 
-Este documento fixa o contrato entre o coletor (`services/collector`), o banco `notify` e os painéis de API (E6). Ele cobre o que entra no coletor, o que sai dele, as regras de normalização de rotas, as tabelas de métricas e a retenção. As decisões marcadas com **D1** a **D9** foram confirmadas em 14/11/2026 e estão reunidas na [seção 8](#8-decisões-tomadas).
+Este documento fixa o contrato entre o coletor (`services/collector`), o banco `stellytics` e os painéis de API (E6). Ele cobre o que entra no coletor, o que sai dele, as regras de normalização de rotas, as tabelas de métricas e a retenção. As decisões marcadas com **D1** a **D9** foram confirmadas em 14/11/2026 e estão reunidas na [seção 8](#8-decisões-tomadas).
 
 ## 1. Fluxo
 
@@ -20,7 +20,7 @@ flowchart LR
 ```
 
 1. O tenant manda o mesmo OTLP que já manda para o próprio APM (dual-export, #35).
-2. O coletor valida a chave (spec do E2, seção 5). A chave define o **tenant e o serviço**; nenhum atributo do cliente muda isso. O processor `tenantattr` grava os dois nos atributos de recurso `notify.tenant.id` e `notify.api_service.id`, que são os únicos que os componentes seguintes leem.
+2. O coletor valida a chave (spec do E2, seção 5). A chave define o **tenant e o serviço**; nenhum atributo do cliente muda isso. O processor `tenantattr` grava os dois nos atributos de recurso `stellytics.tenant.id` e `stellytics.api_service.id`, que são os únicos que os componentes seguintes leem.
 3. O coletor transforma spans de servidor HTTP e a métrica `http.server.request.duration` em contagem e histograma (#31), normaliza a rota (#32) e descarta todo o resto.
 4. A cada lote, grava baldes de 1 minuto em `api_metric_1m` (#33).
 5. Um job consolida 1 minuto em 1 hora e 1 dia e aplica a retenção (#34).
@@ -65,7 +65,7 @@ A regra do `{address}` confere só o formato (prefixo, tamanho e alfabeto), não
 
 ## 4. Tabelas de métricas (#33)
 
-Tudo no banco `notify`, em migração escrita à mão no portal (`apps/portal/drizzle/`, como a `0002_ingest_views.sql`). O portal é o único dono das migrações do banco (D5).
+Tudo no banco `stellytics`, em migração escrita à mão no portal (`apps/portal/drizzle/`, como a `0002_ingest_views.sql`). O portal é o único dono das migrações do banco (D5).
 
 ### `api_metric_1m`, `api_metric_1h` e `api_metric_1d`
 
@@ -102,16 +102,16 @@ O agregado `api_metric_sum_buckets(duration_buckets)` soma os arrays por posiç�
 
 | Usuário | Permissão |
 |---|---|
-| `notify_collector` | `SELECT` em `ingest_key_active` (E2); `SELECT`, `INSERT` e `UPDATE` em `api_metric_1m`, porque o `INSERT ... ON CONFLICT DO UPDATE` precisa ler a linha existente. Nada nos consolidados nem na manutenção de partições |
-| `notify` (portal e job da #34) | Dono das tabelas |
-| `notify_ingest` | Nenhuma |
+| `stellytics_collector` | `SELECT` em `ingest_key_active` (E2); `SELECT`, `INSERT` e `UPDATE` em `api_metric_1m`, porque o `INSERT ... ON CONFLICT DO UPDATE` precisa ler a linha existente. Nada nos consolidados nem na manutenção de partições |
+| `stellytics` (portal e job da #34) | Dono das tabelas |
+| `stellytics_ingest` | Nenhuma |
 
 ## 5. Agregação e retenção (#34)
 
 - O job lê `api_metric_1m` e grava `api_metric_1h` e `api_metric_1d` com `INSERT ... ON CONFLICT DO UPDATE` que **substitui** os valores pela soma recalculada. Rodar o job duas vezes sobre o mesmo período dá o mesmo resultado.
 - Ele só consolida baldes fechados: horas que terminaram há pelo menos 5 minutos, por causa de lotes atrasados.
 - **Retenção (D3):** `api_metric_1m` por 35 dias; `api_metric_1h` e `api_metric_1d` por 25 meses (pelo menos 24 meses, como pede o RFP). A retenção apaga partições inteiras (`DROP TABLE` da partição), nunca linha a linha.
-- **Onde roda:** funções SQL da migração `0005_api_metric_rollup.sql` (`api_metric_rollup(since, until)`, `api_metric_drop_partitions(at)` e `api_metric_maintain(lookback)`, só para o dono `notify`), chamadas pelo serviço Go `services/rollup` a cada 15 minutos (`ROLLUP_INTERVAL`), reconsolidando as últimas 48 horas (`ROLLUP_LOOKBACK`). Cada execução cria as partições futuras, consolida e aplica a retenção.
+- **Onde roda:** funções SQL da migração `0005_api_metric_rollup.sql` (`api_metric_rollup(since, until)`, `api_metric_drop_partitions(at)` e `api_metric_maintain(lookback)`, só para o dono `stellytics`), chamadas pelo serviço Go `services/rollup` a cada 15 minutos (`ROLLUP_INTERVAL`), reconsolidando as últimas 48 horas (`ROLLUP_LOOKBACK`). Cada execução cria as partições futuras, consolida e aplica a retenção.
 - `api_metric_1h` sai de `api_metric_1m`; `api_metric_1d` sai de `api_metric_1h`, só das horas já fechadas. O dia corrente fica parcial e é refeito a cada execução.
 - A partição mensal some quando o **fim** do mês fica mais antigo que o prazo: o granular fica entre 35 e 66 dias, os consolidados entre 25 e 26 meses. A partição `default` nunca é apagada.
 
@@ -136,7 +136,7 @@ O caso típico cabe com folga no disco da VM da produção; o pior caso pede aco
 | Issue | O que precisa estar coberto |
 |---|---|
 | #32 | Cada marcador com casos positivos e negativos, a prioridade do `http.route`, barra final, query string e o exemplo `/accounts/G.../payments/` |
-| #33 | Upsert somando, p50 e p95 conhecidos sobre buckets montados à mão, a partição `default` recebendo ponto fora das mensais e as permissões do `notify_collector` |
+| #33 | Upsert somando, p50 e p95 conhecidos sobre buckets montados à mão, a partição `default` recebendo ponto fora das mensais e as permissões do `stellytics_collector` |
 | #34 | Job idempotente, retenção apagando partição antiga |
 | #31 e #36 | Payload OTLP real: nenhum span ou log gravado, atributo de alta cardinalidade fora, tenant e serviço vindos da chave |
 
@@ -148,7 +148,7 @@ O caso típico cabe com folga no disco da VM da produção; o pior caso pede aco
 | D2 | Buckets fixos das convenções OTel, em segundos | Buckets próprios em milissegundos | Histogramas prontos (`http.server.request.duration`) entram sem conversão |
 | D3 | 1 minuto por 35 dias; 1 hora e 1 dia por 25 meses | Guardar o granular por 24 meses | O granular é o maior volume, e os painéis de período longo usam hora ou dia |
 | D4 | Teto de 500 rotas distintas por serviço por dia, com o excesso em `{other}` | Sem teto | Sem ele, um cliente que mande caminhos únicos cria uma linha por requisição |
-| D5 | Tabelas particionadas por mês, em migração do portal, com partição `default` | Migrações próprias do coletor | Um dono só das migrações do banco `notify`; a partição `default` evita perder ponto se o job atrasar |
+| D5 | Tabelas particionadas por mês, em migração do portal, com partição `default` | Migrações próprias do coletor | Um dono só das migrações do banco `stellytics`; a partição `default` evita perder ponto se o job atrasar |
 | D6 | O balde de tempo é o minuto do fim do span | Minuto do início | É quando a requisição terminou, como nas métricas do OTel |
 | D7 | Um marcador `{address}` para G, C e M | Marcadores separados para conta, contrato e muxed | O caminho em volta já diz o que é (`/accounts/`, `/contracts/`); menos marcadores, painel mais simples |
 | D8 | `{hash}` exige 16 caracteres hexadecimais ou mais | Qualquer segmento hexadecimal | Evita trocar palavras como `cafe` ou `add` por `{hash}` |

@@ -1,8 +1,8 @@
 // Package site diz se um websiteId pode receber eventos.
 //
 // A fonte é a visão ingest_site(umami_website_id uuid, accepts_ingest boolean)
-// do banco notify, criada pelas migrações do portal e lida pelo usuário
-// notify_ingest, que só tem SELECT nela (spec do E2, seções 4 e 6). Site
+// do banco stellytics, criada pelas migrações do portal e lida pelo usuário
+// stellytics_ingest, que só tem SELECT nela (spec do E2, seções 4 e 6). Site
 // arquivado ou de tenant que não está ativo vem com accepts_ingest falso.
 package site
 

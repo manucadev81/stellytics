@@ -117,17 +117,17 @@ func TestKeyOfAClaimingBIsStoredAsA(t *testing.T) {
 // claim põe nos atributos os nomes que um cliente usaria para dizer que é
 // outro tenant e outro serviço.
 func claim(attrs pcommon.Map, tenantID, serviceID string) {
-	for _, k := range []string{"notify.tenant.id", "tenant.id", "tenant_id"} {
+	for _, k := range []string{"stellytics.tenant.id", "tenant.id", "tenant_id"} {
 		attrs.PutStr(k, tenantID)
 	}
-	attrs.PutStr("notify.api_service.id", serviceID)
+	attrs.PutStr("stellytics.api_service.id", serviceID)
 	attrs.PutStr("service.name", serviceID)
 }
 
 func isolationDB(t *testing.T) (*pgx.Conn, string) {
 	t.Helper()
 	ctx := context.Background()
-	db, err := pgx.Connect(ctx, notifyDB)
+	db, err := pgx.Connect(ctx, stellyticsDB)
 	if err != nil {
 		t.Fatal(err)
 	}

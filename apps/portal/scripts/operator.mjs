@@ -34,7 +34,7 @@ if (!["create", "promote", "demote"].includes(command)) fail("Use: operator.mjs 
 if (!values.email) fail("Informe --email.");
 const email = values.email.trim().toLowerCase();
 
-const sql = postgres(process.env.DATABASE_URL ?? "postgresql://notify:notify@localhost:5432/notify", {
+const sql = postgres(process.env.DATABASE_URL ?? "postgresql://stellytics:stellytics@localhost:5432/stellytics", {
   max: 1,
   onnotice: () => {},
 });

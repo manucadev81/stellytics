@@ -17,7 +17,7 @@ var Type = component.MustNewType("ingestkeyauth")
 
 // Config da extensão.
 type Config struct {
-	// DatabaseURL aponta para o banco notify com o usuário notify_collector.
+	// DatabaseURL aponta para o banco stellytics com o usuário stellytics_collector.
 	DatabaseURL string `mapstructure:"database_url"`
 	// CacheTTL é quanto tempo uma resposta (positiva ou negativa) fica em
 	// memória. No máximo 60 s, para uma revogação valer em até 1 minuto (#59).

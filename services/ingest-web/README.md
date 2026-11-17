@@ -86,14 +86,14 @@ O Umami satura perto de 200 page views por segundo por instância (`docs/relator
 
 ## Contrato com o banco: `ingest_site`
 
-O gateway conecta no banco `notify` com o usuário `notify_ingest` e só lê a visão `ingest_site(umami_website_id uuid, accepts_ingest boolean)` (spec do E2, seções 4 e 6). `accepts_ingest` é verdadeiro para site não arquivado de tenant ativo. As respostas, positivas e negativas, ficam em memória por `SITE_CACHE_TTL` (no máximo 1 minuto).
+O gateway conecta no banco `stellytics` com o usuário `stellytics_ingest` e só lê a visão `ingest_site(umami_website_id uuid, accepts_ingest boolean)` (spec do E2, seções 4 e 6). `accepts_ingest` é verdadeiro para site não arquivado de tenant ativo. As respostas, positivas e negativas, ficam em memória por `SITE_CACHE_TTL` (no máximo 1 minuto).
 
 **Cache vencido quando o banco cai (`SITE_STALE_TTL`, desligado por padrão).** Com `SITE_STALE_TTL` maior que zero (no máximo `1h`), se a consulta à `ingest_site` falha, o gateway usa a última resposta **aceita** do mesmo site por até esse tempo **depois** de ela vencer, em vez de responder `503`. Regras: site nunca visto, desconhecido ou recusado não ganha stale e continua com `503` (nunca "aceita por padrão"); passado o `SITE_STALE_TTL`, volta o `503`. Os sites aceitos e os recusados ficam em mapas separados, cada um com teto de 10.000 entradas, então quem testa IDs inventados só enche o mapa dos recusados e não expulsa um site aceito. Depois de uma falha, um circuit breaker simples evita novas consultas por 2 s: a resposta vencida sai na hora e uma única sonda em segundo plano testa o banco (sem ele, com o banco pendurado, cada requisição esperaria o teto de 5 s da consulta). O contador de respostas vencidas vai ao log como um aviso agregado por minuto (`respostas`, `total`), sem IP, `User-Agent` nem ID de site. **Janela de risco:** um site arquivado ou um tenant removido durante a queda do banco continua aceitando eventos até `SITE_CACHE_TTL` + `SITE_STALE_TTL` depois da última consulta bem-sucedida; a recusa só passa a valer quando o banco volta. Escolha `SITE_STALE_TTL` pensando nessa janela.
 
 **Com `SITE_STALE_TTL=0`** nada vencido é servido e o erro do banco continua virando `503`. O que mudou, mesmo desligado: a consulta passou a ser compartilhada por site (uma só em voo, com o erro repartido entre quem espera), roda com contexto próprio e teto de 5 s, e cancelar a requisição devolve o erro do contexto (também `503`). O circuit breaker só age com o stale ligado.
 
 - Site desconhecido ou que não aceita ingestão recebe `204`, como um evento aceito, e o evento é descartado. Assim, quem testa IDs não descobre quais existem.
-- O usuário `notify_ingest` vem de `infra/compose/postgres/init/02-ingest-roles.sh`, e a visão e o `GRANT` vêm da migração `apps/portal/drizzle/0002_ingest_views.sql`.
+- O usuário `stellytics_ingest` vem de `infra/compose/postgres/init/02-ingest-roles.sh`, e a visão e o `GRANT` vêm da migração `apps/portal/drizzle/0002_ingest_views.sql`.
 - O teste de integração (`internal/site/pg_test.go`) aplica as migrações do portal quando a visão não existe, e cria tenants e sites nas tabelas reais.
 
 ## IP do cliente
@@ -106,16 +106,16 @@ Vem do `RemoteAddr`. O `X-Forwarded-For` só é lido quando a conexão chega de 
 - **Logs:** nenhum registro leva IP, `X-Forwarded-For` ou `User-Agent`. Um panic é tratado pelo próprio gateway, porque o `net/http` o registraria com o endereço do cliente.
 - **Cookies:** nenhuma resposta grava cookie, e o `Cookie` que chega não é repassado ao Umami. O script não usa cookie nem storage (ver `packages/tracker`).
 - **Dado pessoal:** o Umami guarda navegador, sistema, tipo de aparelho, tela, idioma e país, região e cidade do IP truncado. Nada disso identifica uma pessoa, então não há dado sujeito a apagamento.
-- **Testes:** `privacy_test.go` (logs e cookies) e `e2e/privacy_test.go`. Este último manda IPs conhecidos pelo `X-Forwarded-For` e confere duas coisas: que o país da sessão no Umami saiu do IP truncado, e que nenhuma coluna de texto dos bancos `umami` e `notify` contém o IP completo.
+- **Testes:** `privacy_test.go` (logs e cookies) e `e2e/privacy_test.go`. Este último manda IPs conhecidos pelo `X-Forwarded-For` e confere duas coisas: que o país da sessão no Umami saiu do IP truncado, e que nenhuma coluna de texto dos bancos `umami` e `stellytics` contém o IP completo.
 
 ## Configuração
 
 | Variável | Padrão | Uso |
 |---|---|---|
-| `DATABASE_URL` | obrigatória | Banco `notify` com o usuário `notify_ingest` |
+| `DATABASE_URL` | obrigatória | Banco `stellytics` com o usuário `stellytics_ingest` |
 | `UMAMI_URL` | obrigatória | Base do Umami na rede interna (ex.: `http://umami:3000`) |
 | `LISTEN_ADDR` | `:8080` | Endereço HTTP |
-| `CLIENT_IP_HEADER` | `x-notify-client-ip` | Header com o IP truncado; o serviço `umami` usa a mesma variável |
+| `CLIENT_IP_HEADER` | `x-stellytics-client-ip` | Header com o IP truncado; o serviço `umami` usa a mesma variável |
 | `SCRIPT_DIR` | vazio (`/scripts` na imagem) | Pasta servida em `/s/`; vazia desliga a rota |
 | `TRUSTED_PROXIES` | vazio | CIDRs ou IPs, separados por vírgula |
 | `RATE_LIMIT` | `20` | Eventos por segundo por IP truncado |
@@ -138,7 +138,7 @@ De dentro de `services/`:
 go test -race ./ingest-web/...
 ```
 
-O teste de integração do pacote `site` roda quando `DATABASE_URL` aponta para o banco `notify`. Ele precisa dos usuários de `infra/compose/postgres/init/02-ingest-roles.sh` e nunca aplica migrações no banco de `DATABASE_URL`: elas são do portal, que as registra no Drizzle. Com um usuário que pode criar bancos (o CI), o teste cria um banco temporário, aplica as migrações lá e o apaga no fim. Com o usuário `notify` do Compose, ele usa o banco já migrado pelo portal, ou é pulado se o portal ainda não subiu. Depois conecta como `notify_ingest`, com a senha `notify_ingest` ou pela URL de `INGEST_DATABASE_URL`.
+O teste de integração do pacote `site` roda quando `DATABASE_URL` aponta para o banco `stellytics`. Ele precisa dos usuários de `infra/compose/postgres/init/02-ingest-roles.sh` e nunca aplica migrações no banco de `DATABASE_URL`: elas são do portal, que as registra no Drizzle. Com um usuário que pode criar bancos (o CI), o teste cria um banco temporário, aplica as migrações lá e o apaga no fim. Com o usuário `stellytics` do Compose, ele usa o banco já migrado pelo portal, ou é pulado se o portal ainda não subiu. Depois conecta como `stellytics_ingest`, com a senha `stellytics_ingest` ou pela URL de `INGEST_DATABASE_URL`.
 
 O teste ponta a ponta precisa do ambiente do Compose no ar, com o Umami publicado pelo override de desenvolvimento (ele usa a API de administração do Umami):
 
@@ -150,6 +150,6 @@ docker compose -f compose.yaml -f infra/compose/umami-port.yaml up -d --build --
 go test -tags e2e -count=1 ./ingest-web/e2e/...
 ```
 
-Ele cria um website no Umami pela API (`admin`/`umami`) e um tenant ativo com esse site no banco `notify`. Depois manda page views ao gateway (porta 3002) e confere o que chega ao Umami. O `TestRecorderRecordsNothing` confere que gravação de sessão e heatmaps não gravam nada ([docs/umami.md](../../docs/umami.md)). O teste de privacidade precisa que o gateway confie no `X-Forwarded-For` do teste: suba o Compose com `INGEST_TRUSTED_PROXIES=172.16.0.0/12,192.168.0.0/16,10.0.0.0/8`, como no CI. As URLs podem ser trocadas por `GATEWAY_URL`, `UMAMI_URL`, `NOTIFY_DATABASE_URL` e `UMAMI_DATABASE_URL`.
+Ele cria um website no Umami pela API (`admin`/`umami`) e um tenant ativo com esse site no banco `stellytics`. Depois manda page views ao gateway (porta 3002) e confere o que chega ao Umami. O `TestRecorderRecordsNothing` confere que gravação de sessão e heatmaps não gravam nada ([docs/umami.md](../../docs/umami.md)). O teste de privacidade precisa que o gateway confie no `X-Forwarded-For` do teste: suba o Compose com `INGEST_TRUSTED_PROXIES=172.16.0.0/12,192.168.0.0/16,10.0.0.0/8`, como no CI. As URLs podem ser trocadas por `GATEWAY_URL`, `UMAMI_URL`, `STELLYTICS_DATABASE_URL` e `UMAMI_DATABASE_URL`.
 
 A imagem (`Dockerfile`, contexto na raiz) é `scratch` com o binário e as versões publicadas do script, copiadas de `packages/tracker/published` quando a pasta existe. O healthcheck do contêiner é `ingest-web -healthcheck`.

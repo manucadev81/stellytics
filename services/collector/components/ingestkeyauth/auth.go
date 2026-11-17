@@ -3,7 +3,7 @@
 // Contrato no spec do E2, seção 5, e no spec do E5, seção 1. O cliente manda a
 // chave de ingestão em "Authorization: Bearer ntf_<prefixo>_<segredo>" no OTLP
 // (HTTP ou gRPC). A extensão busca a chave pelo prefixo na visão
-// ingest_key_active (usuário notify_collector), compara o SHA-256 em tempo
+// ingest_key_active (usuário stellytics_collector), compara o SHA-256 em tempo
 // constante e põe o tenant e o serviço da chave no contexto do pedido. Nenhum
 // atributo enviado pelo cliente muda isso. Chave inválida, revogada, de
 // serviço arquivado ou de tenant que não está ativo é recusada: o receiver

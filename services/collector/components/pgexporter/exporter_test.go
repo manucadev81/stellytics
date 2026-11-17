@@ -71,7 +71,7 @@ func mapKey(b httpmetrics.Batch) httpmetrics.Key {
 	return httpmetrics.Key{}
 }
 
-// Upsert real em api_metric_1m como notify_collector. Precisa de DATABASE_URL
+// Upsert real em api_metric_1m como stellytics_collector. Precisa de DATABASE_URL
 // (veja internal/pgtest); COLLECTOR_DATABASE_URL troca a conexão do coletor.
 func TestPGWriterIntegration(t *testing.T) {
 	adminURL := os.Getenv("DATABASE_URL")
@@ -91,7 +91,7 @@ func TestPGWriterIntegration(t *testing.T) {
 		_, _ = admin.Exec(context.Background(), `DELETE FROM api_metric_1m WHERE tenant_id = $1`, tenantID)
 	})
 
-	pool, err := pgxpool.New(ctx, pgtest.RoleURL(t, adminURL, "notify_collector", "COLLECTOR_DATABASE_URL"))
+	pool, err := pgxpool.New(ctx, pgtest.RoleURL(t, adminURL, "stellytics_collector", "COLLECTOR_DATABASE_URL"))
 	if err != nil {
 		t.Fatal(err)
 	}

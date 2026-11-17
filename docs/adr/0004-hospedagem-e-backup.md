@@ -26,7 +26,7 @@ Restrições que pesam:
    - WAL contínuo pelo `archive_command`, com `archive_timeout` de 60 segundos;
    - backup base diário por um timer do systemd, mantendo os 7 mais novos;
    - compressão brotli e **cifra no cliente** (libsodium), com a chave guardada fora da VM;
-   - restauração até o último WAL ou até um horário (`notify-restore`), testada no CI a cada PR com os comandos do `docs/deploy.md`.
+   - restauração até o último WAL ou até um horário (`stellytics-restore`), testada no CI a cada PR com os comandos do `docs/deploy.md`.
 6. **Deploy com Ansible**, só com módulos `ansible.builtin`, sem coleções extras. O deploy confere a assinatura de cada imagem com cosign antes de subir, contra a identidade do workflow de release.
 7. **Postgres de produção na variante Debian** (`postgres:17.11-bookworm`), com a mesma versão do ambiente local (que usa Alpine): os binários do WAL-G usam glibc.
 
@@ -48,8 +48,8 @@ Restrições que pesam:
 - **A chave do backup (`WALG_LIBSODIUM_KEY`) é crítica:** sem ela, nenhum backup pode ser restaurado. Ela fica no cofre de senhas do time, fora da VM.
 - **Limites do WAL-G encontrados:** com `WALG_DOWNLOAD_FILE_RETRIES` baixo, o contador de novas tentativas fica negativo e ele tenta para sempre (v3.0.9). O padrão (15 tentativas) fica como está.
 - **Privacidade nos logs:** o Caddy não grava IP, cabeçalhos nem URL dos pedidos em nenhum log, nem nos de erro (que ele grava mesmo sem access log).
-- **Volume obrigatório:** o volume é montado com `nofail`, para a VM subir mesmo sem ele, mas o Docker e o backup exigem `/srv/notify` montado (`RequiresMountsFor`). Sem isso, um reboot com o volume ausente criaria um banco vazio no disco da VM, e a retenção acabaria apagando os backups bons.
+- **Volume obrigatório:** o volume é montado com `nofail`, para a VM subir mesmo sem ele, mas o Docker e o backup exigem `/srv/stellytics` montado (`RequiresMountsFor`). Sem isso, um reboot com o volume ausente criaria um banco vazio no disco da VM, e a retenção acabaria apagando os backups bons.
 - **IPv6:** a rede do Compose tem IPv4 e IPv6, porque com o `userland-proxy` desligado o Caddy só atende o registro AAAA assim. O gateway confia no `X-Forwarded-For` dos dois IPs fixos do Caddy.
-- **Restauração:** o `notify-restore` descarta os alvos de recuperação que vêm dentro de um backup feito depois de outra restauração. Para voltar a um horário, o ponto de partida é o último backup concluído antes dele (`docs/deploy.md`).
+- **Restauração:** o `stellytics-restore` descarta os alvos de recuperação que vêm dentro de um backup feito depois de outra restauração. Para voltar a um horário, o ponto de partida é o último backup concluído antes dele (`docs/deploy.md`).
 - **Pontos únicos de falha:** a VM e o volume. Alta disponibilidade fica para o pós-MVP ([#52](https://github.com/romulospl/notify/issues/52)).
 - **Subir versões:** imagens e binários fixados por digest ou hash (Postgres, Caddy, Umami, WAL-G, cosign, OpenTofu e providers). O Renovate cobre os arquivos do Compose e os Dockerfiles; WAL-G e cosign são atualizados à mão, conferindo o hash da release.

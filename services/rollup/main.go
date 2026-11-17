@@ -1,7 +1,7 @@
 // Comando rollup: job de consolidação e retenção das métricas de API (#34).
 //
 // A cada ROLLUP_INTERVAL chama api_metric_maintain(ROLLUP_LOOKBACK) no banco
-// notify, que cria as partições futuras, consolida api_metric_1m em
+// stellytics, que cria as partições futuras, consolida api_metric_1m em
 // api_metric_1h e api_metric_1d e apaga as partições vencidas (spec do E5,
 // seção 5). Toda a lógica fica na migração 0005 do portal; este processo só
 // agenda. Expõe GET /healthz, que responde 200 enquanto a última execução

@@ -31,14 +31,14 @@ A unidade muda por pipeline:
 ## Ambiente
 
 - Máquina de desenvolvimento local, **não representa a Hetzner de produção**: Intel Core i5-12450H (12 threads), 15 GiB de RAM, Linux, rede por loopback. Outros programas e agentes rodavam na mesma máquina (carga de 0,92 no minuto anterior à execução principal), o que torna as medições um pouco ruidosas.
-- PostgreSQL 17.11 e Umami 3.4.1 (as imagens do `dev.yaml`) em contêineres do Compose, projeto `notify51`, sem limite de CPU ou memória, `shared_buffers` padrão de 128 MB.
+- PostgreSQL 17.11 e Umami 3.4.1 (as imagens do `dev.yaml`) em contêineres do Compose, projeto `stellytics51`, sem limite de CPU ou memória, `shared_buffers` padrão de 128 MB.
 - **Gateway (`ingest-web`), coletor e `rollup` rodaram como binários Go no host**, não em contêineres: o Docker da máquina não tem BuildKit e os Dockerfiles usam `--mount=type=cache`. Os binários são os do repositório (`go build -trimpath`), com as mesmas variáveis do `dev.yaml`: `PROOF_BITS=12`, `RATE_LIMIT=20`, `RATE_BURST=40`, `FINGERPRINT_LIMIT=50`, `SITE_CACHE_TTL=5s`, `INGEST_KEY_CACHE_TTL=5s`, `TRUSTED_PROXIES=127.0.0.0/8` (para o gerador mandar IPs distintos no `X-Forwarded-For`). O coletor usou uma cópia do `config.yaml` só com as portas trocadas (14317/14318).
 - CPU e memória: dos binários, por `/proc` (CPU em núcleos, 1,0 = um núcleo inteiro; memória é o RSS); dos contêineres, por `docker stats`. Amostras a cada 2 s.
 - As migrações do portal foram aplicadas direto com `psql` (o portal não subiu), as mesmas da pasta `apps/portal/drizzle`.
 
 ## Método
 
-`loadtest setup` cria no Umami um site e, no banco `notify`, um tenant com esse site e outro tenant com 4 serviços de API que mandam métricas e 2 que mandam só spans (cada um com a própria chave `ntf_...`, criada como o `compose-check.sh` faz). Depois:
+`loadtest setup` cria no Umami um site e, no banco `stellytics`, um tenant com esse site e outro tenant com 4 serviços de API que mandam métricas e 2 que mandam só spans (cada um com a própria chave `ntf_...`, criada como o `compose-check.sh` faz). Depois:
 
 - **web:** chegada de Poisson (o ritmo não espera as respostas). Cada page view faz `GET /c`, resolve a prova de JS (SHA-256 com 12 bits, mesmo algoritmo do `internal/proof`, repetido no gerador porque o Go não deixa importar um pacote `internal` de outro diretório) e manda `POST /e` com `Content-Type: text/plain`. 20.000 visitantes simulados, cada um com IP em um /24 próprio (via `X-Forwarded-For`), UA, idioma e tela fixos, para o limite por IP e o de fingerprints se comportarem como com visitantes diferentes. No fim, conta as linhas de `website_event` do site no banco do Umami e compara com os `204` recebidos. Como o gateway responde 204 também ao descartar, **só essa contagem diz se o evento chegou**.
 - **api:** simula os serviços, que exportam OTLP/HTTP em protobuf com `Authorization: Bearer`. Rotas com e sem `http.route` (as sem passam pela normalização do coletor), status 95% 200 / 3% 404 / 1,5% 400 / 0,5% 500, latência lognormal de mediana 40 ms. Métricas: histogramas delta a cada 10 s (o SDK usa 60 s por padrão; 10 s é mais exigente). Spans: lotes de até 512 ou a cada 1 s. No fim, compara `sum(request_count)` de `api_metric_1m` por serviço com o que estava em exportações que receberam 2xx.
@@ -162,10 +162,10 @@ O que foi ajustado: nada no pipeline. Os parâmetros do `dev.yaml` (`RATE_LIMIT`
 
 ```sh
 # Postgres + Umami (portas no .env: POSTGRES_PORT, UMAMI_PORT)
-docker compose -p notify51 -f compose.yaml -f infra/compose/umami-port.yaml up -d --wait --no-deps postgres umami
-# migrações do portal: aplique apps/portal/drizzle/*.sql como o usuário notify (ou suba o portal)
+docker compose -p stellytics51 -f compose.yaml -f infra/compose/umami-port.yaml up -d --wait --no-deps postgres umami
+# migrações do portal: aplique apps/portal/drizzle/*.sql como o usuário stellytics (ou suba o portal)
 cd services
-go build -o /tmp/ingest-web ./ingest-web && go build -o /tmp/collector ./collector/cmd/notify-collector && go build -o /tmp/loadtest ./loadtest
+go build -o /tmp/ingest-web ./ingest-web && go build -o /tmp/collector ./collector/cmd/stellytics-collector && go build -o /tmp/loadtest ./loadtest
 # subir os dois com as variáveis do dev.yaml (TRUSTED_PROXIES=127.0.0.0/8 no gateway), depois:
 /tmp/loadtest setup -out state.json
 /tmp/loadtest web -state state.json -profile "11.6x10m,116x5m,11.6x5m" -watch gateway=<pid>,collector=<pid> -docker <contêineres>
@@ -178,12 +178,12 @@ go build -o /tmp/ingest-web ./ingest-web && go build -o /tmp/collector ./collect
 ```sh
 # degraus do web (ceiling) e da API (spans)
 /tmp/loadtest web -state state.json -profile "50x1m,100x1m,200x1m,400x1m,800x1m" -max-inflight 2000 \
-  -watch gateway=<pid>,collector=<pid> -docker notify51-postgres-1,notify51-umami-1 -settle 30s
+  -watch gateway=<pid>,collector=<pid> -docker stellytics51-postgres-1,stellytics51-umami-1 -settle 30s
 /tmp/loadtest api -state state.json -modes spans -profile "500x1m,2000x1m,5000x1m,10000x1m" \
-  -watch gateway=<pid>,collector=<pid> -docker notify51-postgres-1 -settle 30s
+  -watch gateway=<pid>,collector=<pid> -docker stellytics51-postgres-1 -settle 30s
 ```
 
-Semeadura sintética de 35 dias (repete as linhas reais, uma cópia a cada 30 min para trás; rodar como o usuário `notify`, depois do degrau principal; deu 3.981.600 linhas em 22,4 s):
+Semeadura sintética de 35 dias (repete as linhas reais, uma cópia a cada 30 min para trás; rodar como o usuário `stellytics`, depois do degrau principal; deu 3.981.600 linhas em 22,4 s):
 
 ```sql
 INSERT INTO api_metric_1m (bucket_start, tenant_id, api_service_id, route, method, status_code,

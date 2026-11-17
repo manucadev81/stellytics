@@ -14,7 +14,7 @@ Um relato privado chegou; um scanner ou o Renovate apontou dependência vulnerá
 4. Verifique se houve exploração: `audit_log` (ações `ingest_key.created`, `ingest_key.revoked`, `tenant.removed`, `operator.*`) pelo túnel (`infra/scripts/admin-tunnel.sh`):
 
    ```bash
-   psql 'postgresql://notify:<notify_db_password>@127.0.0.1:15432/notify' \
+   psql 'postgresql://stellytics:<stellytics_db_password>@127.0.0.1:15432/stellytics' \
      -c "select at, action, actor_user_id, tenant_id from audit_log order by at desc limit 50"
    ```
 
@@ -26,7 +26,7 @@ Escolha o que se aplica; todas têm efeito imediato ou em até 1 minuto na inges
 
 ### Chave de ingestão vazada
 
-O próprio tenant revoga em `/services` (a ação grava `ingest_key.revoked`). O coletor passa a recusar com 401. Quem cria a chave nova é o tenant; a completa só aparece na criação. Se o tenant não conseguir, o operador não revoga pela tela (as únicas escritas do operador são remover e reativar projeto): use a remoção do projeto abaixo ou, pelo túnel, o SQL abaixo como usuário `notify` (dono das tabelas; é o papel que o portal usa para as mesmas escritas; **não testado**). Troque `<prefixo>` (8 caracteres, parte pública da chave `ntf_<prefixo>_...`); nunca ponha a chave completa em issue, log ou mensagem:
+O próprio tenant revoga em `/services` (a ação grava `ingest_key.revoked`). O coletor passa a recusar com 401. Quem cria a chave nova é o tenant; a completa só aparece na criação. Se o tenant não conseguir, o operador não revoga pela tela (as únicas escritas do operador são remover e reativar projeto): use a remoção do projeto abaixo ou, pelo túnel, o SQL abaixo como usuário `stellytics` (dono das tabelas; é o papel que o portal usa para as mesmas escritas; **não testado**). Troque `<prefixo>` (8 caracteres, parte pública da chave `ntf_<prefixo>_...`); nunca ponha a chave completa em issue, log ou mensagem:
 
 ```sql
 BEGIN;
@@ -50,8 +50,8 @@ Entre como operador em `/operator`, abra `/operator/tenants/<tenantId>` e use a 
 Roda na **máquina do administrador**, num checkout do repositório com `pnpm install` e Node 24 (não na VM, que não tem o repositório nem o pnpm), com o túnel `infra/scripts/admin-tunnel.sh` aberto:
 
 ```bash
-DATABASE_URL='postgresql://notify:<notify_db_password>@127.0.0.1:15432/notify' \
-  pnpm --filter @notify/portal operator:demote --email <e-mail>
+DATABASE_URL='postgresql://stellytics:<stellytics_db_password>@127.0.0.1:15432/stellytics' \
+  pnpm --filter @stellytics/portal operator:demote --email <e-mail>
 ```
 
 Isso rebaixa a conta a usuário comum, apaga as sessões dela e grava `operator.demoted` no `audit_log`. **Limites:** não cobre conta de tenant comprometida (para isso, remova ou revise o projeto e use a recuperação de senha); e não impede uma nova promoção por quem tenha acesso ao banco (`operator:promote` com o mesmo `DATABASE_URL`): se o atacante tem o banco ou a VM, o problema é de infraestrutura. Troque a senha da conta pelo fluxo de recuperação do portal se ela ainda for legítima e revise o `audit_log` pelas ações do operador. Se o vazamento foi do acesso ao servidor, siga [rotação de segredos](rotacao-de-segredos.md) por inteiro.
@@ -62,7 +62,7 @@ Isso rebaixa a conta a usuário comum, apaga as sessões dela e grava `operator.
 
 ### Script de rastreamento adulterado ou com falha
 
-Versões publicadas são imutáveis (`packages/tracker/published/vX.Y.Z/n.js`, hash em `published/sri.json`). A correção normal sai numa versão nova: suba a `version` do `package.json` e rode `pnpm --filter @notify/tracker release`; avise os tenants para trocar a URL e o SRI (trechos em `examples/README.md`).
+Versões publicadas são imutáveis (`packages/tracker/published/vX.Y.Z/n.js`, hash em `published/sri.json`). A correção normal sai numa versão nova: suba a `version` do `package.json` e rode `pnpm --filter @stellytics/tracker release`; avise os tenants para trocar a URL e o SRI (trechos em `examples/README.md`).
 
 **Retirar uma versão vulnerável não é só apagar a pasta.** Remover `published/vX.Y.Z/` quebra `packages/tracker/test/published.test.ts` (que exige uma entrada em `sri.json` para cada pasta e vice-versa, e confere o hash) e contraria a regra de imutabilidade. Para retirar de fato seria preciso, no mesmo PR: apagar a pasta, remover a entrada de `sri.json`, e registrar a exceção à política (ADR novo ou nota em `docs/anti-bot-e-cadeia-de-suprimentos.md`), e fazer deploy de imagem nova do `ingest-web` (a imagem copia `published/` para `/scripts`). Isso quebra os tenants que não migrarem (o script some, sem aviso). Alternativa a avaliar, **inexistente hoje**: o gateway responder `410 Gone` para uma lista de versões revogadas, sem apagar o arquivo do repositório; exigiria código e teste novos em `services/ingest-web`. Nada disto foi testado.
 
@@ -71,12 +71,12 @@ Versões publicadas são imutáveis (`packages/tracker/published/vX.Y.Z/n.js`, h
 1. Corrija em branch privada ou num fork de segurança do GitHub (aba **Security**, advisory privado), com teste que falhava antes.
 2. PR com commit em inglês, Conventional Commits (`fix(...)`). O CI (`ci`) precisa passar.
 3. Publique uma **release** (`vX.Y.Z`): o `release.yml` gera o SBOM e publica no GHCR as imagens assinadas com cosign (keyless) com atestado do SBOM.
-4. Deploy: troque os digests em `infra/ansible/group_vars/all.yml` e rode `ansible-playbook site.yml -e @secrets.yml`; o playbook roda `cosign verify` com `cosign_identity_regexp` e `cosign_oidc_issuer` do `all.yml` e recusa imagem sem digest ou sem assinatura. Antes, `systemctl start notify-backup` se a versão tiver migração. Pormenores: `docs/deploy.md`, "Atualizar a aplicação".
+4. Deploy: troque os digests em `infra/ansible/group_vars/all.yml` e rode `ansible-playbook site.yml -e @secrets.yml`; o playbook roda `cosign verify` com `cosign_identity_regexp` e `cosign_oidc_issuer` do `all.yml` e recusa imagem sem digest ou sem assinatura. Antes, `systemctl start stellytics-backup` se a versão tiver migração. Pormenores: `docs/deploy.md`, "Atualizar a aplicação".
 5. Dependência vulnerável: o Renovate (`renovate.json`) trata atualizações de segurança direto; versões maiores precisam de aprovação no Dependency Dashboard. Para o Umami, ver [atualização do Umami](atualizacao-do-umami.md).
 
 ## 4. Verificar
 
-- O teste que reproduzia o problema passa; a suíte de isolamento passa (`pnpm --filter @notify/portal test` e o job `compose` do CI).
+- O teste que reproduzia o problema passa; a suíte de isolamento passa (`pnpm --filter @stellytics/portal test` e o job `compose` do CI).
 - Passo 6 de `docs/deploy.md` na produção; a assinatura conferida no deploy (`cosign verify` no playbook).
 - A medida de contenção foi desfeita só quando a correção está no ar (reativar projeto, se for o caso).
 

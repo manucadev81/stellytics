@@ -5,7 +5,7 @@ export default defineConfig({
   schema: "./src/lib/db/schema.ts",
   out: "./drizzle",
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? "postgresql://notify:notify@localhost:5432/notify",
+    url: process.env.DATABASE_URL ?? "postgresql://stellytics:stellytics@localhost:5432/stellytics",
   },
   strict: true,
 });
