@@ -6,7 +6,7 @@
 # VM; acesse pelo túnel SSH (docs/deploy.md, "Monitoramento"). O Ansible
 # (infra/ansible/monitoring.yml) gera prometheus/targets/*.yml e
 # alertmanager/alertmanager.yml.
-name: notify-monitor
+name: stellytics-monitor
 
 x-logging: &logging
   driver: json-file

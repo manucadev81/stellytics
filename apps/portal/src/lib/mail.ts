@@ -25,9 +25,9 @@ export async function sendMail(message: { to: string; subject: string; text: str
 
 export function verificationEmail(url: string) {
   return {
-    subject: "Confirm your email for notify",
+    subject: "Confirm your email for stellytics",
     text: [
-      "Confirm your email address to finish creating your notify account:",
+      "Confirm your email address to finish creating your stellytics account:",
       "",
       url,
       "",
@@ -38,9 +38,9 @@ export function verificationEmail(url: string) {
 
 export function resetPasswordEmail(url: string) {
   return {
-    subject: "Reset your notify password",
+    subject: "Reset your stellytics password",
     text: [
-      "Someone asked to reset the password of your notify account. To choose a new one, open:",
+      "Someone asked to reset the password of your stellytics account. To choose a new one, open:",
       "",
       url,
       "",

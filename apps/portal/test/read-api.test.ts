@@ -32,7 +32,7 @@ function secretOf(key: string): string {
   return key.slice(key.indexOf("_", "nrk_".length) + 1);
 }
 
-const DOMAIN = "@read-api-test.notify.invalid";
+const DOMAIN = "@read-api-test.stellytics.invalid";
 const SLUG = "read-api-test-";
 
 let umami: FakeUmami;

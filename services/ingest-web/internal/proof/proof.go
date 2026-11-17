@@ -30,7 +30,7 @@ const (
 	// clockSkew tolera um relógio do gateway levemente adiantado em outra réplica.
 	clockSkew = time.Minute
 	// domain separa este HMAC de qualquer outro uso da mesma chave.
-	domain = "notify-proof-v1"
+	domain = "stellytics-proof-v1"
 )
 
 // Erros de Verify. Todos levam ao descarte do evento.

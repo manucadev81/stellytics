@@ -80,7 +80,7 @@ func newSetup(t *testing.T, opts ...func(*gateway)) setup {
 
 	gw := &gateway{
 		sites:  fakeSites{activeSite: true, pendingSite: false},
-		relay:  relay.NewClient(base, "x-notify-client-ip", us.Client()),
+		relay:  relay.NewClient(base, "x-stellytics-client-ip", us.Client()),
 		limits: limit.New(1000, 1000, time.Minute),
 		ips:    clientip.Resolver{},
 		proofs: testProofs,
@@ -150,7 +150,7 @@ func TestEventRelayedToUmami(t *testing.T) {
 				t.Errorf("User-Agent repassado = %q", ua)
 			}
 			// O httptest conecta por 127.0.0.1.
-			if ip := h.Get("x-notify-client-ip"); ip != "127.0.0.0" {
+			if ip := h.Get("x-stellytics-client-ip"); ip != "127.0.0.0" {
 				t.Errorf("IP repassado = %q, quero 127.0.0.0", ip)
 			}
 			payload := got[0].body["payload"].(map[string]any)
@@ -252,7 +252,7 @@ func TestEventDoesNotForwardClientHeaders(t *testing.T) {
 		}
 	}
 	// Sem proxy confiável, o X-Forwarded-For é ignorado.
-	if ip := h.Get("x-notify-client-ip"); ip != "127.0.0.0" {
+	if ip := h.Get("x-stellytics-client-ip"); ip != "127.0.0.0" {
 		t.Errorf("IP repassado = %q", ip)
 	}
 }
@@ -262,7 +262,7 @@ func TestEventTrustedProxyTruncatesForwardedIP(t *testing.T) {
 		g.ips = clientip.Resolver{Trusted: []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")}}
 	})
 	post(t, s, "text/plain", eventBody(activeSite), "X-Forwarded-For", "203.0.113.77")
-	if ip := s.umami.received()[0].header.Get("x-notify-client-ip"); ip != "203.0.113.0" {
+	if ip := s.umami.received()[0].header.Get("x-stellytics-client-ip"); ip != "203.0.113.0" {
 		t.Errorf("IP repassado = %q, quero 203.0.113.0", ip)
 	}
 }
@@ -320,7 +320,7 @@ func TestEventUmamiFailure(t *testing.T) {
 	}))
 	t.Cleanup(down.Close)
 	base, _ := url.Parse(down.URL)
-	s := newSetup(t, func(g *gateway) { g.relay = relay.NewClient(base, "x-notify-client-ip", down.Client()) })
+	s := newSetup(t, func(g *gateway) { g.relay = relay.NewClient(base, "x-stellytics-client-ip", down.Client()) })
 	if resp := post(t, s, "text/plain", eventBody(activeSite)); resp.StatusCode != http.StatusBadGateway {
 		t.Errorf("status = %d, quero 502", resp.StatusCode)
 	}

@@ -7,7 +7,7 @@
 - **Depende de:** [ADR 0003](../adr/0003-isolamento-no-portal.md)
 - **Implementação:** [o que foi feito no E2](../e2-implementacao.md)
 
-Este documento fixa o contrato que as issues do E2 precisam respeitar: o modelo de dados do banco `notify`, os papéis, a regra de isolamento, a chave de ingestão e o que cada status de tenant bloqueia. Decisão com alternativas descartadas fica em ADR; aqui fica só o contrato escolhido.
+Este documento fixa o contrato que as issues do E2 precisam respeitar: o modelo de dados do banco `stellytics`, os papéis, a regra de isolamento, a chave de ingestão e o que cada status de tenant bloqueia. Decisão com alternativas descartadas fica em ADR; aqui fica só o contrato escolhido.
 
 As seis decisões marcadas com **D1** a **D6** foram confirmadas em 13/11/2026. Elas estão reunidas na [seção 9](#9-decisões-tomadas), com a alternativa descartada de cada uma.
 
@@ -15,7 +15,7 @@ As seis decisões marcadas com **D1** a **D6** foram confirmadas em 13/11/2026. 
 
 O que a #57 já deixou no código:
 
-- tabelas do Better Auth (`user`, `session`, `account`, `verification`) no banco `notify`;
+- tabelas do Better Auth (`user`, `session`, `account`, `verification`) no banco `stellytics`;
 - coluna `user.role` com os valores `tenant` e `operator`, que o cliente não consegue definir;
 - `requireSession()` e `requireOperator()` em `apps/portal/src/lib/session.ts`, sempre no servidor;
 - cadastro desligado (`disableSignUp: true`); contas criadas pelo script `scripts/create-user.mjs`;
@@ -53,7 +53,7 @@ Recurso de outro tenant responde **404**, não 403, para não revelar que o recu
 
 ## 3. Modelo de dados
 
-Tudo no banco `notify`, com migrações do Drizzle. Identificadores novos são `uuid` gerados pelo banco; `user.id` continua `text`, como o Better Auth cria.
+Tudo no banco `stellytics`, com migrações do Drizzle. Identificadores novos são `uuid` gerados pelo banco; `user.id` continua `text`, como o Better Auth cria.
 
 ```mermaid
 erDiagram
@@ -163,17 +163,17 @@ Os dois tipos são marcados (*branded*), de modo que nenhum outro código conseg
 
 ### Papéis no Postgres
 
-**D4.** Cada serviço usa um usuário próprio do banco `notify`, com o mínimo de permissão:
+**D4.** Cada serviço usa um usuário próprio do banco `stellytics`, com o mínimo de permissão:
 
 | Usuário | Quem usa | Permissão |
 |---|---|---|
-| `notify` | Portal | Dono das tabelas |
-| `notify_ingest` | Gateway web (#61) | `SELECT` na visão `ingest_site` (ID do site no Umami e se aceita ingestão) |
-| `notify_collector` | Coletor (#30) | `SELECT` na visão `ingest_key_active`; `INSERT` nas tabelas de métricas; `EXECUTE` em `ingest_key_touch(text)` |
+| `stellytics` | Portal | Dono das tabelas |
+| `stellytics_ingest` | Gateway web (#61) | `SELECT` na visão `ingest_site` (ID do site no Umami e se aceita ingestão) |
+| `stellytics_collector` | Coletor (#30) | `SELECT` na visão `ingest_key_active`; `INSERT` nas tabelas de métricas; `EXECUTE` em `ingest_key_touch(text)` |
 
 Assim, uma falha no gateway ou no coletor não dá acesso a e-mails, sessões nem hashes de senha.
 
-**Último uso da chave.** O coletor registra `ingest_key.last_used_on` chamando `ingest_key_touch(prefixo)` (migração `0008_ingest_key_last_used.sql`), função `SECURITY DEFINER` que só atualiza essa coluna, só de chave presente em `ingest_key_active` e só se a data (UTC) mudou. Não é um `GRANT UPDATE (last_used_on)` porque o `UPDATE ... WHERE prefix = ...` exigiria também `SELECT` em `prefix`, `revoked_at` e demais colunas da tabela, o que abriria a leitura de chaves revogadas e de `key_hash`. Com a função, o `notify_collector` continua sem nenhum privilégio em `ingest_key`; `notify_ingest` não tem `EXECUTE`.
+**Último uso da chave.** O coletor registra `ingest_key.last_used_on` chamando `ingest_key_touch(prefixo)` (migração `0008_ingest_key_last_used.sql`), função `SECURITY DEFINER` que só atualiza essa coluna, só de chave presente em `ingest_key_active` e só se a data (UTC) mudou. Não é um `GRANT UPDATE (last_used_on)` porque o `UPDATE ... WHERE prefix = ...` exigiria também `SELECT` em `prefix`, `revoked_at` e demais colunas da tabela, o que abriria a leitura de chaves revogadas e de `key_hash`. Com a função, o `stellytics_collector` continua sem nenhum privilégio em `ingest_key`; `stellytics_ingest` não tem `EXECUTE`.
 
 ## 5. Chave de ingestão
 
@@ -251,7 +251,7 @@ Cada painel novo (#28 e #37) acrescenta os próprios casos a esta suíte.
 | D1 | Um usuário pertence a um único tenant | Vários tenants por usuário, com troca de projeto ativo | A sessão passa a guardar o tenant ativo e toda tela ganha o seletor |
 | D2 | Operador não é membro de tenant | Papel global separado do papel no tenant | `requireTenantContext()` precisa aceitar operador com projeto |
 | D3 | Sem papel de administrador; operador criado por script | Tela de administração no portal | Mais uma área para proteger e testar |
-| D4 | Um usuário de banco por serviço, com visões só de leitura | Todos usam o usuário `notify` | Mais simples, mas uma falha na ingestão expõe as contas |
+| D4 | Um usuário de banco por serviço, com visões só de leitura | Todos usam o usuário `stellytics` | Mais simples, mas uma falha na ingestão expõe as contas |
 | D5 | O serviço vem da chave; `service.name` do cliente é ignorado | Aceitar o `service.name` do cliente | Exige limite de cardinalidade por tenant no coletor |
 | D6 | Operador pode reativar tenant removido | Remoção definitiva | O projeto removido por engano precisa se cadastrar de novo |
 
@@ -275,4 +275,4 @@ Cada painel novo (#28 e #37) acrescenta os próprios casos a esta suíte.
 | #19 | Papéis e matriz de permissões (seção 2) |
 | #20 | Status e recusa da ingestão (seção 6) |
 | #21 | Casos mínimos (seção 8) |
-| #12, #61 e #30 | Pela D4, o script de criação dos bancos ganha os usuários `notify_ingest` e `notify_collector`. A mudança no script entra na #16, junto com as visões |
+| #12, #61 e #30 | Pela D4, o script de criação dos bancos ganha os usuários `stellytics_ingest` e `stellytics_collector`. A mudança no script entra na #16, junto com as visões |

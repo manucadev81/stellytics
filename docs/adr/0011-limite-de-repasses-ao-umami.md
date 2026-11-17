@@ -1,6 +1,6 @@
 # 0011. Limite de repasses simultâneos ao Umami e comportamento sob saturação
 
-- **Status:** Proposto
+- **Status:** Aceito
 - **Data:** 15/11/2026
 - **Issue:** [#133](https://github.com/romulospl/notify/issues/133) (decisão sobre o 503) e [#134](https://github.com/romulospl/notify/issues/134) (limite por site); o texto original da pendência está em [`docs/relatorios/carga-1m-dia.md`](../relatorios/carga-1m-dia.md), seção "Pendência pronta para virar issue"
 - **Depende de:** [ADR 0002](0002-arquitetura-e-stack.md), [ADR 0009](0009-alta-disponibilidade.md)
@@ -23,21 +23,21 @@ Um semáforo no repasse (`relay.Limited`), controlado por duas variáveis:
 - `RELAY_MAX_INFLIGHT` (0 a 100000, padrão `0`): máximo de repasses ao Umami ao mesmo tempo. **`0` desliga o limite e preserva o comportamento anterior exatamente** (o gateway nem monta o semáforo; há teste de regressão).
 - `RELAY_QUEUE_WAIT` (0 a 10 s, padrão `250ms`): quanto uma requisição espera por uma vaga. Passado o prazo, ela é recusada. `0` recusa na hora se não houver vaga.
 
-Quando não há vaga dentro do prazo, o gateway responde **`503` com `Retry-After: 1`** e **o evento é descartado: ele se perde**. O script não tenta de novo, então o `Retry-After` serve a clientes que não são o nosso script (testes, integrações, monitoramento). Perder o evento de forma explícita, contada e visível é melhor que segurar a conexão por 5 a 8 s e estourar a memória: o navegador do visitante já foi embora, a conexão e a memória do gateway não.
+Quando não há vaga dentro do prazo, o gateway responde **`204`** e o evento é descartado. A perda é registrada no contador agregado e no log, não no status HTTP. A resposta igual à dos descartes por site ou fingerprint evita as pistas de status e cota; a latência ainda pode variar entre caminhos.
 
 Regras:
 
 - **Só o repasse é limitado.** `GET /c`, `GET /s/`, `GET /healthz`, a prova de JS, o limite por IP e o descarte por site recusado ou por fingerprint não passam pelo semáforo e respondem como sempre, mesmo com o repasse saturado. A **ordem** das camadas não muda (prova de JS, `ingest_site`, fingerprints, repasse); a espera por vaga acontece dentro do repasse.
 - **A vaga volta em qualquer saída**: sucesso, erro do Umami, timeout, cancelamento do cliente e panic (liberação por `defer`). Quem cancela enquanto espera a vaga não conta como descarte por saturação.
 - **Descarte por saturação não gasta a cota de fingerprints do IP.** O handler registra a fingerprint antes do repasse (ordem inalterada); se o repasse é recusado por saturação e a fingerprint tinha acabado de entrar na conta, ela é removida (`Counter.Forget`). Sem isso, num pico, visitantes legítimos teriam a cota de 50 fingerprints do /24 consumida por eventos que nunca foram gravados, e passariam a ser descartados em silêncio quando o Umami voltasse. O mesmo vale para cancelamento do cliente, falha do Umami e panic (o evento não foi gravado). Há testes que falham se a remoção for tirada. **Limite conhecido:** se outro evento do mesmo IP e da mesma fingerprint passa entre a admissão e a remoção (vê a fingerprint como "não nova" e é gravado), a remoção também tira a fingerprint dele da conta; a cota fica subcontada por uma fingerprint, só sob concorrência. Uma fingerprint que já estava na conta antes do evento não é removida.
-- **Contador agregado**: `Limited.Dropped()` conta os descartes. O gateway registra um aviso por minuto, só quando o total mudou (`descartados`, `total`, `em_voo`), como faz com as respostas vencidas do cache de sites. **Sem IP, `User-Agent` nem ID de site.** O operador vê a taxa de descarte nesse log e na contagem de `503` do Caddy. O último minuto parcial antes de um desligamento não é registrado.
+- **Contador agregado**: `Limited.Dropped()` conta os descartes. O gateway registra um aviso por minuto, só quando o total mudou (`descartados`, `total`, `em_voo`), como faz com as respostas vencidas do cache de sites. **Sem IP, `User-Agent` nem ID de site.** O operador vê a taxa de descarte nesse log . O último minuto parcial antes de um desligamento não é registrado.
 
 ## Alternativas consideradas
 
 | Alternativa | Prós | Contras |
 |---|---|---|
-| **Semáforo com espera curta e `503` (escolhida)** | Memória e latência limitadas; o descarte é contado e visível no status HTTP; a espera curta absorve rajadas de milissegundos sem perder evento; simples, em memória, sem estado a replicar | O evento se perde (o script não tenta de novo); durante a saturação o `503` dá duas pistas a quem sonda (ver "Pistas que o `503` dá") |
-| Responder `204` e descartar em silêncio (como site desconhecido) | Não dá pista nenhuma a quem testa; o script não vê erro | Esconde a perda de quem monitora o status HTTP: a taxa de descarte só existiria no log do gateway. O visitante já não vê a resposta de qualquer forma, então a vantagem é só contra sondagem |
+| Semáforo com espera curta e `503` | Memória e latência limitadas; o descarte é contado e visível no status HTTP; a espera curta absorve rajadas de milissegundos sem perder evento; simples, em memória, sem estado a replicar | O evento se perde (o script não tenta de novo); durante a saturação o `503` dá duas pistas a quem sonda (ver "Decisão sobre as pistas de saturação") |
+| **Responder `204` e descartar em silêncio (escolhida)** | Não revela as duas condições pelo status HTTP; o script não vê erro | Esconde a perda de quem monitora o status HTTP: a taxa de descarte só existiria no log do gateway. O visitante já não vê a resposta de qualquer forma, então a vantagem é só contra sondagem |
 | Fila limitada maior (esperar segundos por vaga) | Perde menos eventos em rajadas curtas | Reintroduz o problema em escala menor: conexões e memória seguradas por segundos, e a latência de quem é aceito sobe (medido: com 256 vagas e espera de 250 ms o p50 dos aceitos foi de 1,6 s). Só vale se a rajada for mais curta que o prazo |
 | Fila durável (disco, Redis, NATS) entre o gateway e o Umami | Não perde evento num pico | Novo componente para operar, backup e consistência; contradiz o gateway sem estado do ADR 0002; o pico acima da capacidade média só adia o problema, a fila cresce sem fim se a taxa de entrada continuar maior que a de saída |
 | Escalar o Umami na horizontal (várias instâncias atrás do gateway) | É a única opção que aumenta a capacidade em vez de escolher o que perder | O Umami é um nó de Node por instância; precisa de balanceamento no gateway ou no Caddy e ajuste do pool do Postgres; mais VMs e custo; ainda precisa de limite (qualquer capacidade finita satura). **Complementar, não substituta**: o limite deve existir de qualquer jeito. Fica para o ADR 0009 (alta disponibilidade) |
@@ -53,6 +53,8 @@ O que já limita o estrago, sem nada novo: o limite de taxa por IP truncado (`RA
 **Não implementado neste ADR**, por duas razões: (1) com o Umami como único gargalo, o recurso escasso é a capacidade dele, e uma cota fixa por site desperdiça vaga quando os outros estão ociosos; a solução correta é uma partilha justa (cada site com um piso reservado e o resto compartilhado, ou fila por site com rodízio), com estado por site e mais pontos de falha, e não é pequena; (2) a escala atual (poucos projetos, alvo de 11,6/s) não exerce o problema, e não medimos a disputa entre tenants. **Pendência registrada**: se um tenant isolado passar a competir pelas vagas, a próxima peça é uma reserva por site (por exemplo, nenhum site pode ocupar mais que uma fração das vagas quando outros esperam) em cima do mesmo `relay.Limited`. O contador atual não separa descartes por site (e não deve gravar ID de site em log de texto); a medição por site precisaria de métrica própria.
 
 ## Medição
+
+Medição histórica com a implementação anterior, que respondia `503` sob saturação; os `204` abaixo não incluem os descartes que agora também recebem `204`.
 
 Máquina local, Postgres 17.11 e Umami 3.4.1 em contêineres, gateway como binário Go no host, gerador `services/loadtest`, 400 page views/s por 60 s (Poisson), banco do Umami vazio no começo e crescendo entre as execuções, mesma configuração do relatório de carga (`PROOF_BITS=12`, `FINGERPRINT_LIMIT=50`, `RATE_LIMIT=20`). **Uma execução por linha; sem repetição, então a variação entre execuções não está medida.** Outros programas rodavam na máquina. `Aceitos` são os `204`; latências em milissegundos vistas pelo gerador.
 
@@ -75,28 +77,15 @@ Leitura:
 
 **Não foi testado:** várias instâncias do gateway (o semáforo é por processo; N gateways permitem N vezes `RELAY_MAX_INFLIGHT` ao mesmo Umami), produção (Caddy, TLS, rede real, Hetzner), Umami com muitos dados (o banco começou vazio), execuções longas, e disputa entre tenants (um site só no teste). Os valores `16`, `64` e `256` foram escolhidos para a medição, não calculados para produção.
 
-## Pistas que o `503` dá (decisão do mantenedor, pendente)
+## Decisão sobre as pistas de saturação
 
-Como implementado, o `503` sai depois das camadas locais, na ordem inalterada. Sob saturação, portanto, **só recebe `503` o evento com prova de JS válida, de site aceito e cuja fingerprint ainda cabe na cota do IP**. Site desconhecido, recusado (removido, pendente, arquivado) ou com a cota do IP cheia recebe `204`. Isso dá duas pistas:
-
-- **(a) Status do site.** Distingue site ativo de removido, pendente, arquivado ou inexistente, justamente o que o spec do E2 (seção 6) quer esconder. O custo realista para o atacante é baixo: cerca de 10 /24 distintos bastam para chegar a ~200 eventos/s (o limite por IP é 20/s), sem botnet. Ele satura o gateway com um site **seu**, sonda o ID alvo e lê `503` ou `204`. O argumento "o fluxo completo é exigido" é fraco: o atacante tem o script e resolve a prova.
-- **(b) Fingerprint.** O `503` revela que a cota de fingerprints do IP não estava cheia para aquela combinação.
-
-**Alternativas avaliadas:**
-
-| Alternativa | Prós | Contras |
-|---|---|---|
-| Manter o `503` como está (pista aceita) | Já implementado e medido; o status HTTP mostra a perda ao operador e ao Caddy; `Retry-After` faz sentido | As duas pistas acima |
-| `204` também sob saturação | Fecha as duas pistas; resposta igual à de qualquer descarte | Esconde a perda no status HTTP e no Caddy; `Retry-After` perde o sentido; a observabilidade fica só no log agregado por minuto |
-| `503` para **qualquer** evento com prova válida quando o semáforo está cheio (checagem barata: `len(slots) == cap`), antes de `ingest_site` e de fingerprints | Fecha as duas pistas; mantém o `503` visível | Muda a ordem das camadas (a recusa passa a vir antes de `ingest_site` e fingerprints); sobra um oráculo de tempo: o aceito espera até `RELAY_QUEUE_WAIT` pela vaga e o desconhecido responde na hora (hoje o desconhecido já é mais rápido, mas sem a espera de `wait`); e eventos de sites inválidos deixam de ser descartados em silêncio, mas isso não custa vaga |
-
-**A escolha é do mantenedor** e este ADR não a toma. O recurso vem **desligado por padrão** (`RELAY_MAX_INFLIGHT=0`), então nada disso vale para quem não o liga. **Quem ligar `RELAY_MAX_INFLIGHT` em produção deve decidir isto antes.**
+A saturação responde `204`, como os descartes por site desconhecido ou recusado e por cota de fingerprints. Isso evita revelar essas condições pelo status HTTP. A espera por vaga ainda pode produzir diferenças de tempo; esta decisão não garante respostas de duração uniforme. O contador agregado e o log por minuto são os sinais de perda. O limite permanece desligado por padrão.
 
 ## Consequências
 
-- **Padrão `0` (desligado)**: nada muda para quem não ligar a variável. Em produção, o `prod.yaml` ainda **não repassa** `RELAY_MAX_INFLIGHT` nem `RELAY_QUEUE_WAIT`; ligar exige uma mudança à parte nele e no Ansible.
-- Um evento recusado por saturação se perde para sempre. A métrica de pageviews do dashboard fica subcontada durante a saturação e **o painel não avisa**; o aviso por minuto no log e a contagem de `503` no proxy são os sinais. Quem liga o limite deve alertar sobre isso (sugestão: `503` do `POST /e` acima de uma pequena fração por alguns minutos).
-- Durante a saturação o `503` dá pistas a quem sonda; escolha pendente do mantenedor (seção abaixo).
+- **Padrão `0` (desligado)**: nada muda para quem não ligar a variável. As variáveis são repassadas pelo Compose e pelo Ansible.
+- Um evento recusado por saturação se perde para sempre. A métrica de pageviews do dashboard fica subcontada durante a saturação e **o painel não avisa**; o aviso por minuto no log é o sinal disponível. Quem liga o limite deve monitorar esse log.
+- Diferenças de tempo entre os caminhos ainda podem fornecer pistas.
 - O semáforo é por processo. Com mais de uma instância do gateway, o limite ao Umami é a soma.
 - A capacidade real continua a do Umami (cerca de 200 page views/s por instância nesta máquina). Escalar o Umami fica como evolução (ADR 0009).
-- Respostas do `POST /e` que o operador passa a ver: `503` com corpo `overloaded` e `Retry-After`, distinto do `503` de falha da `ingest_site` (corpo `service unavailable`).
+- Falhas na consulta à `ingest_site` continuam respondendo `503`.

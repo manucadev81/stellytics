@@ -15,12 +15,12 @@ Serve para os quatro alertas reais do monitoramento externo ([`alerts.yml`](../.
 2. Entre na VM e veja o estado:
 
    ```bash
-   cd /opt/notify/infra/compose
+   cd /opt/stellytics/infra/compose
    docker compose -f prod.yaml ps
-   df -h /srv/notify
+   df -h /srv/stellytics
    ```
 
-3. Se nem o SSH entra, a VM caiu: veja o console da Hetzner (reiniciar, ver o volume). O volume em `/srv/notify` sobrevive à VM; sem ele montado, o Docker e o backup não sobem de propósito. Recriar a VM: `docs/deploy.md`, passos 1 e 4, e a restauração só se o volume foi perdido ([backup e restauração](backup-e-restauracao.md)).
+3. Se nem o SSH entra, a VM caiu: veja o console da Hetzner (reiniciar, ver o volume). O volume em `/srv/stellytics` sobrevive à VM; sem ele montado, o Docker e o backup não sobem de propósito. Recriar a VM: `docs/deploy.md`, passos 1 e 4, e a restauração só se o volume foi perdido ([backup e restauração](backup-e-restauracao.md)).
 
 ## EndpointDown
 
@@ -30,14 +30,14 @@ Serve para os quatro alertas reais do monitoramento externo ([`alerts.yml`](../.
 
 - Qual componente? Está no rótulo `component` do e-mail. Se só um caiu, o problema é do serviço dele; se todos caíram, é a VM, o Caddy ou a rede.
 - Na VM: `docker compose -f prod.yaml ps` (procure `unhealthy`, `restarting` ou ausente) e `docker compose -f prod.yaml logs --tail 200 <serviço>`.
-- Cadeia de dependências do `prod.yaml`: `caddy` depende de `portal`, `ingest-web` e `collector`; `ingest-web` depende de `postgres`, `umami` e `portal`; `collector` e `rollup` dependem de `postgres` e `portal`; `portal` e `umami` dependem de `postgres`. Comece pelo mais fundo que esteja ruim (normalmente `postgres`: `df -h /srv/notify`, disco cheio derruba tudo).
+- Cadeia de dependências do `prod.yaml`: `caddy` depende de `portal`, `ingest-web` e `collector`; `ingest-web` depende de `postgres`, `umami` e `portal`; `collector` e `rollup` dependem de `postgres` e `portal`; `portal` e `umami` dependem de `postgres`. Comece pelo mais fundo que esteja ruim (normalmente `postgres`: `df -h /srv/stellytics`, disco cheio derruba tudo).
 - Pelo Prometheus da VM de monitoramento (túnel `ssh -N -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 root@<monitor_ipv4>`, depois `http://127.0.0.1:9090`): a consulta `probe_success` e a página *Status → Targets* mostram qual alvo falha.
 
 **Ação.**
 
 - Serviço parado ou `unhealthy`: `docker compose -f prod.yaml up -d --wait` (recria o que faltar) ou `docker compose -f prod.yaml restart <serviço>`.
 - Imagem nova que quebrou: rollback pelos digests anteriores em `group_vars/all.yml` e `ansible-playbook site.yml -e @secrets.yml` (seção "Voltar atrás" de `docs/deploy.md`; o rollback não desfaz migração de banco).
-- Disco cheio: veja `docker system df` e `du -sh /srv/notify/*`; sobras de restauração e imagens antigas são os candidatos. **`postgres.antes-*` só se apaga depois de uma restauração conferida** ([backup e restauração](backup-e-restauracao.md)). `docker image prune` (sem `-a`) remove só imagens soltas; **nunca** rode `docker system prune --volumes`. Aumentar o volume é pela Hetzner.
+- Disco cheio: veja `docker system df` e `du -sh /srv/stellytics/*`; sobras de restauração e imagens antigas são os candidatos. **`postgres.antes-*` só se apaga depois de uma restauração conferida** ([backup e restauração](backup-e-restauracao.md)). `docker image prune` (sem `-a`) remove só imagens soltas; **nunca** rode `docker system prune --volumes`. Aumentar o volume é pela Hetzner.
 - Portal sobe mas o painel não mostra dados ou não cria sites: veja se o Umami responde (`docker compose -f prod.yaml ps umami`) e se a `UMAMI_API_KEY` é válida (ver [rotação de segredos](rotacao-de-segredos.md), efeito do `umami_app_secret`).
 - Gateway responde `204` mas os eventos não aparecem no painel: o `204` é a resposta também para site recusado e para prova inválida (de propósito). Confira o site na tela do projeto (ativo e não arquivado) e `docker compose -f prod.yaml logs ingest-web`.
 
@@ -56,7 +56,7 @@ Serve para os quatro alertas reais do monitoramento externo ([`alerts.yml`](../.
 - `docker compose -f prod.yaml logs --tail 300 caddy | grep -i -E 'acme|certificate|error'`.
 - DNS: `dig +short <portal_host>` e `dig +short <ingest_host>` precisam apontar para a VM (A e AAAA).
 - Porta 80 aberta de fora: `nc -vz -w3 <ip-da-vm> 80` (o desafio do Let's Encrypt passa por ela; o firewall da Hetzner abre 80 e 443).
-- O volume do Caddy está em `/srv/notify/caddy` e precisa estar montado e gravável.
+- O volume do Caddy está em `/srv/stellytics/caddy` e precisa estar montado e gravável.
 - Limite do Let's Encrypt (muitas emissões): o log do Caddy diz.
 
 **Ação.** Corrija a causa (DNS, firewall, volume). Depois `docker compose -f prod.yaml restart caddy` para uma nova tentativa imediata.
@@ -69,7 +69,7 @@ Serve para os quatro alertas reais do monitoramento externo ([`alerts.yml`](../.
 
 **Sintomas.** `<componente> is not being checked`: o Prometheus não consegue nem pedir o teste ao blackbox para aquele alvo (`up{job="endpoints"} == 0`). O estado real do alvo é desconhecido, e o `EndpointDown` não dispara.
 
-**Diagnóstico.** Na VM de monitoramento (`cd /opt/notify-monitor`): `docker compose ps`, `docker compose logs --tail 100 prometheus blackbox`. Procure erro de módulo inexistente em `blackbox/blackbox.yml` ou de configuração depois de um deploy do `monitoring.yml`. Teste o alvo à mão pelo Prometheus (túnel acima) em *Status → Targets*.
+**Diagnóstico.** Na VM de monitoramento (`cd /opt/stellytics-monitor`): `docker compose ps`, `docker compose logs --tail 100 prometheus blackbox`. Procure erro de módulo inexistente em `blackbox/blackbox.yml` ou de configuração depois de um deploy do `monitoring.yml`. Teste o alvo à mão pelo Prometheus (túnel acima) em *Status → Targets*.
 
 **Ação.** Restaure a configuração do repositório: `ansible-playbook monitoring.yml -e @secrets.yml` a partir de `infra/ansible/` (copia as configurações e recarrega com `SIGHUP`). Enquanto isso, faça a triagem de fora à mão.
 
@@ -83,7 +83,7 @@ Serve para os quatro alertas reais do monitoramento externo ([`alerts.yml`](../.
 
 **E se a VM de monitoramento inteira cair?** Nenhum alerta dispara, porque o Prometheus e o Alertmanager moram nela. A única pista é o **sinal de vida externo** (`Watchdog` enviado a `monitor_deadman_url`) parar de chegar, e **só se `monitor_deadman_url` estiver definido**: sem ele o Watchdog vai para o receptor `blackhole` e ninguém fica sabendo.
 
-**Diagnóstico.** Na VM de monitoramento (`cd /opt/notify-monitor`): `docker compose ps` (serviços `prometheus`, `blackbox` e `alertmanager`), `docker compose logs --tail 100 blackbox`. Se o SSH não entra, a VM caiu: console da Hetzner.
+**Diagnóstico.** Na VM de monitoramento (`cd /opt/stellytics-monitor`): `docker compose ps` (serviços `prometheus`, `blackbox` e `alertmanager`), `docker compose logs --tail 100 blackbox`. Se o SSH não entra, a VM caiu: console da Hetzner.
 
 **Ação.** `docker compose up -d --wait` na pasta do monitor; se a VM caiu, reinicie pelo console (reinício da pilha após reboot real não foi conferido). Para recriar do zero, `ansible-playbook monitoring.yml -e @secrets.yml`.
 

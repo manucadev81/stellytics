@@ -22,7 +22,7 @@ body:
     id: projeto
     attributes:
       label: Projeto
-      description: Nome do projeto no notify (opcional).
+      description: Nome do projeto no stellytics (opcional).
   - type: textarea
     id: duvida
     attributes:

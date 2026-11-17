@@ -22,7 +22,7 @@ describe("versões publicadas", () => {
   it("o código atual é o da versão do package.json", async () => {
     const version = currentVersion();
     const file = join(publishedDir, `v${version}`, fileName);
-    expect(existsSync(file), `rode "pnpm --filter @notify/tracker release" para publicar a v${version}`).toBe(
+    expect(existsSync(file), `rode "pnpm --filter @stellytics/tracker release" para publicar a v${version}`).toBe(
       true,
     );
     // Mudou o código sem subir a versão? Suba a versão no package.json e rode o release.

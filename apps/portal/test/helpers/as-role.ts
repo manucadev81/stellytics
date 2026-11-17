@@ -1,11 +1,11 @@
-// Roda uma consulta como outro papel do banco (notify_ingest ou
-// notify_collector, spec do E2, D4), dentro de uma transação desfeita no fim.
+// Roda uma consulta como outro papel do banco (stellytics_ingest ou
+// stellytics_collector, spec do E2, D4), dentro de uma transação desfeita no fim.
 // Exige os papéis de infra/compose/postgres/init/02-ingest-roles.sh.
 import { sql } from "@/lib/db";
 
 class Rollback extends Error {}
 
-export async function asRole<T>(role: "notify_ingest" | "notify_collector", query: string): Promise<T[]> {
+export async function asRole<T>(role: "stellytics_ingest" | "stellytics_collector", query: string): Promise<T[]> {
   let rows: T[] = [];
   await sql
     .begin(async (tx) => {

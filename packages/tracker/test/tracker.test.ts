@@ -122,10 +122,10 @@ describe("start", () => {
     expect(leadingZeroBits(sha256(`${TOKEN}:${event.p.n}`))).toBeGreaterThanOrEqual(BITS);
   });
 
-  it("window.notify.event envia um evento customizado com nome e propriedades", async () => {
+  it("window.stellytics.event envia um evento customizado com nome e propriedades", async () => {
     stop = start(script({ src: SRC, "data-site": SITE }));
     await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
-    const api = (window as unknown as { notify: { event: (n: string, d?: object) => void } }).notify;
+    const api = (window as unknown as { stellytics: { event: (n: string, d?: object) => void } }).stellytics;
     api.event("signup_clicked", { plan: "pro", seats: 3, trial: true });
     await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(2));
     const event = sent(fetchMock)[1]!;
@@ -139,19 +139,19 @@ describe("start", () => {
     expect(sent(fetchMock)[0]!.payload).not.toHaveProperty("name");
   });
 
-  it("window.notify.event ignora evento fora do contrato e some ao parar", async () => {
+  it("window.stellytics.event ignora evento fora do contrato e some ao parar", async () => {
     stop = start(script({ src: SRC, "data-site": SITE }));
     await vi.waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
-    const w = window as unknown as { notify?: { event: (n: string, d?: object) => void } };
-    w.notify!.event("nome inválido");
-    w.notify!.event("ok", { nested: { a: 1 } });
+    const w = window as unknown as { stellytics?: { event: (n: string, d?: object) => void } };
+    w.stellytics!.event("nome inválido");
+    w.stellytics!.event("ok", { nested: { a: 1 } });
     await vi.advanceTimersByTimeAsync(50);
     expect(posts(fetchMock)).toHaveLength(1);
     stop();
-    expect(w.notify).toBeUndefined();
+    expect(w.stellytics).toBeUndefined();
   });
 
-  describe("window.notify.wallets (kit falso)", () => {
+  describe("window.stellytics.wallets (kit falso)", () => {
     const Types = { STATE_UPDATED: "STATE_UPDATE", WALLET_SELECTED: "WALLET_SELECTED", DISCONNECT: "DISCONNECT" };
     const ADDRESS = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7";
 
@@ -173,7 +173,7 @@ describe("start", () => {
     }
 
     const wallets = () =>
-      (window as unknown as { notify: { wallets: (k: unknown, t: unknown) => () => void } }).notify.wallets;
+      (window as unknown as { stellytics: { wallets: (k: unknown, t: unknown) => () => void } }).stellytics.wallets;
 
     it("assina só WALLET_SELECTED e DISCONNECT e manda só o id do módulo", async () => {
       stop = start(script({ src: SRC, "data-site": SITE }));

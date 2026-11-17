@@ -1,6 +1,6 @@
 #!/bin/sh
 # Entrada do Postgres RÉPLICA (#52, ADR 0009). Montado em prod-standby.yaml como
-# /usr/local/bin/notify-standby-entrypoint; a imagem do Postgres não muda.
+# /usr/local/bin/stellytics-standby-entrypoint; a imagem do Postgres não muda.
 #
 # Com o diretório de dados vazio, copia o primário com pg_basebackup (-R grava o
 # standby.signal e o primary_conninfo; -S usa o slot da réplica, criado antes)
@@ -12,7 +12,7 @@ set -eu
 
 : "${PRIMARY_HOST:?}" "${REPLICATOR_PASSWORD:?}"
 primary_port="${PRIMARY_PORT:-5432}"
-slot="${REPLICATION_SLOT:-notify_standby}"
+slot="${REPLICATION_SLOT:-stellytics_standby}"
 # Senha por arquivo (0600, fora do PGDATA): nem o pg_basebackup nem o
 # receptor de WAL (que lê PGPASSFILE do ambiente do contêiner) a recebem por
 # argumento, e ela não vai para o primary_conninfo.
@@ -31,11 +31,15 @@ printf '%s:%s:*:replicator:%s\n' "$PRIMARY_HOST" "$primary_port" "$REPLICATOR_PA
 chown postgres:postgres "$passfile"
 
 if [ ! -s "$pgdata/PG_VERSION" ]; then
-  if [ -n "$(find "$pgdata" -mindepth 1 -maxdepth 1 ! -name lost+found 2>/dev/null | head -n 1)" ]; then
+  mkdir -p "$pgdata"
+  marker="$pgdata/.standby-bootstrap-in-progress"
+  if [ -e "$marker" ]; then
+    echo "standby-entrypoint: removendo cópia parcial de uma tentativa anterior"
+    find "$pgdata" -mindepth 1 -maxdepth 1 ! -name lost+found -exec rm -rf -- {} +
+  elif [ -n "$(find "$pgdata" -mindepth 1 -maxdepth 1 ! -name lost+found 2>/dev/null | head -n 1)" ]; then
     echo "standby-entrypoint: $pgdata não está vazio e não é um cluster; recusando." >&2
     exit 1
   fi
-  mkdir -p "$pgdata"
   chown postgres:postgres "$pgdata"
   chmod 0700 "$pgdata"
 
@@ -53,9 +57,12 @@ if [ ! -s "$pgdata/PG_VERSION" ]; then
     -S "$slot" --create-slot --if-not-exists
 
   echo "standby-entrypoint: pg_basebackup do primário"
+  : > "$marker"
+  chown postgres:postgres "$marker"
   gosu postgres pg_basebackup \
     -h "$PRIMARY_HOST" -p "$primary_port" -U replicator \
     -D "$pgdata" -X stream -S "$slot" -R -c fast -P
+  rm -f "$marker"
 fi
 
 # Há cluster mas não há standby.signal: é o diretório de um primário (ou de uma

@@ -9,7 +9,7 @@ WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY examples/api-backend/package.json examples/api-backend/
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --prod --filter @notify/example-api-backend
+    pnpm install --frozen-lockfile --prod --filter @stellytics/example-api-backend
 COPY examples/api-backend examples/api-backend
 WORKDIR /repo/examples/api-backend
 USER node

@@ -1,4 +1,4 @@
-# Interest form draft: notify
+# Interest form draft: stellytics
 
 > **DRAFT. Not submitted.** Working draft for issue [#64](https://github.com/romulospl/notify/issues/64). Nothing was sent to SCF and no external form was filled. The real form lives at <https://communityfund.stellar.org> and its exact fields were **not verified** (the drafter cannot open it). The fields below follow the form as described in the SCF Handbook "Build Award" page (Raven, 2026-11-15: the form asks for the track and whether you were referred) and the SCF interest form guidance. Check every field against the live form before copying.
 
@@ -19,7 +19,7 @@
 
 **Referral code:** `[PENDING: referral code, or "none"]`
 
-**Project name:** notify
+**Project name:** stellytics
 
 **One-line description:**
 An open source, privacy-first web and API analytics service that SCF runs for Stellar ecosystem projects, giving each project private usage data and SCF a trusted global view, built on Umami and PostgreSQL.
@@ -28,7 +28,7 @@ An open source, privacy-first web and API analytics service that SCF runs for St
 
 SCF has no trusted, unified source of end-user usage data for the projects it funds, so reviewers weigh follow-on programs on self-reported metrics. The RFP asks for a multi-tenant service, free for Stellar projects, that measures real usage on the web and on APIs without cookies or personal tracking.
 
-notify is that service. Web usage comes from a version-pinned tracker script (with Subresource Integrity), a Go gateway that checks a JavaScript proof of work, limits fingerprints per IP and truncates the IP before it reaches Umami. API usage comes from OpenTelemetry dual-export to a custom collector that keeps only standardized metrics (service, normalized route, status code and latency) in PostgreSQL and discards traces, spans and logs. Each project sees only its own data; SCF operators see all projects and can compare them.
+stellytics is that service. Web usage comes from a version-pinned tracker script (with Subresource Integrity), a Go gateway that checks a JavaScript proof of work, limits fingerprints per IP and truncates the IP before it reaches Umami. API usage comes from OpenTelemetry dual-export to a custom collector that keeps only standardized metrics (service, normalized route, status code and latency) in PostgreSQL and discards traces, spans and logs. Each project sees only its own data; SCF operators see all projects and can compare them.
 
 The repository is public on MIT license and already contains the portal, tracker, gateway, collector, rollup job, dashboards, infrastructure code and an isolation test suite. What is not done yet: the production environment has not been applied, the API collector is not in the production stack, there are no pilots, and load, availability and handover work are ahead. The proposal funds that remaining work and 12 months of hosting and support.
 

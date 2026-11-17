@@ -1,5 +1,5 @@
 {
-  "name": "@notify/example-static-html",
+  "name": "@stellytics/example-static-html",
   "private": true,
   "type": "module",
   "scripts": {

@@ -22,7 +22,7 @@ import { getSiteDashboard, TOP_LIMIT } from "@/lib/umami/stats";
 import SitePage from "@/app/(private)/sites/[siteId]/page";
 import { DEFAULT_METRICS, startFakeUmami, type FakeUmami } from "./fake-umami";
 
-const DOMAIN = "@web-dashboard-test.notify.invalid";
+const DOMAIN = "@web-dashboard-test.stellytics.invalid";
 const SLUG = "web-dashboard-test-";
 const NOT_FOUND = { digest: expect.stringContaining("404") };
 const NOW = new Date("2026-11-14T10:37:12.345Z");

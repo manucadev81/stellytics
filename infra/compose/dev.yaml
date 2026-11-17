@@ -1,4 +1,4 @@
-# Ambiente local: PostgreSQL (bancos umami e notify), Umami v3.4.1, Mailpit, o portal,
+# Ambiente local: PostgreSQL (bancos umami e stellytics), Umami v3.4.1, Mailpit, o portal,
 # o gateway de ingestão web, o coletor de métricas de API e o job de consolidação.
 # Valores padrão são só para desenvolvimento; sobrescreva em um .env na raiz.
 
@@ -10,19 +10,19 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       UMAMI_DB_PASSWORD: ${UMAMI_DB_PASSWORD:-umami}
-      NOTIFY_DB_PASSWORD: ${NOTIFY_DB_PASSWORD:-notify}
+      STELLYTICS_DB_PASSWORD: ${STELLYTICS_DB_PASSWORD:-stellytics}
       # Usuários do gateway e do coletor, com permissão mínima (02-ingest-roles.sh).
-      NOTIFY_INGEST_DB_PASSWORD: ${NOTIFY_INGEST_DB_PASSWORD:-notify_ingest}
-      NOTIFY_COLLECTOR_DB_PASSWORD: ${NOTIFY_COLLECTOR_DB_PASSWORD:-notify_collector}
+      STELLYTICS_INGEST_DB_PASSWORD: ${STELLYTICS_INGEST_DB_PASSWORD:-stellytics_ingest}
+      STELLYTICS_COLLECTOR_DB_PASSWORD: ${STELLYTICS_COLLECTOR_DB_PASSWORD:-stellytics_collector}
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      # Roda só na primeira subida (volume vazio): cria os bancos umami e notify
-      # e os usuários notify_ingest e notify_collector.
+      # Roda só na primeira subida (volume vazio): cria os bancos umami e stellytics
+      # e os usuários stellytics_ingest e stellytics_collector.
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d notify && pg_isready -U postgres -d umami"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d stellytics && pg_isready -U postgres -d umami"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -36,7 +36,7 @@ services:
       APP_SECRET: ${UMAMI_APP_SECRET:-dev-only-umami-app-secret}
       DISABLE_TELEMETRY: "1"
       # IP do cliente, já truncado pelo gateway.
-      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-x-notify-client-ip}
+      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-x-stellytics-client-ip}
     depends_on:
       postgres:
         condition: service_healthy
@@ -79,9 +79,9 @@ services:
     build:
       context: ../..
       dockerfile: apps/portal/Dockerfile
-    image: notify-portal:dev
+    image: stellytics-portal:dev
     environment:
-      DATABASE_URL: postgresql://notify:${NOTIFY_DB_PASSWORD:-notify}@postgres:5432/notify
+      DATABASE_URL: postgresql://stellytics:${STELLYTICS_DB_PASSWORD:-stellytics}@postgres:5432/stellytics
       BETTER_AUTH_SECRET: ${PORTAL_AUTH_SECRET:-dev-only-portal-auth-secret-change-me}
       BETTER_AUTH_URL: http://localhost:${PORTAL_PORT:-3000}
       # Aplica as migrações do Drizzle na subida.
@@ -89,13 +89,13 @@ services:
       # Contas de desenvolvimento (apps/portal/drizzle-dev). Nunca em produção.
       SEED_DEV_DATA: "true"
       # Conta de serviço no Umami (#58). A chave sai de
-      # `pnpm --filter @notify/portal umami:service-account`; sem ela o portal
+      # `pnpm --filter @stellytics/portal umami:service-account`; sem ela o portal
       # sobe, mas não cria sites nem lê estatísticas.
       UMAMI_URL: http://umami:3000
       UMAMI_API_KEY: ${UMAMI_API_KEY:-}
       # E-mails de confirmação e de redefinição de senha vão para o Mailpit.
       SMTP_URL: smtp://mailpit:1025
-      MAIL_FROM: notify <no-reply@notify.localhost>
+      MAIL_FROM: stellytics <no-reply@stellytics.localhost>
       # Cadastro com aprovação prévia (#49, ADR 0007): true deixa projetos novos
       # pendentes até um operador aprovar em /operator/approvals.
       SIGNUP_APPROVAL: ${SIGNUP_APPROVAL:-false}
@@ -118,12 +118,12 @@ services:
     build:
       context: ../..
       dockerfile: services/ingest-web/Dockerfile
-    image: notify-ingest-web:dev
+    image: stellytics-ingest-web:dev
     environment:
       # Usuário que só lê a ingest_site.
-      DATABASE_URL: postgresql://notify_ingest:${NOTIFY_INGEST_DB_PASSWORD:-notify_ingest}@postgres:5432/notify
+      DATABASE_URL: postgresql://stellytics_ingest:${STELLYTICS_INGEST_DB_PASSWORD:-stellytics_ingest}@postgres:5432/stellytics
       UMAMI_URL: http://umami:3000
-      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-x-notify-client-ip}
+      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-x-stellytics-client-ip}
       # CIDRs dos proxies cujo X-Forwarded-For vale (o Caddy, em produção).
       TRUSTED_PROXIES: ${INGEST_TRUSTED_PROXIES:-}
       RATE_LIMIT: ${INGEST_RATE_LIMIT:-20}
@@ -158,10 +158,10 @@ services:
     build:
       context: ../..
       dockerfile: services/collector/Dockerfile
-    image: notify-collector:dev
+    image: stellytics-collector:dev
     environment:
       # Usuário que só lê a ingest_key_active e grava em api_metric_1m.
-      DATABASE_URL: postgresql://notify_collector:${NOTIFY_COLLECTOR_DB_PASSWORD:-notify_collector}@postgres:5432/notify
+      DATABASE_URL: postgresql://stellytics_collector:${STELLYTICS_COLLECTOR_DB_PASSWORD:-stellytics_collector}@postgres:5432/stellytics
       # Curto no ambiente local, para uma chave nova ou revogada valer logo.
       INGEST_KEY_CACHE_TTL: ${COLLECTOR_KEY_CACHE_TTL:-5s}
     depends_on:
@@ -186,10 +186,10 @@ services:
     build:
       context: ../..
       dockerfile: services/rollup/Dockerfile
-    image: notify-rollup:dev
+    image: stellytics-rollup:dev
     environment:
       # Dono das tabelas de métricas: cria e apaga partições.
-      DATABASE_URL: postgresql://notify:${NOTIFY_DB_PASSWORD:-notify}@postgres:5432/notify
+      DATABASE_URL: postgresql://stellytics:${STELLYTICS_DB_PASSWORD:-stellytics}@postgres:5432/stellytics
       ROLLUP_INTERVAL: ${ROLLUP_INTERVAL:-15m}
       ROLLUP_LOOKBACK: ${ROLLUP_LOOKBACK:-48h}
     depends_on:

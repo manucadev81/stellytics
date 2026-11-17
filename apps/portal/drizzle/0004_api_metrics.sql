@@ -128,9 +128,9 @@ SELECT api_metric_ensure_partitions(2);
 
 -- Permissões (spec, seção 4). O coletor só grava o balde de 1 minuto, pelo
 -- INSERT ... ON CONFLICT DO UPDATE, que exige também SELECT nas colunas lidas.
--- O consolidado e a manutenção são do dono (notify).
+-- O consolidado e a manutenção são do dono (stellytics).
 REVOKE ALL ON api_metric_1m, api_metric_1h, api_metric_1d FROM PUBLIC;
 --> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE ON api_metric_1m TO notify_collector;
+GRANT SELECT, INSERT, UPDATE ON api_metric_1m TO stellytics_collector;
 --> statement-breakpoint
 REVOKE EXECUTE ON FUNCTION api_metric_ensure_partitions(integer) FROM PUBLIC;

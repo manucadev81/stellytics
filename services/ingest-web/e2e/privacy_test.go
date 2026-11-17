@@ -31,9 +31,9 @@ func TestFullIPNeverPersisted(t *testing.T) {
 	websiteID := umamiCreateWebsite(t, token)
 	t.Cleanup(func() { umamiDo(t, token, http.MethodDelete, "/api/websites/"+websiteID, nil, nil) })
 
-	notify := connect(t, notifyDB)
+	stellytics := connect(t, stellyticsDB)
 	umami := connect(t, umamiDB)
-	registerSite(t, notify, websiteID)
+	registerSite(t, stellytics, websiteID)
 
 	for _, v := range visitors {
 		if code := sendEvent(t, websiteID, "/privacidade", "X-Forwarded-For", v.ip); code != http.StatusNoContent {
@@ -76,7 +76,7 @@ func TestFullIPNeverPersisted(t *testing.T) {
 	}
 
 	// Nenhuma coluna de nenhuma tabela, nos dois bancos, guarda o IP completo.
-	for name, db := range map[string]*pgx.Conn{"umami": umami, "notify": notify} {
+	for name, db := range map[string]*pgx.Conn{"umami": umami, "stellytics": stellytics} {
 		for _, v := range visitors {
 			for _, hit := range findText(t, db, v.ip) {
 				t.Errorf("IP completo %s gravado no banco %s, em %s", v.ip, name, hit)

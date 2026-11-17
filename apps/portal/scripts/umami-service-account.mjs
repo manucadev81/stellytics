@@ -9,7 +9,7 @@
 //
 // O que faz:
 //   1. Entra no Umami como administrador (UMAMI_ADMIN_USER, padrão "admin").
-//   2. Cria o usuário de serviço (UMAMI_SERVICE_USER, padrão "notify-portal")
+//   2. Cria o usuário de serviço (UMAMI_SERVICE_USER, padrão "stellytics-portal")
 //      com o papel comum "user", não administrador. Se ele já existe, troca a
 //      senha por uma nova aleatória.
 //   3. Entra como o usuário de serviço e cria uma chave de API.
@@ -26,7 +26,7 @@ const { values: options } = parseArgs({ options: { "revoke-old": { type: "boolea
 const baseUrl = (process.env.UMAMI_URL ?? "http://127.0.0.1:3001").replace(/\/$/, "");
 const adminUser = process.env.UMAMI_ADMIN_USER ?? "admin";
 const adminPassword = process.env.UMAMI_ADMIN_PASSWORD;
-const serviceUser = process.env.UMAMI_SERVICE_USER ?? "notify-portal";
+const serviceUser = process.env.UMAMI_SERVICE_USER ?? "stellytics-portal";
 
 if (!adminPassword) {
   console.error("Informe a senha de administrador do Umami em UMAMI_ADMIN_PASSWORD.");
@@ -83,7 +83,7 @@ if (existing) {
 }
 
 const serviceToken = await login(serviceUser, servicePassword);
-const name = `notify-portal ${new Date().toISOString()}`;
+const name = `stellytics-portal ${new Date().toISOString()}`;
 const { id: newKeyId, key, keyPrefix } = await call("/api/me/api-keys", {
   token: serviceToken,
   method: "POST",

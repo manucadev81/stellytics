@@ -1,5 +1,5 @@
 -- Dados de exemplo do teste da migração (data-migration-test.sh, #54).
--- Roda como superusuário no banco notify, depois das migrações do portal e do
+-- Roda como superusuário no banco stellytics, depois das migrações do portal e do
 -- cadastro de dois usuários pela API. Variáveis psql: alice_email, operator_email,
 -- umami_site (ID de um site já criado no Umami), key_active, key_revoked,
 -- key_archived, key_removed (chaves ntf_... completas; só o hash vai ao banco).

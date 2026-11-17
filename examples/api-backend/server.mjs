@@ -4,8 +4,8 @@
 // segundos, convenções semânticas do OTel) e exporta por OTLP/HTTP:
 //   - para o backend próprio do tenant (APM ou OTel Collector), em
 //     OTEL_EXPORTER_OTLP_ENDPOINT;
-//   - e, se NOTIFY_OTLP_ENDPOINT e NOTIFY_INGEST_KEY estiverem definidos,
-//     também para o coletor do notify (dual-export direto pelo SDK).
+//   - e, se STELLYTICS_OTLP_ENDPOINT e STELLYTICS_INGEST_KEY estiverem definidos,
+//     também para o coletor do stellytics (dual-export direto pelo SDK).
 // Sem nenhum dos dois, só serve as rotas.
 import http from "node:http";
 import { metrics } from "@opentelemetry/api";
@@ -26,7 +26,7 @@ function reader(endpoint, headers) {
     exporter: new OTLPMetricExporter({
       url: `${endpoint.replace(/\/$/, "")}/v1/metrics`,
       headers,
-      // Delta é o recomendado pelo notify (spec do E5, seção 2).
+      // Delta é o recomendado pelo stellytics (spec do E5, seção 2).
       temporalityPreference: AggregationTemporality.DELTA,
     }),
     exportIntervalMillis: interval,
@@ -37,10 +37,10 @@ const readers = [];
 if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
   readers.push(reader(process.env.OTEL_EXPORTER_OTLP_ENDPOINT, {}));
 }
-if (process.env.NOTIFY_OTLP_ENDPOINT && process.env.NOTIFY_INGEST_KEY) {
+if (process.env.STELLYTICS_OTLP_ENDPOINT && process.env.STELLYTICS_INGEST_KEY) {
   readers.push(
-    reader(process.env.NOTIFY_OTLP_ENDPOINT, {
-      Authorization: `Bearer ${process.env.NOTIFY_INGEST_KEY}`,
+    reader(process.env.STELLYTICS_OTLP_ENDPOINT, {
+      Authorization: `Bearer ${process.env.STELLYTICS_INGEST_KEY}`,
     }),
   );
 }
@@ -59,7 +59,7 @@ const duration = provider
     unit: "s",
     description: "Duration of HTTP server requests.",
     advice: {
-      // Limites recomendados pelas convenções do OTel, os mesmos do notify.
+      // Limites recomendados pelas convenções do OTel, os mesmos do stellytics.
       explicitBucketBoundaries: [
         0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5,
         10,
@@ -96,7 +96,7 @@ const server = http.createServer((req, res) => {
     "http.request.method": req.method ?? "GET",
     "http.response.status_code": status,
   };
-  // Sem padrão conhecido, vai o caminho e o coletor do notify normaliza.
+  // Sem padrão conhecido, vai o caminho e o coletor do stellytics normaliza.
   if (match) attrs["http.route"] = match.route;
   else attrs["url.path"] = path;
   duration.record((performance.now() - start) / 1000, attrs);

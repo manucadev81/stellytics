@@ -1,14 +1,14 @@
 -- Escrita à mão (drizzle-kit generate --custom). Spec do E2, seções 3 e 4 (D4).
 --
 -- Visões lidas pelo gateway web e pelo coletor, com permissão mínima para os
--- usuários notify_ingest e notify_collector. Os dois usuários são criados fora
+-- usuários stellytics_ingest e stellytics_collector. Os dois usuários são criados fora
 -- das migrações, por quem administra o servidor (infra/compose/postgres/init/
 -- 02-ingest-roles.sh no ambiente local), porque criar papel exige superusuário.
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'notify_ingest')
-     OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'notify_collector') THEN
-    RAISE EXCEPTION 'Os papéis notify_ingest e notify_collector precisam existir antes desta migração. Rode infra/compose/postgres/init/02-ingest-roles.sh.';
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'stellytics_ingest')
+     OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'stellytics_collector') THEN
+    RAISE EXCEPTION 'Os papéis stellytics_ingest e stellytics_collector precisam existir antes desta migração. Rode infra/compose/postgres/init/02-ingest-roles.sh.';
   END IF;
 END
 $$;
@@ -44,10 +44,10 @@ WHERE k.revoked_at IS NULL
 
 REVOKE ALL ON "ingest_site", "ingest_key_active" FROM PUBLIC;
 --> statement-breakpoint
-GRANT SELECT ON "ingest_site" TO notify_ingest;
+GRANT SELECT ON "ingest_site" TO stellytics_ingest;
 --> statement-breakpoint
 -- O INSERT nas tabelas de métricas entra no E5, junto com as tabelas.
-GRANT SELECT ON "ingest_key_active" TO notify_collector;
+GRANT SELECT ON "ingest_key_active" TO stellytics_collector;
 --> statement-breakpoint
 
 -- audit_log só recebe inserções.

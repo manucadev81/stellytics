@@ -8,7 +8,7 @@ import { db, sql } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
 import { account, session, user } from "@/lib/db/schema";
 
-const DOMAIN = "@auth-test.notify.invalid";
+const DOMAIN = "@auth-test.stellytics.invalid";
 const PASSWORD = "correct-horse-battery-staple";
 const BASE = "http://localhost:3000/api/auth";
 

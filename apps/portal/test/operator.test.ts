@@ -24,7 +24,7 @@ import { apiService, auditLog, ingestKey, session, tenant, tenantMember, user } 
 
 const run = promisify(execFile);
 const SCRIPTS = path.join(import.meta.dirname, "..", "scripts");
-const DOMAIN = "@operator-test.notify.invalid";
+const DOMAIN = "@operator-test.stellytics.invalid";
 const SLUG = "operator-test-";
 const PASSWORD = "operator-password-123";
 // Só o teste monta o contexto à mão; no portal ele vem de requireOperatorContext().
@@ -194,7 +194,7 @@ describe("seed de desenvolvimento", () => {
       expect(members).toMatchObject([{ role: "owner" }]);
       expect(await db.select().from(ingestKey).where(eq(ingestKey.tenantId, t.id))).toHaveLength(1);
     }
-    const [op] = await db.select().from(user).where(eq(user.email, "operator@seed.notify.localhost"));
+    const [op] = await db.select().from(user).where(eq(user.email, "operator@seed.stellytics.localhost"));
     expect(op).toMatchObject({ role: "operator", emailVerified: true });
     expect(await db.select().from(tenantMember).where(eq(tenantMember.userId, op!.id))).toEqual([]);
   });

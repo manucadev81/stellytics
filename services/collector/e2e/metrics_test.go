@@ -33,7 +33,7 @@ type row struct {
 
 func TestCollectorWritesMetrics(t *testing.T) {
 	ctx := context.Background()
-	db, err := pgx.Connect(ctx, notifyDB)
+	db, err := pgx.Connect(ctx, stellyticsDB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestCollectorWritesMetrics(t *testing.T) {
 	// Serviço A manda a métrica (delta) e também spans: só a métrica conta (D9).
 	keyA, tenantA, serviceA := createKey(t, db, user, "active")
 	md := metrics() // 1 requisição em /ledgers/{id}, ver e2e_test.go
-	md.ResourceMetrics().At(0).Resource().Attributes().PutStr("notify.tenant.id", "forjado")
+	md.ResourceMetrics().At(0).Resource().Attributes().PutStr("stellytics.tenant.id", "forjado")
 	if code := postHTTPWith(t, "Bearer "+keyA, md); code != http.StatusOK {
 		t.Fatalf("métrica: status %d", code)
 	}

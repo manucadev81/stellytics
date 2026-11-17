@@ -79,8 +79,8 @@ export function validateCustomEvent(name: unknown, data?: unknown): Record<strin
   return out;
 }
 
-// API pública do script, em window.notify.
-export interface NotifyApi {
+// API pública do script, em window.stellytics.
+export interface StellyticsApi {
   event(name: string, data?: Record<string, EventValue>): void;
   wallets(kit: unknown, types: unknown): () => void;
 }
@@ -207,10 +207,10 @@ export function start(script: HTMLScriptElement | null): () => void {
 
   let current = pageUrl(location);
 
-  // window.notify.event(nome, propriedades): evento customizado na página atual.
+  // window.stellytics.event(nome, propriedades): evento customizado na página atual.
   // Nome ou propriedades fora do contrato são ignorados em silêncio. Nunca passe
   // dado pessoal, endereço de carteira nem hash de transação nas propriedades.
-  const api: NotifyApi = {
+  const api: StellyticsApi = {
     event(name, data) {
       const clean = validateCustomEvent(name, data);
       if (!clean) return;
@@ -218,7 +218,7 @@ export function start(script: HTMLScriptElement | null): () => void {
     },
     wallets: () => () => {},
   };
-  // window.notify.wallets(kit, KitEventType) (opt-in, #50): o tenant chama uma vez,
+  // window.stellytics.wallets(kit, KitEventType) (opt-in, #50): o tenant chama uma vez,
   // passando o kit e o enum. Assina só WALLET_SELECTED e DISCONNECT, nunca
   // STATE_UPDATED (traz o endereço). Manda só o nome do evento e o id do módulo.
   // Idempotente por kit; devolve a função que cancela. Nunca lança.
@@ -283,7 +283,7 @@ export function start(script: HTMLScriptElement | null): () => void {
       return noop;
     }
   };
-  (window as unknown as { notify?: NotifyApi }).notify = api;
+  (window as unknown as { stellytics?: StellyticsApi }).stellytics = api;
 
   send(current, cleanReferrer(document.referrer, location.hostname));
 
@@ -311,7 +311,7 @@ export function start(script: HTMLScriptElement | null): () => void {
   addEventListener("popstate", onNavigate);
 
   return () => {
-    delete (window as unknown as { notify?: NotifyApi }).notify;
+    delete (window as unknown as { stellytics?: StellyticsApi }).stellytics;
     clearTimeout(timer);
     history.pushState = pushState;
     history.replaceState = replaceState;

@@ -12,7 +12,7 @@ import { db, sql } from "@/lib/db";
 import { runMigrations } from "@/lib/db/migrate";
 import { tenant, tenantMember, user } from "@/lib/db/schema";
 
-const DOMAIN = "@access-test.notify.invalid";
+const DOMAIN = "@access-test.stellytics.invalid";
 const SLUG = "access-test-";
 
 // Usuário da sessão simulada; null simula quem não entrou.

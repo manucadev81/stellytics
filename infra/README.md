@@ -5,7 +5,7 @@ Infraestrutura recriável a partir deste repositório, com hospedagem na União 
 | Pasta | Ferramenta | Papel |
 |---|---|---|
 | [`compose/`](compose/) | Docker Compose | Ambiente local ([#12](https://github.com/romulospl/notify/issues/12)), incluído pelo `compose.yaml` da raiz, e a produção (`prod.yaml`, [#14](https://github.com/romulospl/notify/issues/14)) |
-| [`compose/postgres/`](compose/postgres/) | Postgres + WAL-G | Scripts de criação dos bancos e, na produção, a imagem com backup contínuo (`Dockerfile`, `notify-backup`, `notify-restore`) |
+| [`compose/postgres/`](compose/postgres/) | Postgres + WAL-G | Scripts de criação dos bancos e, na produção, a imagem com backup contínuo (`Dockerfile`, `stellytics-backup`, `stellytics-restore`) |
 | [`compose/test/`](compose/test/) | Docker Compose | Teste da pilha de produção com S3 local (`prod-stack-test.sh`, job `infra` do CI) e da migração de dados entre operadores (`data-migration-test.sh`, fora do CI) |
 | [`opentofu/`](opentofu/) | OpenTofu | VMs da produção e do monitoramento, firewalls, volume de dados e bucket do backup na Hetzner ([ADR 0004](../docs/adr/0004-hospedagem-e-backup.md)) |
 | [`ansible/`](ansible/) | Ansible | Deploy: `site.yml` na produção (Docker, volume, imagens conferidas com cosign, pilha e backup) e `monitoring.yml` no monitoramento |

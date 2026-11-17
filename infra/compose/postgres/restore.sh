@@ -1,9 +1,9 @@
 #!/bin/sh
-# notify-restore (#14, ADR 0004): traz um backup do Object Storage para uma
+# stellytics-restore (#14, ADR 0004): traz um backup do Object Storage para uma
 # pasta de dados VAZIA e prepara a recuperação. Na próxima subida, o Postgres
 # aplica o WAL arquivado e abre o banco.
 #
-#   notify-restore [BACKUP] [ALVO]
+#   stellytics-restore [BACKUP] [ALVO]
 #   BACKUP: nome do backup base (padrão LATEST; `wal-g backup-list` mostra os nomes)
 #   ALVO:   horário até onde recuperar, como '2026-11-14 10:00:00+00'
 #           (padrão: até o último WAL arquivado)
@@ -15,7 +15,7 @@ backup="${1:-LATEST}"
 target="${2:-}"
 
 if [ -n "$(ls -A "$PGDATA" 2>/dev/null)" ]; then
-  echo "notify-restore: $PGDATA não está vazia; mova os dados atuais antes." >&2
+  echo "stellytics-restore: $PGDATA não está vazia; mova os dados atuais antes." >&2
   exit 1
 fi
 
@@ -35,4 +35,4 @@ fi
   fi
 } >> "$PGDATA/postgresql.auto.conf"
 touch "$PGDATA/recovery.signal"
-echo "notify-restore: backup $backup pronto em $PGDATA. Suba o Postgres para aplicar o WAL."
+echo "stellytics-restore: backup $backup pronto em $PGDATA. Suba o Postgres para aplicar o WAL."

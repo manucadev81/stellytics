@@ -7,7 +7,7 @@ Integrações de referência, usadas também nos testes de ponta a ponta. Cada e
 | [`static-html/`](static-html/) | Site estático: cada página carregada é um page view |
 | [`spa/`](spa/) | SPA sem framework, com `history.pushState`: cada mudança de rota é um page view, sem recarregar |
 | [`nextjs-ssr/`](nextjs-ssr/) | Next.js 16 (App Router) com SSR: a tag sai no HTML do servidor, e a navegação pelo `<Link>` conta como page view |
-| [`api-backend/`](api-backend/) | Backend HTTP com OpenTelemetry e guia de dual-export (SDK e OTel Collector) para o coletor do notify (#35) |
+| [`api-backend/`](api-backend/) | Backend HTTP com OpenTelemetry e guia de dual-export (SDK e OTel Collector) para o coletor do stellytics (#35) |
 | [`e2e/`](e2e/) | Playwright: abre os três num Chromium e confere os page views no banco do Umami (#27) |
 
 ## Instalação do script (trechos para o guia de onboarding)
@@ -59,25 +59,25 @@ A tag vai no HTML que o servidor gera, e a navegação pelo `<Link>` conta como 
 Com o Compose no ar (gateway na porta 3002) e um site cadastrado no portal (ou criado à mão no Umami e na `ingest_site`):
 
 ```bash
-cd examples/static-html && NOTIFY_WEBSITE_ID=<id> PORT=4001 node ../serve.mjs .
-cd examples/spa && NOTIFY_WEBSITE_ID=<id> PORT=4002 node ../serve.mjs . spa
-cd examples/nextjs-ssr && pnpm build && NOTIFY_WEBSITE_ID=<id> pnpm start
+cd examples/static-html && STELLYTICS_WEBSITE_ID=<id> PORT=4001 node ../serve.mjs .
+cd examples/spa && STELLYTICS_WEBSITE_ID=<id> PORT=4002 node ../serve.mjs . spa
+cd examples/nextjs-ssr && pnpm build && STELLYTICS_WEBSITE_ID=<id> pnpm start
 ```
 
-O `serve.mjs` troca o comentário `<!-- notify:script -->` das páginas pela tag do script. O site vem de `NOTIFY_WEBSITE_ID`, o gateway de `NOTIFY_GATEWAY_URL` (padrão `http://127.0.0.1:3002`) e a versão de `NOTIFY_SCRIPT_VERSION` (padrão: a mais nova publicada). O exemplo Next.js lê as mesmas variáveis.
+O `serve.mjs` troca o comentário `<!-- stellytics:script -->` das páginas pela tag do script. O site vem de `STELLYTICS_WEBSITE_ID`, o gateway de `STELLYTICS_GATEWAY_URL` (padrão `http://127.0.0.1:3002`) e a versão de `STELLYTICS_SCRIPT_VERSION` (padrão: a mais nova publicada). O exemplo Next.js lê as mesmas variáveis.
 
 ## Ponta a ponta
 
 ```bash
-pnpm --filter @notify/examples-e2e exec playwright install chromium
-pnpm --filter @notify/examples-e2e e2e
+pnpm --filter @stellytics/examples-e2e exec playwright install chromium
+pnpm --filter @stellytics/examples-e2e e2e
 ```
 
-O `run.mjs` cria um website no Umami para cada exemplo e um tenant com os três sites no banco `notify`. Depois roda o Playwright, que sobe os exemplos nas portas 4001 a 4003, e no fim apaga tudo.
+O `run.mjs` cria um website no Umami para cada exemplo e um tenant com os três sites no banco `stellytics`. Depois roda o Playwright, que sobe os exemplos nas portas 4001 a 4003, e no fim apaga tudo.
 
 Os testes conferem:
 - **HTML estático:** um page view por página;
 - **SPA:** quatro page views, incluindo o voltar do navegador, sem recarregar a página;
 - **Next.js:** a tag com `integrity` no HTML do servidor e a navegação pelo `<Link>`.
 
-As URLs podem ser trocadas por `UMAMI_URL`, `NOTIFY_DATABASE_URL`, `UMAMI_DATABASE_URL` e `NOTIFY_GATEWAY_URL`. No CI, o teste roda no job `compose`.
+As URLs podem ser trocadas por `UMAMI_URL`, `STELLYTICS_DATABASE_URL`, `UMAMI_DATABASE_URL` e `STELLYTICS_GATEWAY_URL`. No CI, o teste roda no job `compose`.

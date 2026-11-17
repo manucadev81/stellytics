@@ -3,15 +3,15 @@
 #   docker compose -f prod-standby.yaml up -d --build --wait
 # Fica somente leitura até uma promoção MANUAL (docs/runbooks/failover-do-banco.md).
 #
-# Backup: a réplica NÃO faz backup base nem agenda o notify-backup (o timer é do
+# Backup: a réplica NÃO faz backup base nem agenda o stellytics-backup (o timer é do
 # primário). Enquanto é réplica o Postgres não arquiva WAL (archive_mode=on só
 # arquiva no primário). As variáveis do WAL-G ficam aqui para a réplica promovida
-# já arquivar para o mesmo prefixo, e o notify-backup funcionar nela depois.
+# já arquivar para o mesmo prefixo, e o stellytics-backup funcionar nela depois.
 #
-# Mesmo diretório de dados do prod.yaml (${NOTIFY_DATA_DIR}/postgres): depois da
+# Mesmo diretório de dados do prod.yaml (${STELLYTICS_DATA_DIR}/postgres): depois da
 # promoção, dá para trocar este arquivo pelo prod.yaml na mesma VM.
 
-name: notify-standby
+name: stellytics-standby
 
 x-logging: &logging
   driver: json-file
@@ -23,8 +23,8 @@ services:
   postgres:
     build:
       context: ./postgres
-    image: notify-postgres-walg:17.11-walg3.0.9
-    entrypoint: ["/usr/local/bin/notify-standby-entrypoint"]
+    image: stellytics-postgres-walg:17.11-walg3.0.9
+    entrypoint: ["/usr/local/bin/stellytics-standby-entrypoint"]
     environment:
       POSTGRES_USER: postgres
       # O cluster vem do primário (senhas inclusive); a variável só satisfaz o
@@ -33,7 +33,7 @@ services:
       PRIMARY_HOST: ${PRIMARY_HOST:?}
       PRIMARY_PORT: ${PRIMARY_PORT:-5432}
       REPLICATOR_PASSWORD: ${REPLICATION_DB_PASSWORD:?}
-      REPLICATION_SLOT: ${REPLICATION_SLOT:-notify_standby}
+      REPLICATION_SLOT: ${REPLICATION_SLOT:-stellytics_standby}
       WALG_S3_PREFIX: ${WALG_S3_PREFIX:?}
       AWS_ENDPOINT: ${WALG_S3_ENDPOINT:?}
       AWS_REGION: ${WALG_S3_REGION:?}
@@ -60,14 +60,14 @@ services:
       - -c
       - hot_standby=on
     volumes:
-      - ${NOTIFY_DATA_DIR:-/srv/notify}/postgres:/var/lib/postgresql/data
-      - ./postgres/standby-entrypoint.sh:/usr/local/bin/notify-standby-entrypoint:ro
+      - ${STELLYTICS_DATA_DIR:-/srv/stellytics}/postgres:/var/lib/postgresql/data
+      - ./postgres/standby-entrypoint.sh:/usr/local/bin/stellytics-standby-entrypoint:ro
     ports:
       # Só o loopback da VM (túnel SSH de administração).
       - "127.0.0.1:${POSTGRES_ADMIN_PORT:-5432}:5432"
     shm_size: 256mb
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d notify"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d stellytics"]
       interval: 10s
       timeout: 5s
       retries: 30

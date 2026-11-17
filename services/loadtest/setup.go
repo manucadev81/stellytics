@@ -37,7 +37,7 @@ type ServiceKey struct {
 
 func runSetup(args []string) error {
 	fs := flag.NewFlagSet("setup", flag.ExitOnError)
-	notifyDB := fs.String("notify-db", envOr("NOTIFY_DATABASE_URL", "postgresql://notify:notify@127.0.0.1:5432/notify"), "banco notify (dono das tabelas)")
+	stellyticsDB := fs.String("stellytics-db", envOr("STELLYTICS_DATABASE_URL", "postgresql://stellytics:stellytics@127.0.0.1:5432/stellytics"), "banco stellytics (dono das tabelas)")
 	umamiURL := fs.String("umami-url", envOr("UMAMI_URL", "http://127.0.0.1:3001"), "Umami publicado no host")
 	out := fs.String("out", "state.json", "arquivo de estado (guarda as chaves ntf_ completas, modo 0600)")
 	metricsSvcs := fs.Int("metrics-services", 4, "serviços de API que mandam métricas")
@@ -45,11 +45,11 @@ func runSetup(args []string) error {
 	allowRemote := fs.Bool("allow-remote", false, "permite alvos que não sejam loopback")
 	_ = fs.Parse(args)
 
-	if err := checkTargets(*allowRemote, map[string]string{"notify-db": *notifyDB, "umami-url": *umamiURL}); err != nil {
+	if err := checkTargets(*allowRemote, map[string]string{"stellytics-db": *stellyticsDB, "umami-url": *umamiURL}); err != nil {
 		return err
 	}
 	ctx := context.Background()
-	db, err := pgx.Connect(ctx, *notifyDB)
+	db, err := pgx.Connect(ctx, *stellyticsDB)
 	if err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func runSetup(args []string) error {
 			st.UserID, st.UserID+"@example.invalid"); err != nil {
 			return err
 		}
-		// Web: site no Umami e tenant com esse site no banco notify.
+		// Web: site no Umami e tenant com esse site no banco stellytics.
 		tok, err := umamiLogin(*umamiURL)
 		if err != nil {
 			return err
@@ -154,7 +154,7 @@ func validateState(st State) error {
 
 func runTeardown(args []string) error {
 	fs := flag.NewFlagSet("teardown", flag.ExitOnError)
-	notifyDB := fs.String("notify-db", envOr("NOTIFY_DATABASE_URL", "postgresql://notify:notify@127.0.0.1:5432/notify"), "banco notify")
+	stellyticsDB := fs.String("stellytics-db", envOr("STELLYTICS_DATABASE_URL", "postgresql://stellytics:stellytics@127.0.0.1:5432/stellytics"), "banco stellytics")
 	in := fs.String("state", "state.json", "arquivo de estado")
 	allowRemote := fs.Bool("allow-remote", false, "permite alvos que não sejam loopback")
 	_ = fs.Parse(args)
@@ -165,11 +165,11 @@ func runTeardown(args []string) error {
 	if err := validateState(st); err != nil {
 		return err
 	}
-	if err := checkTargets(*allowRemote, map[string]string{"notify-db": *notifyDB, "umami-url": st.UmamiURL}); err != nil {
+	if err := checkTargets(*allowRemote, map[string]string{"stellytics-db": *stellyticsDB, "umami-url": st.UmamiURL}); err != nil {
 		return err
 	}
 	ctx := context.Background()
-	db, err := pgx.Connect(ctx, *notifyDB)
+	db, err := pgx.Connect(ctx, *stellyticsDB)
 	if err != nil {
 		return err
 	}
@@ -209,7 +209,7 @@ func runTeardown(args []string) error {
 		}
 	}
 
-	// Uma transação: ou apaga tudo no banco notify ou nada.
+	// Uma transação: ou apaga tudo no banco stellytics ou nada.
 	tx, err := db.Begin(ctx)
 	if err != nil {
 		return err
@@ -226,12 +226,12 @@ func runTeardown(args []string) error {
 			`DELETE FROM tenant WHERE id = $1`,
 		} {
 			if _, err := tx.Exec(ctx, q, id); err != nil {
-				return fmt.Errorf("%s: %w (transação desfeita: nada foi apagado no banco notify; o site do Umami pode já ter sido apagado)", q, err)
+				return fmt.Errorf("%s: %w (transação desfeita: nada foi apagado no banco stellytics; o site do Umami pode já ter sido apagado)", q, err)
 			}
 		}
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM "user" WHERE id = $1 AND id LIKE 'loadtest-%'`, st.UserID); err != nil {
-		return fmt.Errorf("apagando usuário: %w (transação desfeita: nada foi apagado no banco notify)", err)
+		return fmt.Errorf("apagando usuário: %w (transação desfeita: nada foi apagado no banco stellytics)", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return err

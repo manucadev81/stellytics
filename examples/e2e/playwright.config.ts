@@ -1,8 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Rode pelo run.mjs (pnpm --filter @notify/examples-e2e e2e), que cria os
+// Rode pelo run.mjs (pnpm --filter @stellytics/examples-e2e e2e), que cria os
 // sites e preenche SITE_STATIC, SITE_SPA e SITE_NEXT.
-const gateway = process.env.NOTIFY_GATEWAY_URL ?? "http://127.0.0.1:3002";
+const gateway = process.env.STELLYTICS_GATEWAY_URL ?? "http://127.0.0.1:3002";
 
 function server(name: string, port: number, command: string, cwd: string, site?: string) {
   return {
@@ -12,7 +12,7 @@ function server(name: string, port: number, command: string, cwd: string, site?:
     url: `http://127.0.0.1:${port}/`,
     reuseExistingServer: false,
     timeout: 180_000,
-    env: { PORT: String(port), NOTIFY_WEBSITE_ID: site ?? "", NOTIFY_GATEWAY_URL: gateway, NEXT_TELEMETRY_DISABLED: "1" },
+    env: { PORT: String(port), STELLYTICS_WEBSITE_ID: site ?? "", STELLYTICS_GATEWAY_URL: gateway, NEXT_TELEMETRY_DISABLED: "1" },
   };
 }
 

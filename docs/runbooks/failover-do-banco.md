@@ -11,7 +11,7 @@ Vale só para quem ligou a replicação (`ha_replication: true` em `site.yml` e 
 
 ## Quando usar
 
-- A VM `notify` (ou o volume do banco, ou o `nbg1`) está fora e não volta em minutos, e a réplica está saudável.
+- A VM `stellytics` (ou o volume do banco, ou o `nbg1`) está fora e não volta em minutos, e a réplica está saudável.
 - **Não use** para um erro lógico (migração ruim, dado apagado): a réplica reproduz o erro. Para isso, restauração a um horário (`backup-e-restauracao.md`).
 
 ## Limite do desenho atual
@@ -20,12 +20,12 @@ No `prod.yaml`, o portal e o Umami falam com `postgres:5432` (o serviço do mesm
 
 ## Antes de promover
 
-1. **Confirme que o primário não vai voltar a gravar** (nos comandos abaixo, na VM da réplica, `cd /opt/notify/infra/compose` primeiro). Desligue a VM antiga pelo console ou `hcloud server poweroff notify`. Isso é o que impede o split-brain; faça mesmo que ela "pareça" morta. Se não conseguir desligar, não promova sem decidir conscientemente o risco.
+1. **Confirme que o primário não vai voltar a gravar** (nos comandos abaixo, na VM da réplica, `cd /opt/stellytics/infra/compose` primeiro). Desligue a VM antiga pelo console ou `hcloud server poweroff stellytics`. Isso é o que impede o split-brain; faça mesmo que ela "pareça" morta. Se não conseguir desligar, não promova sem decidir conscientemente o risco.
 2. **Veja o quanto a réplica recebeu** (na VM da réplica, ou pelo túnel `infra/scripts/admin-tunnel.sh <ip-da-réplica>`):
 
    ```bash
-   cd /opt/notify/infra/compose
-   docker compose -f prod-standby.yaml exec -T postgres psql -U postgres -d notify -Atc \
+   cd /opt/stellytics/infra/compose
+   docker compose -f prod-standby.yaml exec -T postgres psql -U postgres -d stellytics -Atc \
      "SELECT pg_is_in_recovery(), pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn(), now() - pg_last_xact_replay_timestamp()"
    ```
 
@@ -38,7 +38,7 @@ No `prod.yaml`, o portal e o Umami falam com `postgres:5432` (o serviço do mesm
 ```bash
 docker compose -f prod-standby.yaml exec -T postgres psql -U postgres -d postgres -Atc \
   "SELECT pg_promote(wait => true, wait_seconds => 60)"   # t
-docker compose -f prod-standby.yaml exec -T postgres psql -U postgres -d notify -Atc "SELECT pg_is_in_recovery()"   # f
+docker compose -f prod-standby.yaml exec -T postgres psql -U postgres -d stellytics -Atc "SELECT pg_is_in_recovery()"   # f
 ```
 
 A promoção é irreversível: o nó passa a uma nova linha do tempo e não volta a ser réplica sem ser refeito (passo 6).
@@ -51,26 +51,26 @@ docker compose -f prod-standby.yaml down      # sem -v: o diretório de dados é
 
 ### 3. Trocar a VM no inventário e nas variáveis
 
-Em `infra/ansible/inventory/production.yml` (fora do git), faça o host `notify` apontar para a VM da réplica e para o **volume dela**:
+Em `infra/ansible/inventory/production.yml` (fora do git), faça o host `stellytics` apontar para a VM da réplica e para o **volume dela**:
 
 ```yaml
-    notify:
-      ansible_host: <IP público da VM notify-db-standby>
-      data_volume_device: /dev/disk/by-id/scsi-0HC_Volume_<id do volume notify-data-standby>
+    stellytics:
+      ansible_host: <IP público da VM stellytics-db-standby>
+      data_volume_device: /dev/disk/by-id/scsi-0HC_Volume_<id do volume stellytics-data-standby>
 ```
 
 Em `secrets.yml` ou `-e`, ponha `ha_private_ip: 10.50.0.30` (o IP privado da réplica; vale em `site.yml` com `ha_replication: true`, para o Postgres e o Umami publicarem nele). Mantenha `walg_libsodium_key`, a chave de API do Umami e os demais segredos **iguais**.
 
 ### 4. Subir a pilha completa na VM da réplica
 
-Abra 80 e 443 nela (hoje o firewall é só SSH e ping; pela console da Hetzner ou `hcloud firewall apply-to-resource notify --type server --server notify-db-standby`, comando não ensaiado) e rode:
+Abra 80 e 443 nela (hoje o firewall é só SSH e ping; pela console da Hetzner ou `hcloud firewall apply-to-resource stellytics --type server --server stellytics-db-standby`, comando não ensaiado) e rode:
 
 ```bash
 cd infra/ansible
 ansible-playbook site.yml -e @secrets.yml -e ha_replication=true -e ha_private_ip=10.50.0.30
 ```
 
-O `prod.yaml` sobe o `postgres` **no mesmo diretório de dados** (`/srv/notify/postgres`), já promovido: não há `initdb` nem cópia. O papel `backup` instala o timer do `notify-backup` na nova VM, e o WAL passa a ir ao mesmo prefixo do Object Storage em uma nova linha do tempo. Faça um backup base logo (`systemctl start notify-backup`): o último é da linha do tempo antiga.
+O `prod.yaml` sobe o `postgres` **no mesmo diretório de dados** (`/srv/stellytics/postgres`), já promovido: não há `initdb` nem cópia. O papel `backup` instala o timer do `stellytics-backup` na nova VM, e o WAL passa a ir ao mesmo prefixo do Object Storage em uma nova linha do tempo. Faça um backup base logo (`systemctl start stellytics-backup`): o último é da linha do tempo antiga.
 
 ### 5. DNS e ingestão
 
@@ -82,13 +82,13 @@ O `prod.yaml` sobe o `postgres` **no mesmo diretório de dados** (`/srv/notify/p
 
 - **Não ligue a pilha antiga.** O `postgres` tem `restart: unless-stopped` e o Docker sobe sozinho com a VM: se ela for religada, o primário antigo volta a gravar (split-brain). Antes de religá-la, **remova a VM ou desanexe e apague o volume antigo** (ou, no mínimo, `systemctl disable docker` e `docker compose -f prod.yaml down` por console). Dois primários gravando = dados divergentes sem como mesclar. Como rede de proteção, a réplica recusa subir sobre um diretório que seja de um primário (sem `standby.signal`, erro explícito; `STANDBY_FORCE=1` desliga a proteção, não use), mas isso só protege a montagem da réplica, não o `prod.yaml` da VM antiga.
 - O que ele gravou e não chegou à réplica **está perdido** para a produção (é o RPO). Se importar, antes de apagar, suba uma cópia **isolada** (sem rede) do diretório de dados dele só para inspecionar; não há mesclagem automática.
-- Para reaproveitá-lo como réplica da nova: apague o diretório de dados dele (`/srv/notify/postgres`, depois de ter certeza de que não precisa) e rode `standby.yml` com o host `db_standby` apontando para ele e `ha_primary_private_ip` para o IP do novo primário. O `pg_basebackup` refaz tudo; o slot é criado pelo próprio script. Isto foi exercitado em Docker (passo D do teste).
+- Para reaproveitá-lo como réplica da nova: apague o diretório de dados dele (`/srv/stellytics/postgres`, depois de ter certeza de que não precisa) e rode `standby.yml` com o host `db_standby` apontando para ele e `ha_primary_private_ip` para o IP do novo primário. O `pg_basebackup` refaz tudo; o slot é criado pelo próprio script. Isto foi exercitado em Docker (passo D do teste).
 - Se for recriar tudo do zero, reconcilie o estado do OpenTofu com o que foi mudado à mão (volume, firewall, qual VM é a principal) antes do próximo `tofu apply`; senão ele pode tentar desfazer o failover.
 
 ## Disco e monitoramento
 
 - **Folga de disco:** com uma réplica parada, o slot faz o primário reter até `max_slot_wal_keep_size` (10 GB) de WAL **além** do banco. Mantenha pelo menos **10 GB livres, e mais o crescimento esperado**, no volume do primário (padrão do OpenTofu: 40 GB). Passou do limite, o slot é invalidado (o primário se protege) e a réplica precisa ser refeita.
-- **Ainda não há alerta** de atraso de replicação, de WAL retido nem de réplica fora. Hoje só se descobre olhando `pg_stat_replication` e `pg_replication_slots` (e `df -h /srv/notify`). É pendência do ADR 0009.
+- **Ainda não há alerta** de atraso de replicação, de WAL retido nem de réplica fora. Hoje só se descobre olhando `pg_stat_replication` e `pg_replication_slots` (e `df -h /srv/stellytics`). É pendência do ADR 0009.
 - **Volume:** o papel `data_volume` **não formata** nada: só confere o dispositivo, grava o `fstab` e monta (o ext4 vem do OpenTofu na criação do volume). Um volume sem sistema de arquivos falha ao montar; um volume com dados é montado como está, sem apagar.
 
 ## Depois

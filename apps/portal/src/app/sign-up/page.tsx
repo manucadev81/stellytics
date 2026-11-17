@@ -13,7 +13,7 @@ export default async function SignUpPage() {
   if (session) redirect("/dashboard");
 
   return (
-    <AuthCard title="Create your notify account" subtitle="Web and API analytics for Stellar projects.">
+    <AuthCard title="Create your stellytics account" subtitle="Web and API analytics for Stellar projects.">
       <SignUpForm />
       <p className="mt-6 text-sm text-zinc-500">
         Already have an account?{" "}

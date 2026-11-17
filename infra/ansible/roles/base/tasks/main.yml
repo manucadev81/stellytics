@@ -23,7 +23,7 @@
 
 - name: SSH só por chave
   ansible.builtin.copy:
-    dest: /etc/ssh/sshd_config.d/10-notify.conf
+    dest: /etc/ssh/sshd_config.d/10-stellytics.conf
     content: |
       PasswordAuthentication no
       KbdInteractiveAuthentication no

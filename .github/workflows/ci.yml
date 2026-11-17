@@ -24,15 +24,15 @@ jobs:
       postgres:
         image: postgres:17.11-alpine@sha256:e5d2edd28b1f8d40a0a6c0c9cdc545b19b56a0d5d88f94bc11a97d970d4700d0
         env:
-          POSTGRES_USER: notify
-          POSTGRES_PASSWORD: notify
-          POSTGRES_DB: notify
+          POSTGRES_USER: stellytics
+          POSTGRES_PASSWORD: stellytics
+          POSTGRES_DB: stellytics
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U notify -d notify"
+          --health-cmd "pg_isready -U stellytics -d stellytics"
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgresql://notify:notify@localhost:5432/notify
+      DATABASE_URL: postgresql://stellytics:stellytics@localhost:5432/stellytics
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -46,8 +46,8 @@ jobs:
       - name: Cria os usuários de ingestão no Postgres
         env:
           PGHOST: localhost
-          PGPASSWORD: notify
-          POSTGRES_USER: notify
+          PGPASSWORD: stellytics
+          POSTGRES_USER: stellytics
         run: infra/compose/postgres/init/02-ingest-roles.sh
       - run: pnpm lint
       - run: pnpm typecheck
@@ -65,15 +65,15 @@ jobs:
       postgres:
         image: postgres:17.11-alpine@sha256:e5d2edd28b1f8d40a0a6c0c9cdc545b19b56a0d5d88f94bc11a97d970d4700d0
         env:
-          POSTGRES_USER: notify
-          POSTGRES_PASSWORD: notify
-          POSTGRES_DB: notify
+          POSTGRES_USER: stellytics
+          POSTGRES_PASSWORD: stellytics
+          POSTGRES_DB: stellytics
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U notify -d notify"
+          --health-cmd "pg_isready -U stellytics -d stellytics"
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgresql://notify:notify@localhost:5432/notify
+      DATABASE_URL: postgresql://stellytics:stellytics@localhost:5432/stellytics
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # O teste de integração do gateway aplica as migrações do portal, que
@@ -82,8 +82,8 @@ jobs:
         working-directory: .
         env:
           PGHOST: localhost
-          PGPASSWORD: notify
-          POSTGRES_USER: notify
+          PGPASSWORD: stellytics
+          POSTGRES_USER: stellytics
         run: infra/compose/postgres/init/02-ingest-roles.sh
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -100,7 +100,7 @@ jobs:
       - name: Código gerado do coletor em dia
         run: |
           collector/generate.sh
-          git diff --exit-code -- collector/cmd/notify-collector
+          git diff --exit-code -- collector/cmd/stellytics-collector
       - name: go vet e go test
         run: |
           # go vet/test falham quando o módulo ainda não tem pacotes.
@@ -124,15 +124,15 @@ jobs:
       - name: Confere bancos, Umami e portal
         run: |
           docker compose exec -T postgres psql -U postgres -Atc \
-            "select count(*) from pg_database where datname in ('umami','notify')" | grep -qx 2
+            "select count(*) from pg_database where datname in ('umami','stellytics')" | grep -qx 2
           # Usuários de ingestão leem só as visões (spec do E2, D4).
-          docker compose exec -T postgres psql -U notify_ingest -d notify -Atc \
+          docker compose exec -T postgres psql -U stellytics_ingest -d stellytics -Atc \
             "select count(*) from ingest_site" | grep -qx 0
-          docker compose exec -T postgres psql -U notify_collector -d notify -Atc \
+          docker compose exec -T postgres psql -U stellytics_collector -d stellytics -Atc \
             "select count(*) from ingest_key_active" | grep -qx 0
-          if docker compose exec -T postgres psql -U notify_ingest -d notify -Atc \
+          if docker compose exec -T postgres psql -U stellytics_ingest -d stellytics -Atc \
             "select count(*) from \"user\"" 2>/dev/null; then
-            echo "notify_ingest não deveria ler a tabela user"; exit 1
+            echo "stellytics_ingest não deveria ler a tabela user"; exit 1
           fi
           docker compose exec -T umami curl -fsS http://localhost:3000/api/heartbeat
           curl -fsS http://127.0.0.1:3000/api/auth/ok
@@ -197,13 +197,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Instala o Chromium do Playwright
-        run: pnpm --filter @notify/examples-e2e exec playwright install --with-deps chromium
+        run: pnpm --filter @stellytics/examples-e2e exec playwright install --with-deps chromium
       - name: Ponta a ponta dos exemplos
         env:
           UMAMI_URL: http://127.0.0.1:3001
-        run: pnpm --filter @notify/examples-e2e e2e
+        run: pnpm --filter @stellytics/examples-e2e e2e
       # #35/#36: o backend de exemplo faz dual-export pelo OTel Collector do tenant
-      # até o coletor do notify; confere rota, status, latência, tenant e que
+      # até o coletor do stellytics; confere rota, status, latência, tenant e que
       # nenhum trace, span ou log é persistido.
       - name: Ponta a ponta do pipeline de API
         run: examples/api-backend/compose-check.sh

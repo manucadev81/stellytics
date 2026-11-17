@@ -3,7 +3,7 @@
 // Dois tenants (A e B), cada um com site, serviço e chave de ingestão, um
 // operador SCF e um usuário sem projeto. Os casos passam pelo que o navegador
 // alcança (páginas e server actions, com a sessão simulada) e pelo que a
-// ingestão lê (as visões de notify_ingest e notify_collector). Roda contra o
+// ingestão lê (as visões de stellytics_ingest e stellytics_collector). Roda contra o
 // Postgres de DATABASE_URL e um Umami falso.
 //
 // A parte do coletor fica no e2e dele (services/collector/e2e/): chave de
@@ -56,7 +56,7 @@ import { createSiteAction } from "@/app/(private)/sites/actions";
 import { startFakeUmami, type FakeUmami } from "./fake-umami";
 import { asRole } from "./helpers/as-role";
 
-const DOMAIN = "@isolation-test.notify.invalid";
+const DOMAIN = "@isolation-test.stellytics.invalid";
 const SLUG = "isolation-test-";
 const PASSWORD = "isolation-password-123";
 const RANGE = { startAt: new Date(0), endAt: new Date() };
@@ -168,7 +168,7 @@ async function tenantStatus(tenantId: string) {
 // O que o gateway web (#61) e o coletor (#30) enxergam, com os papéis deles.
 async function acceptsWeb(umamiWebsiteId: string) {
   const [row] = await asRole<{ accepts_ingest: boolean }>(
-    "notify_ingest",
+    "stellytics_ingest",
     `select accepts_ingest from ingest_site where umami_website_id = '${umamiWebsiteId}'`,
   );
   return row?.accepts_ingest ?? false;
@@ -176,7 +176,7 @@ async function acceptsWeb(umamiWebsiteId: string) {
 
 async function collectorKey(prefix: string) {
   const [row] = await asRole<{ tenant_id: string; api_service_id: string }>(
-    "notify_collector",
+    "stellytics_collector",
     `select tenant_id, api_service_id from ingest_key_active where prefix = '${prefix}'`,
   );
   return row ?? null;
@@ -573,9 +573,9 @@ describe("chaves de leitura do SCF (#48)", () => {
     // O coletor busca na visão pelo prefixo: o prefixo da chave de leitura não está lá.
     expect(await collectorKey(summary.prefix)).toBeNull();
     // E nem o coletor nem o gateway têm permissão na tabela das chaves de leitura.
-    await expect(asRole("notify_collector", "select prefix from operator_api_key")).rejects.toThrow(/permission denied/);
-    await expect(asRole("notify_ingest", "select prefix from operator_api_key")).rejects.toThrow(/permission denied/);
-    await expect(asRole("notify_collector", "select key_hash from operator_api_key")).rejects.toThrow(/permission denied/);
+    await expect(asRole("stellytics_collector", "select prefix from operator_api_key")).rejects.toThrow(/permission denied/);
+    await expect(asRole("stellytics_ingest", "select prefix from operator_api_key")).rejects.toThrow(/permission denied/);
+    await expect(asRole("stellytics_collector", "select key_hash from operator_api_key")).rejects.toThrow(/permission denied/);
     expect(key).not.toMatch(/^ntf_/);
   });
 

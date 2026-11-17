@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Exporta os bancos notify e umami para uma pasta (#54, docs/transferencia.md).
+# Exporta os bancos stellytics e umami para uma pasta (#54, docs/transferencia.md).
 #
-# Gera notify.dump e umami.dump (formato custom do pg_dump, compactado), a
+# Gera stellytics.dump e umami.dump (formato custom do pg_dump, compactado), a
 # impressão digital da origem (fingerprint.txt) e sha256sums. Rode na VM de
-# origem como root, em /opt/notify/infra/compose, na janela de manutenção e
+# origem como root, em /opt/stellytics/infra/compose, na janela de manutenção e
 # com o portal, o gateway e o Umami parados (senão os dois bancos podem ficar
 # em instantes diferentes):
 #
@@ -28,7 +28,7 @@ if [ -n "$running" ]; then
   exit 1
 fi
 
-for db in notify umami; do
+for db in stellytics umami; do
   echo "exportando $db..."
   # --no-password: o socket local do contêiner é confiável para o postgres.
   $COMPOSE exec -T -u postgres postgres pg_dump --no-password -Fc -d "$db" > "$dir/$db.dump"
@@ -36,5 +36,5 @@ for db in notify umami; do
   $COMPOSE exec -T -u postgres postgres pg_restore -l < "$dir/$db.dump" > /dev/null
 done
 "$here/db-fingerprint.sh" > "$dir/fingerprint.txt"
-(cd "$dir" && sha256sum notify.dump umami.dump fingerprint.txt > sha256sums)
+(cd "$dir" && sha256sum stellytics.dump umami.dump fingerprint.txt > sha256sums)
 echo "pronto em $dir:"; ls -l "$dir"

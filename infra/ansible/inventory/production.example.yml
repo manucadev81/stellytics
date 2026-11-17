@@ -2,7 +2,7 @@
 #   tofu -chdir=infra/opentofu output
 all:
   hosts:
-    notify:
+    stellytics:
       ansible_host: 203.0.113.20          # server_ipv4
       data_volume_device: /dev/disk/by-id/scsi-0HC_Volume_12345678  # data_volume_device
     monitor:
@@ -18,5 +18,5 @@ all:
     standby:
       hosts:
         db_standby:
-          ansible_host: 203.0.113.50      # IP público da VM notify-db-standby (console da Hetzner; o OpenTofu só exporta o IP privado)
-          data_volume_device: /dev/disk/by-id/scsi-0HC_Volume_87654321  # volume notify-data-standby (console da Hetzner)
+          ansible_host: 203.0.113.50      # IP público da VM stellytics-db-standby (console da Hetzner; o OpenTofu só exporta o IP privado)
+          data_volume_device: /dev/disk/by-id/scsi-0HC_Volume_87654321  # volume stellytics-data-standby (console da Hetzner)

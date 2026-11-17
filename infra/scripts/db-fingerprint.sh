@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Impressão digital dos bancos notify e umami (#54, docs/transferencia.md).
+# Impressão digital dos bancos stellytics e umami (#54, docs/transferencia.md).
 #
 # Imprime, em texto estável, tudo o que a migração de dados precisa preservar:
 # linhas e checksum de cada tabela (partições inclusas), valores das sequências,
@@ -11,7 +11,7 @@
 #
 #   COMPOSE='docker compose -f prod.yaml' infra/scripts/db-fingerprint.sh > fp.txt
 #
-# O padrão de COMPOSE é o da VM de produção (em /opt/notify/infra/compose).
+# O padrão de COMPOSE é o da VM de produção (em /opt/stellytics/infra/compose).
 # Usa o `postgres` do Compose pelo socket do contêiner, como superusuário.
 set -euo pipefail
 
@@ -21,7 +21,7 @@ COMPOSE="${COMPOSE:-docker compose -f prod.yaml}"
 pg() { $COMPOSE exec -T -u postgres postgres "$@" < /dev/null; }
 q() { pg psql -X -At -v ON_ERROR_STOP=1 -d "$1" -c "$2"; }
 
-for db in notify umami; do
+for db in stellytics umami; do
   echo "== banco $db"
   echo "-- tabelas (esquema.tabela linhas checksum)"
   q "$db" "select format('%I.%I', n.nspname, c.relname)
@@ -55,17 +55,17 @@ done
 
 echo "== papéis (sem senhas)"
 q postgres "select rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolinherit
-            from pg_roles where rolname in ('umami', 'notify', 'notify_ingest', 'notify_collector') order by 1"
+            from pg_roles where rolname in ('umami', 'stellytics', 'stellytics_ingest', 'stellytics_collector') order by 1"
 echo "-- filiações (papel membro inherit set)"
 q postgres "select r.rolname, m.rolname, a.inherit_option, a.set_option
             from pg_auth_members a join pg_roles r on r.oid = a.roleid join pg_roles m on m.oid = a.member
-            where r.rolname like 'notify%' or m.rolname like 'notify%' order by 1, 2"
+            where r.rolname like 'stellytics%' or m.rolname like 'stellytics%' order by 1, 2"
 echo "-- ACL dos bancos"
 q postgres "select datname, coalesce(datacl::text, 'padrão'), pg_get_userbyid(datdba)
-            from pg_database where datname in ('notify', 'umami') order by 1"
+            from pg_database where datname in ('stellytics', 'umami') order by 1"
 echo "-- permissões de leitura (papel objeto permissão)"
-q notify "select r, o, p, has_table_privilege(r, o, p)
-          from (values ('notify_ingest'), ('notify_collector')) a(r),
+q stellytics "select r, o, p, has_table_privilege(r, o, p)
+          from (values ('stellytics_ingest'), ('stellytics_collector')) a(r),
                (values ('ingest_site'), ('ingest_key_active'), ('tenant'), ('ingest_key'), ('api_metric_1m'),
                        ('api_metric_1h'), ('operator_api_key'), ('audit_log')) b(o),
                (values ('SELECT'), ('INSERT'), ('UPDATE')) c(p)

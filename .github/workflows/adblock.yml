@@ -36,5 +36,5 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile --filter @notify/tracker
-      - run: pnpm --filter @notify/tracker check:adblock
+      - run: pnpm install --frozen-lockfile --filter @stellytics/tracker
+      - run: pnpm --filter @stellytics/tracker check:adblock

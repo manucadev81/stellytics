@@ -43,7 +43,7 @@ export const env = {
     return required("SMTP_URL");
   },
   get mailFrom() {
-    return process.env.MAIL_FROM ?? "notify <no-reply@notify.localhost>";
+    return process.env.MAIL_FROM ?? "stellytics <no-reply@stellytics.localhost>";
   },
   // Chave de API da conta de serviço (scripts/umami-service-account.mjs).
   // Lida só quando o portal chama o Umami, então o portal sobe sem ela.

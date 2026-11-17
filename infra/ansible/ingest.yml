@@ -2,7 +2,7 @@
 #   ansible-playbook ingest.yml -e @secrets.yml
 # Só gateway web e Caddy; o banco e o Umami são os do primário (ha_replication
 # ligado em site.yml). Mesmo ingest_proof_secret do primário, obrigatoriamente.
-- name: Ingestão extra do notify
+- name: Ingestão extra do stellytics
   hosts: ingest
   become: true
   pre_tasks:
@@ -14,7 +14,7 @@
         fail_msg: "Falta um segredo em secrets.yml (veja secrets.example.yml)."
         quiet: true
       loop:
-        - "{{ notify_ingest_db_password | default('') }}"
+        - "{{ stellytics_ingest_db_password | default('') }}"
         - "{{ ingest_proof_secret | default('') }}"
       no_log: true
 
@@ -27,4 +27,4 @@
   roles:
     - base
     - docker
-    - notify_ingest
+    - stellytics_ingest

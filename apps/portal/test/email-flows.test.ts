@@ -20,7 +20,7 @@ vi.mock("@/lib/mail", async (importOriginal) => {
   };
 });
 
-const DOMAIN = "@email-test.notify.invalid";
+const DOMAIN = "@email-test.stellytics.invalid";
 const PASSWORD = "first-password-123";
 const NEW_PASSWORD = "second-password-456";
 const BASE = "http://localhost:3000/api/auth";

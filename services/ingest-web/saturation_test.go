@@ -49,7 +49,7 @@ func newSlowUmami(t *testing.T) (*slowUmami, relay.Sender) {
 	}))
 	t.Cleanup(srv.Close)
 	base, _ := url.Parse(srv.URL)
-	return u, relay.NewClient(base, "x-notify-client-ip", srv.Client())
+	return u, relay.NewClient(base, "x-stellytics-client-ip", srv.Client())
 }
 
 func (u *slowUmami) open() {
@@ -84,7 +84,7 @@ func postAsync(s setup, body string, ua string) <-chan *http.Response {
 	return ch
 }
 
-func TestSaturationReturns503AndKeepsOtherRoutes(t *testing.T) {
+func TestSaturationReturns204AndKeepsOtherRoutes(t *testing.T) {
 	umami, inner := newSlowUmami(t)
 	limited := relay.NewLimited(inner, 2, 20*time.Millisecond)
 	s := newSetup(t, func(g *gateway) { g.relay = limited })
@@ -95,11 +95,11 @@ func TestSaturationReturns503AndKeepsOtherRoutes(t *testing.T) {
 	waitFor(t, func() bool { return umami.started.Load() == 2 })
 
 	resp := post(t, s, "text/plain", eventBody(activeSite), "User-Agent", "ua-c")
-	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("status = %d, quero 503", resp.StatusCode)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, quero 204", resp.StatusCode)
 	}
-	if resp.Header.Get("Retry-After") == "" {
-		t.Error("sem Retry-After")
+	if resp.Header.Get("Retry-After") != "" {
+		t.Error("Retry-After inesperado")
 	}
 	if limited.Dropped() != 1 || umami.started.Load() != 2 {
 		t.Errorf("descartados = %d, umami recebeu %d", limited.Dropped(), umami.started.Load())
@@ -140,6 +140,31 @@ func TestSaturationReturns503AndKeepsOtherRoutes(t *testing.T) {
 	}
 }
 
+// A resposta não distingue uma fingerprint já admitida de uma nova que
+// excede a cota, mesmo com todas as vagas de repasse ocupadas.
+func TestSaturationHidesFingerprintQuota(t *testing.T) {
+	umami, inner := newSlowUmami(t)
+	limited := relay.NewLimited(inner, 1, 10*time.Millisecond)
+	s := newSetup(t, func(g *gateway) {
+		g.relay = limited
+		g.fps = fingerprint.New(1, 10*time.Minute)
+	})
+	t.Cleanup(umami.open)
+	postAsync(s, eventBody(activeSite), "ua-hold")
+	waitFor(t, func() bool { return umami.started.Load() == 1 })
+	admitted := post(t, s, "text/plain", eventBody(activeSite), "User-Agent", "ua-hold")
+	if admitted.StatusCode != http.StatusNoContent || limited.Dropped() != 1 {
+		t.Fatalf("fingerprint admitida: status %d, descartes %d", admitted.StatusCode, limited.Dropped())
+	}
+	full := post(t, s, "text/plain", eventBody(activeSite), "User-Agent", "ua-new")
+	if full.StatusCode != admitted.StatusCode || full.Header.Get("Retry-After") != admitted.Header.Get("Retry-After") {
+		t.Fatalf("respostas diferentes: admitida %d, cota cheia %d", admitted.StatusCode, full.StatusCode)
+	}
+	if limited.Dropped() != 1 || umami.started.Load() != 1 {
+		t.Fatalf("cota cheia deveria impedir repasse: descartes %d, repasses %d", limited.Dropped(), umami.started.Load())
+	}
+}
+
 // Um evento descartado por saturação não gasta a cota de fingerprints do IP:
 // com limite 1, depois de recusado ele pode ser reenviado e a fingerprint
 // ainda cabe; uma segunda, diferente, só é recusada pela cota quando a
@@ -159,8 +184,8 @@ func TestSaturationDoesNotConsumeFingerprintQuota(t *testing.T) {
 	// uma gastasse a cota (limite 3, com a do hold), a terceira cairia na cota (204).
 	for _, ua := range []string{"ua-1", "ua-2", "ua-3"} {
 		r := post(t, s, "text/plain", eventBody(activeSite), "User-Agent", ua)
-		if r.StatusCode != http.StatusServiceUnavailable {
-			t.Fatalf("%s: status = %d, quero 503", ua, r.StatusCode)
+		if r.StatusCode != http.StatusNoContent {
+			t.Fatalf("%s: status = %d, quero 204", ua, r.StatusCode)
 		}
 	}
 	umami.open()

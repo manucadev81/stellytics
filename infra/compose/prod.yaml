@@ -16,8 +16,8 @@
 # - o coletor OTLP não publica 4317 nem 4318: sai pelo Caddy, em API_HOST, na
 #   443 (ADR 0012).
 
-# Nome fixo do projeto: contêineres notify-<serviço>-1 e rede notify_internal.
-name: notify
+# Nome fixo do projeto: contêineres stellytics-<serviço>-1 e rede stellytics_internal.
+name: stellytics
 
 x-logging: &logging
   driver: json-file
@@ -29,14 +29,14 @@ services:
   postgres:
     build:
       context: ./postgres
-    image: notify-postgres-walg:17.11-walg3.0.9
+    image: stellytics-postgres-walg:17.11-walg3.0.9
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
       UMAMI_DB_PASSWORD: ${UMAMI_DB_PASSWORD:?}
-      NOTIFY_DB_PASSWORD: ${NOTIFY_DB_PASSWORD:?}
-      NOTIFY_INGEST_DB_PASSWORD: ${NOTIFY_INGEST_DB_PASSWORD:?}
-      NOTIFY_COLLECTOR_DB_PASSWORD: ${NOTIFY_COLLECTOR_DB_PASSWORD:?}
+      STELLYTICS_DB_PASSWORD: ${STELLYTICS_DB_PASSWORD:?}
+      STELLYTICS_INGEST_DB_PASSWORD: ${STELLYTICS_INGEST_DB_PASSWORD:?}
+      STELLYTICS_COLLECTOR_DB_PASSWORD: ${STELLYTICS_COLLECTOR_DB_PASSWORD:?}
       # WAL-G (ADR 0004): WAL contínuo e backups base no Object Storage,
       # cifrados no cliente antes de sair da VM.
       WALG_S3_PREFIX: ${WALG_S3_PREFIX:?}
@@ -48,7 +48,7 @@ services:
       WALG_LIBSODIUM_KEY: ${WALG_LIBSODIUM_KEY:?}
       WALG_LIBSODIUM_KEY_TRANSFORM: hex
       WALG_COMPRESSION_METHOD: brotli
-      # Backups base mantidos pelo notify-backup (um por dia).
+      # Backups base mantidos pelo stellytics-backup (um por dia).
       WALG_RETAIN_FULL: ${WALG_RETAIN_FULL:-7}
       PGHOST: /var/run/postgresql
       PGUSER: postgres
@@ -64,8 +64,8 @@ services:
       - -c
       - archive_timeout=60
     volumes:
-      # Dados num volume da Hetzner montado em /srv/notify (sobrevive à VM).
-      - ${NOTIFY_DATA_DIR:-/srv/notify}/postgres:/var/lib/postgresql/data
+      # Dados num volume da Hetzner montado em /srv/stellytics (sobrevive à VM).
+      - ${STELLYTICS_DATA_DIR:-/srv/stellytics}/postgres:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
     ports:
       # Só o loopback da VM, para o túnel SSH de administração. O firewall da
@@ -73,7 +73,10 @@ services:
       - "127.0.0.1:${POSTGRES_ADMIN_PORT:-5432}:5432"
     shm_size: 256mb
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d notify && pg_isready -U postgres -d umami"]
+      # Usa o banco administrativo para a primeira subida de uma instalação
+      # antiga: a tarefa Ansible renomeia `notify` para `stellytics` antes de
+      # iniciar os demais serviços.
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres && pg_isready -U postgres -d umami"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -88,7 +91,7 @@ services:
       DATABASE_URL: postgresql://umami:${UMAMI_DB_PASSWORD:?}@postgres:5432/umami
       APP_SECRET: ${UMAMI_APP_SECRET:?}
       DISABLE_TELEMETRY: "1"
-      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-x-notify-client-ip}
+      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-x-stellytics-client-ip}
     depends_on:
       postgres:
         condition: service_healthy
@@ -111,7 +114,7 @@ services:
   portal:
     image: ${PORTAL_IMAGE:?}
     environment:
-      DATABASE_URL: postgresql://notify:${NOTIFY_DB_PASSWORD:?}@postgres:5432/notify
+      DATABASE_URL: postgresql://stellytics:${STELLYTICS_DB_PASSWORD:?}@postgres:5432/stellytics
       BETTER_AUTH_SECRET: ${PORTAL_AUTH_SECRET:?}
       BETTER_AUTH_URL: https://${PORTAL_HOST:?}
       RUN_MIGRATIONS: "true"
@@ -139,9 +142,9 @@ services:
   ingest-web:
     image: ${INGEST_WEB_IMAGE:?}
     environment:
-      DATABASE_URL: postgresql://notify_ingest:${NOTIFY_INGEST_DB_PASSWORD:?}@postgres:5432/notify
+      DATABASE_URL: postgresql://stellytics_ingest:${STELLYTICS_INGEST_DB_PASSWORD:?}@postgres:5432/stellytics
       UMAMI_URL: http://umami:3000
-      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-x-notify-client-ip}
+      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-x-stellytics-client-ip}
       # O X-Forwarded-For só vale vindo do Caddy, que tem IPs fixos na rede.
       TRUSTED_PROXIES: 172.30.0.10,fd30:6e6f:7466::10
       PROOF_SECRET: ${INGEST_PROOF_SECRET:?}
@@ -175,7 +178,7 @@ services:
     image: ${COLLECTOR_IMAGE:?}
     environment:
       # Usuário que só lê a ingest_key_active e grava em api_metric_1m.
-      DATABASE_URL: postgresql://notify_collector:${NOTIFY_COLLECTOR_DB_PASSWORD:?}@postgres:5432/notify
+      DATABASE_URL: postgresql://stellytics_collector:${STELLYTICS_COLLECTOR_DB_PASSWORD:?}@postgres:5432/stellytics
       INGEST_KEY_CACHE_TTL: ${COLLECTOR_KEY_CACHE_TTL:-60s}
     # O memory_limiter do coletor (80% do limite) só protege a VM se o
     # contêiner tiver teto: sem ele, a conta é sobre a memória da VM inteira e o
@@ -202,7 +205,7 @@ services:
     image: ${ROLLUP_IMAGE:?}
     environment:
       # Dono das tabelas de métricas: cria e apaga partições.
-      DATABASE_URL: postgresql://notify:${NOTIFY_DB_PASSWORD:?}@postgres:5432/notify
+      DATABASE_URL: postgresql://stellytics:${STELLYTICS_DB_PASSWORD:?}@postgres:5432/stellytics
       ROLLUP_INTERVAL: ${ROLLUP_INTERVAL:-15m}
       ROLLUP_LOOKBACK: ${ROLLUP_LOOKBACK:-48h}
     depends_on:
@@ -238,7 +241,7 @@ services:
       # A pasta, não o arquivo: o Ansible troca o Caddyfile por renomeação, e um
       # arquivo montado sozinho continuaria apontando para a versão antiga.
       - ../caddy:/etc/caddy:ro
-      - ${NOTIFY_DATA_DIR:-/srv/notify}/caddy:/data
+      - ${STELLYTICS_DATA_DIR:-/srv/stellytics}/caddy:/data
     depends_on:
       portal:
         condition: service_healthy

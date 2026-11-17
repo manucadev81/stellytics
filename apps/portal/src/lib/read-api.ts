@@ -33,7 +33,7 @@ function periodOf(url: URL): Period | null {
 export const LOOKUP_LIMIT_PER_IP = 120;
 
 const UNAUTHORIZED = () =>
-  error(401, "unauthorized", "Missing or invalid API key.", { "WWW-Authenticate": 'Bearer realm="notify"' });
+  error(401, "unauthorized", "Missing or invalid API key.", { "WWW-Authenticate": 'Bearer realm="stellytics"' });
 
 export async function handleRead(
   request: Request,

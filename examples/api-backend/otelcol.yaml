@@ -1,8 +1,8 @@
 # OTel Collector do tenant fazendo dual-export (#35): recebe o OTLP do app e
-# manda o mesmo dado para o backend próprio e para o coletor do notify.
+# manda o mesmo dado para o backend próprio e para o coletor do stellytics.
 #
-# Variáveis: NOTIFY_OTLP_ENDPOINT (ex.: https://otlp.<dominio-do-notify>) e
-# NOTIFY_INGEST_KEY (ntf_..., criada em /services no portal).
+# Variáveis: STELLYTICS_OTLP_ENDPOINT (ex.: https://otlp.<dominio-do-stellytics>) e
+# STELLYTICS_INGEST_KEY (ntf_..., criada em /services no portal).
 receivers:
   otlp:
     protocols:
@@ -18,19 +18,19 @@ exporters:
   # Fica no lugar do APM do tenant (Jaeger, Tempo, Prometheus, um SaaS...).
   debug:
     verbosity: basic
-  # Coletor do notify.
-  otlp_http/notify:
-    endpoint: ${env:NOTIFY_OTLP_ENDPOINT}
+  # Coletor do stellytics.
+  otlp_http/stellytics:
+    endpoint: ${env:STELLYTICS_OTLP_ENDPOINT}
     headers:
-      Authorization: Bearer ${env:NOTIFY_INGEST_KEY}
+      Authorization: Bearer ${env:STELLYTICS_INGEST_KEY}
 
 service:
   pipelines:
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [debug, otlp_http/notify]
+      exporters: [debug, otlp_http/stellytics]
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [debug, otlp_http/notify]
+      exporters: [debug, otlp_http/stellytics]

@@ -1,4 +1,4 @@
-# Proposal draft: Web and API Analytics for Stellar Ecosystem Projects (notify)
+# Proposal draft: Web and API Analytics for Stellar Ecosystem Projects (stellytics)
 
 > **DRAFT. Not submitted.** This file is a working draft for issue [#65](https://github.com/romulospl/notify/issues/65). Nothing here has been sent to the Stellar Community Fund (SCF). Statements about the Stellar ecosystem come from the Stellar Raven MCP (queried on 2026-11-15) and carry a source and date; anything not confirmed is marked **UNVERIFIED**. Statements about the project come from this repository (links are relative and were checked).
 
@@ -21,7 +21,7 @@ None of these can be decided by the drafter. Each one blocks submission or weake
 
 ## 1. Summary
 
-notify is an open source, multi-tenant web and API analytics service for Stellar ecosystem projects. Each project sees only its own data. SCF operators get a global comparison view. It answers the problem stated in the RFP brief: SCF has no trusted, unified source of end-user usage data for the projects it funds, so reviewers rely on self-reported metrics.
+stellytics is an open source, multi-tenant web and API analytics service for Stellar ecosystem projects. Each project sees only its own data. SCF operators get a global comparison view. It answers the problem stated in the RFP brief: SCF has no trusted, unified source of end-user usage data for the projects it funds, so reviewers rely on self-reported metrics.
 
 - **Track:** RFP Track, RFP "Web and API Analytics for Stellar Ecosystem Projects" (Q4 2026, Infrastructure).
 - **Base tool:** Umami v3.4.1 (MIT), used as a headless engine ([section 2](#2-why-umami-and-not-goatcounter)).
@@ -60,13 +60,13 @@ flowchart LR
   end
   person(["Tenant or SCF operator"])
   caddy["Caddy<br/>TLS, only public port"]
-  subgraph vm["notify server (Hetzner, Germany)"]
+  subgraph vm["stellytics server (Hetzner, Germany)"]
     portal["Portal<br/>Next.js"]
     gw["Web gateway<br/>Go"]
     umami["Umami<br/>internal network only"]
     col["API collector (planned)<br/>OTel, Go"]
     roll["Rollup (planned)<br/>Go"]
-    pg[("PostgreSQL<br/>umami and notify databases")]
+    pg[("PostgreSQL<br/>umami and stellytics databases")]
   end
   nav -->|"script, challenge, event"| caddy
   api -->|"OTLP + ingest key"| col
@@ -88,7 +88,7 @@ In plain words:
 
 1. A project adds one line to its site. It loads a pinned tracker that sends only the page URL, referrer, title, language and screen size. No cookies, no browser storage.
 2. Before accepting an event the gateway asks the browser to solve a small computation (proof that real JavaScript runs) and limits how many distinct "devices" one IP can simulate. It then drops the last part of the IP and passes the event to Umami. The full IP is never stored.
-3. A project that already measures its API with OpenTelemetry also sends the same data to notify. The ingest key, created in the portal, decides which tenant owns the data. The collector counts requests per service, normalized route, method, status and minute, keeps latency histograms (p50 and p95) and discards traces, spans and logs.
+3. A project that already measures its API with OpenTelemetry also sends the same data to stellytics. The ingest key, created in the portal, decides which tenant owns the data. The collector counts requests per service, normalized route, method, status and minute, keeps latency histograms (p50 and p95) and discards traces, spans and logs.
 4. A rollup job condenses minutes into hours and days and drops old detail (35 days at 1 minute, 25 months at 1 hour and 1 day).
 5. The portal shows each tenant its own web and API numbers and gives SCF operators the global view.
 
@@ -305,7 +305,7 @@ Every fact below comes from the Stellar Raven MCP unless said otherwise. The obs
 
 A bounded search (Lumenloop `find_similar_scf_submissions`, Scout `searchProjects` type "Analytics", Scout `searchHackathonBuilds`, 2026-11-15). The Lumenloop results are semantic candidates (caveat `unverified-match`), so they are adjacent matches, not a confirmed map.
 
-| Project | What it is (as listed) | Source | Overlap with notify |
+| Project | What it is (as listed) | Source | Overlap with stellytics |
 |---|---|---|---|
 | Dig (SCF #43, Build, USD 75,000) | AI-powered on-chain analytics and trading terminal for Stellar DeFi | Lumenloop and Scout, 2026-11-15 | None direct: on-chain DeFi data, not web or API usage of a project |
 | Agnostic (SCF #38, Build, USD 121,000) | Real-time on-chain analytics with SQL tools | Lumenloop | None direct: on-chain data |

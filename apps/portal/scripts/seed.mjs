@@ -6,9 +6,9 @@
 //   pnpm db:seed
 //
 // Contas criadas (todas com a senha de SEED_PASSWORD e e-mail confirmado):
-//   owner-a@seed.notify.localhost  dono do "Seed Project A"
-//   owner-b@seed.notify.localhost  dono do "Seed Project B"
-//   operator@seed.notify.localhost operador SCF (não é membro de tenant, D2)
+//   owner-a@seed.stellytics.localhost  dono do "Seed Project A"
+//   owner-b@seed.stellytics.localhost  dono do "Seed Project B"
+//   operator@seed.stellytics.localhost operador SCF (não é membro de tenant, D2)
 // Cada projeto ganha um serviço de API com uma chave de ingestão (a chave não
 // é mostrada; crie outra pela tela se precisar dela) e, se UMAMI_API_KEY
 // estiver definida, um site no Umami.
@@ -26,7 +26,7 @@ if (!password || password.length < 12) {
   process.exit(1);
 }
 
-const DOMAIN = "seed.notify.localhost";
+const DOMAIN = "seed.stellytics.localhost";
 const PROJECTS = [
   { name: "Seed Project A", slug: "seed-project-a", owner: `owner-a@${DOMAIN}`, site: "a.seed.example.org" },
   { name: "Seed Project B", slug: "seed-project-b", owner: `owner-b@${DOMAIN}`, site: "b.seed.example.org" },
@@ -38,7 +38,7 @@ const OPERATOR = `operator@${DOMAIN}`;
 const umamiUrl = (process.env.UMAMI_URL ?? "http://127.0.0.1:3001").replace(/\/$/, "");
 const umamiKey = process.env.UMAMI_API_KEY;
 
-const sql = postgres(process.env.DATABASE_URL ?? "postgresql://notify:notify@localhost:5432/notify", {
+const sql = postgres(process.env.DATABASE_URL ?? "postgresql://stellytics:stellytics@localhost:5432/stellytics", {
   max: 1,
   onnotice: () => {},
 });

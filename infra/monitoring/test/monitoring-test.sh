@@ -12,8 +12,8 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
-project=notify-monitortest
-work=$(mktemp -d "${TMPDIR:-/tmp}/notify-monitortest.XXXXXX")
+project=stellytics-monitortest
+work=$(mktemp -d "${TMPDIR:-/tmp}/stellytics-monitortest.XXXXXX")
 cp -R "$root/monitoring/." "$work/"
 rm -rf "$work/test"
 mkdir -p "$work/prometheus/targets" "$work/alertmanager/secrets"

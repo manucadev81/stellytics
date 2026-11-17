@@ -28,5 +28,5 @@ RUN set -eux; \
     apt-get purge -y curl; apt-get autoremove -y; rm -rf /var/lib/apt/lists/*; \
     wal-g --version
 
-COPY --chmod=0755 backup.sh /usr/local/bin/notify-backup
-COPY --chmod=0755 restore.sh /usr/local/bin/notify-restore
+COPY --chmod=0755 backup.sh /usr/local/bin/stellytics-backup
+COPY --chmod=0755 restore.sh /usr/local/bin/stellytics-restore

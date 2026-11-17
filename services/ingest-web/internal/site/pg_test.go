@@ -11,15 +11,15 @@ import (
 	"github.com/romulospl/notify/services/internal/pgtest"
 )
 
-// Teste de integração: precisa de DATABASE_URL (o banco notify, com o dono das
+// Teste de integração: precisa de DATABASE_URL (o banco stellytics, com o dono das
 // tabelas) e dos usuários de 02-ingest-roles.sh, que o CI e o Compose criam.
-// INGEST_DATABASE_URL troca a conexão usada como notify_ingest.
+// INGEST_DATABASE_URL troca a conexão usada como stellytics_ingest.
 //
 // O teste nunca aplica migrações no banco de DATABASE_URL: elas são do portal,
 // que as registra no Drizzle, e aplicá-las por fora faria o portal falhar ao
 // migrar depois. Com permissão de criar banco (o CI), ele cria um banco
 // temporário, aplica as migrações lá e o apaga no fim. Sem essa permissão (o
-// usuário notify do Compose), usa o banco de DATABASE_URL se o portal já o
+// usuário stellytics do Compose), usa o banco de DATABASE_URL se o portal já o
 // migrou, e pula o teste se não.
 
 func TestPGIntegration(t *testing.T) {
@@ -61,7 +61,7 @@ func TestPGIntegration(t *testing.T) {
 		_, _ = admin.Exec(ctx, `DELETE FROM tenant WHERE id = ANY($1)`, []string{active, removed})
 	})
 
-	pool, err := pgxpool.New(ctx, pgtest.RoleURL(t, adminURL, "notify_ingest", "INGEST_DATABASE_URL"))
+	pool, err := pgxpool.New(ctx, pgtest.RoleURL(t, adminURL, "stellytics_ingest", "INGEST_DATABASE_URL"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestPGIntegration(t *testing.T) {
 		}
 	}
 
-	// notify_ingest só lê a ingest_site.
+	// stellytics_ingest só lê a ingest_site.
 	var n int
 	if err := pool.QueryRow(ctx, `SELECT count(*)::int FROM ingest_site`).Scan(&n); err != nil {
 		t.Fatalf("SELECT na ingest_site: %v", err)

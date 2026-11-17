@@ -1,6 +1,6 @@
 # Alertas do monitoramento externo (#15). Textos em inglês, como a interface.
 groups:
-  - name: notify-endpoints
+  - name: stellytics-endpoints
     rules:
       # Portal, ingestão web ou ingestão de API sem resposta 2xx por 1 minuto.
       - alert: EndpointDown

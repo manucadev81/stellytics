@@ -17,7 +17,7 @@ import { COMPARE_MAX, compareProjects, getWebOverview, MAX_PARALLEL } from "@/li
 import OperatorWebPage from "@/app/(private)/operator/web/page";
 import { DEFAULT_METRICS, startFakeUmami, type FakeUmami } from "./fake-umami";
 
-const DOMAIN = "@operator-web-test.notify.invalid";
+const DOMAIN = "@operator-web-test.stellytics.invalid";
 const SLUG = "operator-web-test-";
 const NOT_FOUND = { digest: expect.stringContaining("404") };
 const PERIOD = resolvePeriod("7d", new Date("2026-11-14T10:00:00Z"));

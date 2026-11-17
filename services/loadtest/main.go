@@ -2,7 +2,7 @@
 //
 // Subcomandos:
 //
-//	setup     cria no Umami e no banco notify os sites, tenants, serviços e chaves do teste
+//	setup     cria no Umami e no banco stellytics os sites, tenants, serviços e chaves do teste
 //	web       manda page views ao gateway (GET /c, prova de JS, POST /e)
 //	api       manda OTLP/HTTP (métricas ou spans) ao coletor com chave de ingestão
 //	teardown  apaga tudo o que o setup criou

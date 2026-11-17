@@ -2,11 +2,11 @@
 
 Portal em Next.js (App Router), com Drizzle ORM, Better Auth e Tailwind. É a única porta de entrada da plataforma: cadastro self-service, login, painéis do tenant e painéis globais do SCF.
 
-Lê as estatísticas web pela API do Umami (com uma conta de serviço, [#58](https://github.com/romulospl/notify/issues/58)) e as métricas de API direto do banco `notify`. O isolamento entre tenants na leitura é responsabilidade do portal: o tenant vem sempre da sessão ([#18](https://github.com/romulospl/notify/issues/18)).
+Lê as estatísticas web pela API do Umami (com uma conta de serviço, [#58](https://github.com/romulospl/notify/issues/58)) e as métricas de API direto do banco `stellytics`. O isolamento entre tenants na leitura é responsabilidade do portal: o tenant vem sempre da sessão ([#18](https://github.com/romulospl/notify/issues/18)).
 
 ## O que já existe ([#57](https://github.com/romulospl/notify/issues/57))
 
-- Login por e-mail e senha com sessão no servidor (Better Auth, tabelas no banco `notify`).
+- Login por e-mail e senha com sessão no servidor (Better Auth, tabelas no banco `stellytics`).
 - Rotas privadas: `/dashboard` (área do tenant) e `/operator` (área do operador SCF, só para o papel `operator`; outros recebem 404).
 - O `proxy.ts` redireciona para `/sign-in` quem não tem cookie de sessão; a validação de verdade é feita no servidor (`src/lib/access.ts`).
 - Cadastro aberto com confirmação de e-mail e recuperação de senha ([#60](https://github.com/romulospl/notify/issues/60)); ver a seção "Cadastro e e-mail".
@@ -27,7 +27,7 @@ O portal fica em http://localhost:3000. Para desenvolver com recarga automática
 ```bash
 docker compose up -d --wait postgres
 cd apps/portal
-DATABASE_URL=postgresql://notify:notify@localhost:5432/notify \
+DATABASE_URL=postgresql://stellytics:stellytics@localhost:5432/stellytics \
 BETTER_AUTH_SECRET=dev-only-portal-auth-secret-change-me \
 pnpm db:migrate && pnpm dev
 ```
@@ -54,7 +54,7 @@ read -rs SEED_PASSWORD && export SEED_PASSWORD
 pnpm db:seed
 ```
 
-Contas, todas com a senha de `SEED_PASSWORD`: `owner-a@seed.notify.localhost`, `owner-b@seed.notify.localhost` e `operator@seed.notify.localhost`. Os testes de integração rodam o seed com a senha de teste deles, então o banco local fica com essas contas.
+Contas, todas com a senha de `SEED_PASSWORD`: `owner-a@seed.stellytics.localhost`, `owner-b@seed.stellytics.localhost` e `operator@seed.stellytics.localhost`. Os testes de integração rodam o seed com a senha de teste deles, então o banco local fica com essas contas.
 
 ## Operador SCF ([#19](https://github.com/romulospl/notify/issues/19))
 
@@ -89,7 +89,7 @@ O portal cria só sites no Umami, nunca usuários nem equipes (ADR 0003).
 
 ### Conta de serviço
 
-Um usuário comum do Umami (`notify-portal`, papel `user`), autenticado por chave de API. O script abaixo cria o usuário (ou troca a senha dele por uma aleatória, que ninguém guarda) e imprime uma chave nova. A senha de administrador só é usada aqui:
+Um usuário comum do Umami (`stellytics-portal`, papel `user`), autenticado por chave de API. O script abaixo cria o usuário (ou troca a senha dele por uma aleatória, que ninguém guarda) e imprime uma chave nova. A senha de administrador só é usada aqui:
 
 ```bash
 cd apps/portal
@@ -135,10 +135,10 @@ Quem ainda não tem projeto e abre uma página do tenant é levado a `/onboardin
 
 | Variável | Obrigatória | Uso |
 |---|---|---|
-| `DATABASE_URL` | Sim | Conexão com o banco `notify` |
+| `DATABASE_URL` | Sim | Conexão com o banco `stellytics` |
 | `BETTER_AUTH_SECRET` | Sim | Segredo das sessões (gere com `openssl rand -base64 32` em produção) |
 | `SMTP_URL` | Para e-mail | Servidor SMTP, ex.: `smtp://mailpit:1025` ou `smtps://usuario:senha@host:465`. Sem ele, o portal sobe, mas os e-mails de confirmação e de senha falham (o erro vai para o log) |
-| `MAIL_FROM` | Não | Remetente (padrão `notify <no-reply@notify.localhost>`) |
+| `MAIL_FROM` | Não | Remetente (padrão `stellytics <no-reply@stellytics.localhost>`) |
 | `BETTER_AUTH_URL` | Não | URL pública do portal (padrão `http://localhost:3000`) |
 | `RUN_MIGRATIONS` | Não | `true` aplica as migrações do Drizzle na subida do servidor |
 | `UMAMI_URL` | Não | Endereço interno do Umami (padrão `http://127.0.0.1:3001`, publicado só pelo `infra/compose/umami-port.yaml`; no Compose, `http://umami:3000`) |
@@ -148,8 +148,8 @@ Quem ainda não tem projeto e abre uma página do tenant é levado a `/onboardin
 
 - Esquema em `src/lib/db/schema.ts`; migrações versionadas em `drizzle/`.
 - O modelo de tenants (`tenant`, `tenant_member`, `site`, `api_service`, `ingest_key` e `audit_log`) segue a seção 3 do [spec do E2](../../docs/specs/e2-tenants-e-controle-de-acesso.md). O `audit_log` só aceita inserções (um gatilho recusa `UPDATE`, `DELETE` e `TRUNCATE`).
-- As visões `ingest_site` (gateway web) e `ingest_key_active` (coletor) e as permissões dos usuários `notify_ingest` e `notify_collector` estão em `drizzle/0002_ingest_views.sql`, escrito à mão. Para SQL que o Drizzle não gera: `pnpm db:generate --custom --name <descricao>`.
-- **As migrações exigem os usuários `notify_ingest` e `notify_collector`**, que só um superusuário cria. No Compose, `infra/compose/postgres/init/02-ingest-roles.sh` roda com o volume vazio. Para um volume que já existe, sem apagar os dados:
+- As visões `ingest_site` (gateway web) e `ingest_key_active` (coletor) e as permissões dos usuários `stellytics_ingest` e `stellytics_collector` estão em `drizzle/0002_ingest_views.sql`, escrito à mão. Para SQL que o Drizzle não gera: `pnpm db:generate --custom --name <descricao>`.
+- **As migrações exigem os usuários `stellytics_ingest` e `stellytics_collector`**, que só um superusuário cria. No Compose, `infra/compose/postgres/init/02-ingest-roles.sh` roda com o volume vazio. Para um volume que já existe, sem apagar os dados:
 
   ```bash
   docker compose exec -T postgres sh < infra/compose/postgres/init/02-ingest-roles.sh
@@ -160,4 +160,4 @@ Quem ainda não tem projeto e abre uma página do tenant é levado a `/onboardin
 
 ## Testes
 
-`pnpm test` roda os testes com Vitest. Os de integração (`test/auth.test.ts`, `test/tenant-model.test.ts`, `test/umami.test.ts`, `test/access.test.ts` e `test/ingest-keys.test.ts` e `test/email-flows.test.ts`) usam o Postgres de `DATABASE_URL` (padrão: o do Compose local) e aplicam as migrações antes de rodar. Os testes de permissão assumem os papéis de ingestão com `SET ROLE`, por isso o script acima também dá ao usuário `notify` o direito de assumi-los (sem herdar nada deles). Os testes do Umami usam um Umami falso (`test/fake-umami.ts`); o job `compose` do CI confere a conta de serviço contra o Umami de verdade.
+`pnpm test` roda os testes com Vitest. Os de integração (`test/auth.test.ts`, `test/tenant-model.test.ts`, `test/umami.test.ts`, `test/access.test.ts` e `test/ingest-keys.test.ts` e `test/email-flows.test.ts`) usam o Postgres de `DATABASE_URL` (padrão: o do Compose local) e aplicam as migrações antes de rodar. Os testes de permissão assumem os papéis de ingestão com `SET ROLE`, por isso o script acima também dá ao usuário `stellytics` o direito de assumi-los (sem herdar nada deles). Os testes do Umami usam um Umami falso (`test/fake-umami.ts`); o job `compose` do CI confere a conta de serviço contra o Umami de verdade.

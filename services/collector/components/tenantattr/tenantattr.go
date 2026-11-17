@@ -28,8 +28,8 @@ import (
 // Atributos de recurso que o processor define. Os componentes seguintes (o
 // exporter da #31) leem só estes.
 const (
-	AttrTenantID  = "notify.tenant.id"
-	AttrServiceID = "notify.api_service.id"
+	AttrTenantID  = "stellytics.tenant.id"
+	AttrServiceID = "stellytics.api_service.id"
 )
 
 // spoofable são atributos de recurso que o cliente poderia mandar para se

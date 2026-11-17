@@ -10,7 +10,7 @@ export default async function PrivateLayout({ children }: { children: React.Reac
     <div className="min-h-dvh">
       <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-          <span className="font-semibold">notify</span>
+          <span className="font-semibold">stellytics</span>
           <nav className="flex gap-4 text-sm">
             {/* D2: o operador não é membro de tenant, então não tem "Project". */}
             {isOperator ? (

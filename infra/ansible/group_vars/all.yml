@@ -2,8 +2,8 @@
 # do git; modelo em secrets.example.yml).
 
 # Onde a aplicação e os dados ficam na VM.
-notify_root: /opt/notify
-notify_data_dir: /srv/notify
+stellytics_root: /opt/stellytics
+stellytics_data_dir: /srv/stellytics
 
 # Hosts públicos (registros A e AAAA apontando para a VM). O da ingestão não
 # pode ter umami, analytics, track nem collect (CLAUDE.md).
@@ -13,7 +13,7 @@ ingest_host: e.example.org
 # os tenants põem no exportador OTLP.
 api_host: otlp.example.org
 acme_email: ops@example.org
-mail_from: "notify <no-reply@example.org>"
+mail_from: "stellytics <no-reply@example.org>"
 # Cadastro com aprovação prévia (#49): true deixa projetos novos pendentes até
 # um operador SCF aprovar em /operator/approvals.
 signup_approval: false
@@ -45,11 +45,11 @@ walg_retain_full: 7
 backup_on_calendar: "*-*-* 03:15:00 UTC"
 
 # Monitoramento externo (#15, ADR 0005), na VM `monitor`.
-monitor_root: /opt/notify-monitor
+monitor_root: /opt/stellytics-monitor
 # Para onde vão os alertas e por qual SMTP (a senha fica em secrets.yml).
 monitor_alert_email: ops@example.org
 monitor_smtp_smarthost: smtp.example.org:587
-monitor_smtp_from: "notify monitor <monitor@example.org>"
+monitor_smtp_from: "stellytics monitor <monitor@example.org>"
 monitor_smtp_username: ""
 monitor_smtp_require_tls: true
 # URL OTLP/HTTP da ingestão de API: o blackbox faz um POST sem chave e espera
@@ -72,5 +72,5 @@ ha_private_ip: "{{ ha_primary_private_ip }}"
 # Quem pode abrir conexão de replicação (pg_hba.conf).
 ha_replication_cidr: 10.50.0.0/16
 # Slot físico da réplica e teto de WAL que ele pode reter no primário.
-ha_replication_slot: notify_standby
+ha_replication_slot: stellytics_standby
 ha_replication_max_slot_wal_keep: 10GB

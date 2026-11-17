@@ -42,7 +42,7 @@ func TestSendWithoutUserAgent(t *testing.T) {
 	}))
 	defer srv.Close()
 	base, _ := url.Parse(srv.URL)
-	c := NewClient(base, "x-notify-client-ip", srv.Client())
+	c := NewClient(base, "x-stellytics-client-ip", srv.Client())
 	ev := Event{Type: "event", Payload: Payload{Website: "6f1c2b9e-3a4d-4c8e-9f00-1234567890ab", URL: "/"}}
 	if err := c.Send(context.Background(), ev, "", netip.MustParseAddr("203.0.113.0")); err != nil {
 		t.Fatal(err)
@@ -59,7 +59,7 @@ func TestSendUpstreamError(t *testing.T) {
 	}))
 	defer srv.Close()
 	base, _ := url.Parse(srv.URL + "/umami/")
-	c := NewClient(base, "x-notify-client-ip", srv.Client())
+	c := NewClient(base, "x-stellytics-client-ip", srv.Client())
 	err := c.Send(context.Background(), Event{Type: "event"}, "ua", netip.MustParseAddr("203.0.113.0"))
 	if ue, ok := errors.AsType[*UpstreamError](err); !ok || ue.Status != 500 {
 		t.Errorf("err = %v", err)

@@ -1,5 +1,5 @@
-// Cria um usuário comum (papel tenant) no banco `notify`, já com e-mail confirmado.
-// Uso: pnpm --filter @notify/portal user:create -- --email a@b.c --name "Nome"
+// Cria um usuário comum (papel tenant) no banco `stellytics`, já com e-mail confirmado.
+// Uso: pnpm --filter @stellytics/portal user:create -- --email a@b.c --name "Nome"
 // A senha é lida da variável PORTAL_USER_PASSWORD (para não ficar no histórico do shell).
 // Operador SCF só pelo comando de administração: scripts/operator.mjs (#19).
 import { randomUUID } from "node:crypto";
@@ -24,7 +24,7 @@ if (password.length < 12) {
   process.exit(1);
 }
 
-const sql = postgres(process.env.DATABASE_URL ?? "postgresql://notify:notify@localhost:5432/notify", { max: 1 });
+const sql = postgres(process.env.DATABASE_URL ?? "postgresql://stellytics:stellytics@localhost:5432/stellytics", { max: 1 });
 try {
   const userId = randomUUID();
   const hash = await hashPassword(password);

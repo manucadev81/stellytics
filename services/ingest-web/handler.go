@@ -180,8 +180,7 @@ func (g *gateway) event(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, relay.ErrSaturated) {
 			// Repasses ao Umami no limite: o evento é perdido (o script não tenta
 			// de novo) e o contador agregado registra. Sem log por evento.
-			w.Header().Set("Retry-After", "1")
-			http.Error(w, "overloaded", http.StatusServiceUnavailable)
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		if r.Context().Err() != nil {

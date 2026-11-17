@@ -119,7 +119,7 @@ func runAPI(args []string) error {
 	fs := flag.NewFlagSet("api", flag.ExitOnError)
 	stateFile := fs.String("state", "state.json", "arquivo de estado do setup")
 	collector := fs.String("collector", envOr("COLLECTOR_URL", "http://127.0.0.1:4318"), "OTLP/HTTP do coletor")
-	notifyDB := fs.String("notify-db", envOr("NOTIFY_DATABASE_URL", "postgresql://notify:notify@127.0.0.1:5432/notify"), "banco notify, para conferir api_metric_1m")
+	stellyticsDB := fs.String("stellytics-db", envOr("STELLYTICS_DATABASE_URL", "postgresql://stellytics:stellytics@127.0.0.1:5432/stellytics"), "banco stellytics, para conferir api_metric_1m")
 	profile := fs.String("profile", "11.6x2m", "degraus taxaxduração de requisições da API por segundo")
 	modes := fs.String("modes", "metrics,spans", "modos de exportação a usar (metrics, spans)")
 	exportEvery := fs.Duration("export-interval", 10*time.Second, "intervalo de exportação das métricas (o padrão do SDK do OTel é 60 s)")
@@ -139,7 +139,7 @@ func runAPI(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := checkTargets(*allowRemote, map[string]string{"collector": *collector, "notify-db": *notifyDB}); err != nil {
+	if err := checkTargets(*allowRemote, map[string]string{"collector": *collector, "stellytics-db": *stellyticsDB}); err != nil {
 		return err
 	}
 	var svcs []*svc
@@ -160,7 +160,7 @@ func runAPI(args []string) error {
 	go w.run(ctx, 2*time.Second)
 
 	// Linha de base: execuções anteriores com o mesmo setup já gravaram linhas.
-	pre, err := pgx.Connect(ctx, *notifyDB)
+	pre, err := pgx.Connect(ctx, *stellyticsDB)
 	if err != nil {
 		return err
 	}
@@ -287,7 +287,7 @@ func runAPI(args []string) error {
 	fmt.Printf("\nrequisições simuladas: %d em %s (%.2f/s); saturação do gerador: %d; exportações com falha: %d\n",
 		fired, elapsed.Round(time.Second), float64(fired)/elapsed.Seconds(), saturated, exportFailures.Load())
 	time.Sleep(*settle)
-	return verifyAPI(ctx, *notifyDB, st, svcs)
+	return verifyAPI(ctx, *stellyticsDB, st, svcs)
 }
 
 func marshalMetrics(h map[histKey]*hist, interval time.Duration) []byte {

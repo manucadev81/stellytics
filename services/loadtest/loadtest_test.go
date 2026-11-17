@@ -81,14 +81,14 @@ func itoa(n int) string { return strconv.Itoa(n) }
 
 func TestCheckTargetsRefusesRemote(t *testing.T) {
 	local := map[string]string{
-		"a": "postgresql://u:p@127.0.0.1:5432/notify", "b": "http://localhost:3001", "c": "http://[::1]:4318",
+		"a": "postgresql://u:p@127.0.0.1:5432/stellytics", "b": "http://localhost:3001", "c": "http://[::1]:4318",
 	}
 	for name, u := range local {
 		if err := checkTargets(false, map[string]string{name: u}); err != nil {
 			t.Errorf("%s (%s) devia passar: %v", name, u, err)
 		}
 	}
-	remote := []string{"postgresql://u:p@db.example.com:5432/notify", "http://10.0.0.5:3001", "https://umami.example.org", "http://127.0.0.1.evil.example"}
+	remote := []string{"postgresql://u:p@db.example.com:5432/stellytics", "http://10.0.0.5:3001", "https://umami.example.org", "http://127.0.0.1.evil.example"}
 	for _, u := range remote {
 		if err := checkTargets(false, map[string]string{"x": u}); err == nil {
 			t.Errorf("%s devia ser recusado sem -allow-remote", u)
