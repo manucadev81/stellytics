@@ -17,9 +17,13 @@ FROM deps AS build
 COPY apps/portal apps/portal
 RUN pnpm --filter @stellytics/portal build
 # O otimizador de imagem está desligado: sharp e libvips não são distribuídos
-# no standalone. Remove os pacotes e os links para eles.
+# no standalone; caniuse-lite também não vai para a imagem. Remove os pacotes
+# e os links para eles; como o libvips é o único módulo nativo esperado, um
+# segundo passe recusa qualquer binário *.node — rede estrutural contra
+# mudanças de layout do pnpm/Next que escapem dos padrões de nome.
 RUN find /repo/apps/portal/.next/standalone -depth \
-    -path '*/node_modules/*' \( -name '@img+sharp-*' -o -name 'sharp-*' -o -name 'sharp@*' -o -name 'sharp' \) -exec rm -rf {} +
+    -path '*/node_modules/*' \( -name '@img+sharp-*' -o -name 'sharp-*' -o -name 'sharp@*' -o -name 'sharp' -o -name 'caniuse-lite' -o -name 'caniuse-lite@*' \) -exec rm -rf {} + \
+    && find /repo/apps/portal/.next/standalone -depth -name '*.node' -exec rm -rf {} +
 
 FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS runner
 ENV NODE_ENV=production \

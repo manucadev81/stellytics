@@ -123,7 +123,7 @@ Duas linguagens: **TypeScript** para interface e script do navegador; **Go** só
 ## Restrições que não são óbvias
 
 - **Umami fixado em v3.4.1** e usado sem fork pesado. Mudanças no Umami são patches mínimos e documentados. Só suba de versão por PR, com release de pelo menos duas semanas.
-- **Toda dependência precisa de licença aprovada pela OSI.** Por isso não usamos TimescaleDB (licença TSL).
+- **Dependências de produção usam licença aprovada pela [OSI](https://opensource.org/licenses)**, com exceções específicas e temporárias para dependências de build registradas em `scripts/licenses/allowed.json` (ver `CONTRIBUTING.md`). Por isso não usamos TimescaleDB (licença TSL).
 - **O IP completo nunca é persistido.** O gateway trunca (último octeto do IPv4, /48 no IPv6) antes da geolocalização e entrega ao Umami pelo header de `CLIENT_IP_HEADER`. Sem cookies nem storage no navegador; gravação de sessão e heatmaps do Umami ficam desligados.
 - **O `tenant.id` vem sempre da chave de ingestão**, nunca de atributo enviado pelo cliente.
 - **Isolamento entre tenants** precisa estar coberto por testes automatizados, na web e na API (issue #21).

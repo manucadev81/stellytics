@@ -80,9 +80,19 @@ compose up -d --build --wait
 get() { curl -sk -o /dev/null -w '%{http_code}' --resolve "$1:443:127.0.0.1" "https://$1$2"; }
 [ "$(get portal.localhost /sign-in)" = 200 ] || fail "portal em /sign-in"
 # O otimizador não é usado pelo portal; nenhuma biblioteca sharp/libvips ou
-# pacote de dados caniuse-lite deve ser distribuído no standalone.
-[ "$(get portal.localhost '/_next/image?url=%2Ffavicon.ico&w=64&q=75')" = 404 ] || fail "otimizador de imagens deveria estar desligado"
-license_files=$(compose exec -T portal sh -c 'find /app \( -name "@img+sharp-*" -o -name "sharp-*" -o -name "sharp@*" -o -name sharp -o -name "caniuse-lite" -o -name "caniuse-lite@*" \) -print') || fail "não foi possível inspecionar a imagem do portal"
+# pacote de dados caniuse-lite deve ser distribuído no standalone. O 404 tem
+# corpo vazio (guarda do proxy); o 404 nativo do Next viria com HTML, então a
+# resposta confere também que a guarda não foi removida. A barra final recebe
+# o 308 de normalização do próprio Next e, seguido o redirecionamento, o 404
+# da guarda; o caminho percent-encodado prova que a guarda decodifica (sem
+# isso viraria redirecionamento para /sign-in).
+img404=$(curl -sk --resolve portal.localhost:443:127.0.0.1 -o /dev/null -w '%{http_code} %{size_download}' "https://portal.localhost/_next/image?url=%2Ffavicon.ico&w=64&q=75")
+[ "$img404" = "404 0" ] || fail "otimizador de imagens deveria estar desligado (retornou \"$img404\", esperado 404 com corpo vazio)"
+img404=$(curl -sk --resolve portal.localhost:443:127.0.0.1 -o /dev/null -w '%{http_code} %{size_download}' "https://portal.localhost/_next/%69mage?url=%2Ffavicon.ico&w=64&q=75")
+[ "$img404" = "404 0" ] || fail "otimizador com caminho percent-encodado deveria dar 404 da guarda do proxy (retornou \"$img404\")"
+img404=$(curl -skL --resolve portal.localhost:443:127.0.0.1 -o /dev/null -w '%{http_code} %{size_download}' "https://portal.localhost/_next/image/?url=%2Ffavicon.ico&w=64&q=75")
+[ "$img404" = "404 0" ] || fail "otimizador com barra final deveria dar 404 depois do redirecionamento do Next (retornou \"$img404\")"
+license_files=$(compose exec -T portal sh -c 'find /app -path "*/node_modules/*" \( -name "@img+sharp-*" -o -name "sharp-*" -o -name "sharp@*" -o -name sharp -o -name "caniuse-lite" -o -name "caniuse-lite@*" \) -print; find /app -name "*.node" -print') || fail "não foi possível inspecionar a imagem do portal"
 [ -z "$license_files" ] || fail "imagem do portal contém dependências removidas: $license_files"
 
 [ "$(get ingest.localhost /healthz)" = 200 ] || fail "gateway em /healthz"
