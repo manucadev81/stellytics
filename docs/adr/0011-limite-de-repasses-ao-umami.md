@@ -46,11 +46,13 @@ Regras:
 
 ### Limite por site (o ponto multi-tenant)
 
-O semáforo é **global ao processo**: um tenant em pico, ou alguém que mande eventos com o ID público do site dele, pode ocupar todas as vagas e fazer o gateway recusar eventos de outros tenants. Isso é real: o ID do site não é segredo.
+O limite global continua por processo. Com `RELAY_MAX_INFLIGHT=N` e `N >= 2`, cada site pode ocupar até `N-1` vagas simultâneas. Assim, um único site em pico não ocupa a última vaga, que fica disponível para outro site. A reserva é fixa: uma vaga pode ficar ociosa quando só há um site. Com `N=1` não é possível reservar uma vaga simultânea para outro site; use pelo menos 2 para essa proteção.
 
-O que já limita o estrago, sem nada novo: o limite de taxa por IP truncado (`RATE_LIMIT`), a prova de JS e o limite de fingerprints por IP e site (`FINGERPRINT_LIMIT`). Eles seguram um atacante de um /24; **não seguram um pico legítimo e grande de um único tenant**, nem um robô distribuído por muitos IPs que resolva a prova de JS.
+A contagem por site inclui apenas repasses ativos, depois da validação do site. A entrada é removida ao terminar o último repasse, inclusive em erro, cancelamento ou panic. Há no máximo N entradas; requisições em espera e IDs desconhecidos não criam entradas. A espera continua limitada por `RELAY_QUEUE_WAIT`. Não há fila justa: vários sites podem disputar a última vaga, e múltiplos sites em conjunto podem esgotar o limite. O limite tampouco protege contra múltiplos IDs válidos controlados pelo mesmo atacante.
 
-**Não implementado neste ADR**, por duas razões: (1) com o Umami como único gargalo, o recurso escasso é a capacidade dele, e uma cota fixa por site desperdiça vaga quando os outros estão ociosos; a solução correta é uma partilha justa (cada site com um piso reservado e o resto compartilhado, ou fila por site com rodízio), com estado por site e mais pontos de falha, e não é pequena; (2) a escala atual (poucos projetos, alvo de 11,6/s) não exerce o problema, e não medimos a disputa entre tenants. **Pendência registrada**: se um tenant isolado passar a competir pelas vagas, a próxima peça é uma reserva por site (por exemplo, nenhum site pode ocupar mais que uma fração das vagas quando outros esperam) em cima do mesmo `relay.Limited`. O contador atual não separa descartes por site (e não deve gravar ID de site em log de texto); a medição por site precisaria de métrica própria.
+### Medição com dois sites
+
+Em 17/11/2026, duas instâncias simultâneas de `services/loadtest web`, com perfis `300x30s` e `10x30s`, contra gateway local, Umami 3.4.1 e Postgres 17.11, `RELAY_MAX_INFLIGHT=2`, `RELAY_QUEUE_WAIT=0` e prova de 12 bits. O site em pico iniciou 9.075 eventos e gravou 2.915; o outro iniciou 294 e gravou 276. Todos responderam `204`, incluindo descartes. O contador agregado registrou 6.178 descartes, igual à diferença dos dois sites. Nenhum gerador saturou. Os dois testes começaram com cerca de dois segundos de diferença; esta é uma execução local sem repetição, não uma garantia de taxa nem de isolamento entre mais de dois sites. A contagem usa `website_event` antes e depois, não o status HTTP.
 
 ## Medição
 
@@ -75,7 +77,7 @@ Leitura:
 - **No pico do RFP (116/s) com 16 vagas e a espera padrão não houve nenhum `503`.** O limite só age acima da capacidade.
 - Como o limite não eleva a capacidade, a 400/s de 50% a 59% dos eventos se perdem em qualquer configuração. O limite troca "tudo lento e incerto" por "parte recusada de forma clara"; só mais capacidade (mais instâncias do Umami) reduz a perda.
 
-**Não foi testado:** várias instâncias do gateway (o semáforo é por processo; N gateways permitem N vezes `RELAY_MAX_INFLIGHT` ao mesmo Umami), produção (Caddy, TLS, rede real, Hetzner), Umami com muitos dados (o banco começou vazio), execuções longas, e disputa entre tenants (um site só no teste). Os valores `16`, `64` e `256` foram escolhidos para a medição, não calculados para produção.
+**Não foi testado:** várias instâncias do gateway (o semáforo é por processo; N gateways permitem N vezes `RELAY_MAX_INFLIGHT` ao mesmo Umami), produção (Caddy, TLS, rede real, Hetzner), Umami com muitos dados (o banco começou vazio), execuções longas, e disputa entre tenants na medição histórica (um site só nesse teste). Os valores `16`, `64` e `256` foram escolhidos para a medição, não calculados para produção.
 
 ## Decisão sobre as pistas de saturação
 

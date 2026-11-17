@@ -415,7 +415,7 @@ Limites e cuidados:
   | Compose / `.env` | Ansible | Padrão | Quando ligar |
   |---|---|---|---|
   | `INGEST_SITE_STALE_TTL` | `ingest_site_stale_ttl` | `0` | Máx. 1 h (ex.: `10m`). Com o banco fora, o gateway serve a última resposta de um site **aceito** por esse tempo. Contrapartida: tenant removido durante a queda segue aceitando eventos até `SITE_CACHE_TTL` + este valor. |
-  | `INGEST_RELAY_MAX_INFLIGHT` | `ingest_relay_max_inflight` | `0` (sem limite) | Só se o Umami saturar e o gateway começar a acumular memória. **Não ligue antes de decidir o `503` sob saturação** (ADR 0011, #133): ele revela o status do site e a cota. |
+  | `INGEST_RELAY_MAX_INFLIGHT` | `ingest_relay_max_inflight` | `0` (sem limite) | Só se o Umami saturar e o gateway começar a acumular memória. Sob saturação, o gateway responde `204` e registra os descartes no log; diferenças de tempo ainda podem fornecer pistas (ADR 0011). |
   | `INGEST_RELAY_QUEUE_WAIT` | `ingest_relay_queue_wait` | `250ms` | Só vale com o limite acima ligado (0 a 10 s). |
 - **Portal e Umami** continuam numa VM só, com o banco local a ela (`postgres:5432` no `prod.yaml`).
 

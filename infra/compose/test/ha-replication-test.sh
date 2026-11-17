@@ -202,7 +202,13 @@ INSERT INTO site (tenant_id, name, domain, umami_website_id) SELECT id, 'a', 'a.
 INSERT INTO site (tenant_id, name, domain, umami_website_id) SELECT id, 'b', 'b.example', '$SITE_B' FROM tenant WHERE slug = 'ha-removed';
 SQL
 
-stamp "sobe a réplica (pg_basebackup pela rede)"
+# Simula interrupção depois de mover PG_VERSION, mas antes de terminar o
+# bootstrap. O marcador deve prevalecer sobre PG_VERSION e refazer a cópia.
+mkdir -p "$work/stby/postgres/.standby-bootstrap-data"
+printf '17\n' > "$work/stby/postgres/PG_VERSION"
+touch "$work/stby/postgres/.standby-bootstrap-in-progress"
+printf 'parcial\n' > "$work/stby/postgres/.standby-bootstrap-data/incompleto"
+stamp "sobe a réplica (pg_basebackup pela rede, após bootstrap interrompido)"
 tb=$(date +%s)
 stby_c up -d $BUILD --wait --wait-timeout 300
 STBY=$(stby_c ps -q postgres)

@@ -30,9 +30,9 @@ umask 077
 printf '%s:%s:*:replicator:%s\n' "$PRIMARY_HOST" "$primary_port" "$REPLICATOR_PASSWORD" > "$passfile"
 chown postgres:postgres "$passfile"
 
-if [ ! -s "$pgdata/PG_VERSION" ]; then
-  mkdir -p "$pgdata"
-  marker="$pgdata/.standby-bootstrap-in-progress"
+mkdir -p "$pgdata"
+marker="$pgdata/.standby-bootstrap-in-progress"
+if [ -e "$marker" ] || [ ! -s "$pgdata/PG_VERSION" ]; then
   if [ -e "$marker" ]; then
     echo "standby-entrypoint: removendo cópia parcial de uma tentativa anterior"
     find "$pgdata" -mindepth 1 -maxdepth 1 ! -name lost+found -exec rm -rf -- {} +
@@ -59,9 +59,16 @@ if [ ! -s "$pgdata/PG_VERSION" ]; then
   echo "standby-entrypoint: pg_basebackup do primário"
   : > "$marker"
   chown postgres:postgres "$marker"
+  # pg_basebackup exige destino vazio: o marcador fica fora do diretório
+  # temporário, mas no mesmo volume para sobreviver a uma interrupção.
+  bootstrap="$pgdata/.standby-bootstrap-data"
+  mkdir -m 0700 "$bootstrap"
+  chown postgres:postgres "$bootstrap"
   gosu postgres pg_basebackup \
     -h "$PRIMARY_HOST" -p "$primary_port" -U replicator \
-    -D "$pgdata" -X stream -S "$slot" -R -c fast -P
+    -D "$bootstrap" -X stream -S "$slot" -R -c fast -P
+  find "$bootstrap" -mindepth 1 -maxdepth 1 -exec mv -t "$pgdata" -- {} +
+  rmdir "$bootstrap"
   rm -f "$marker"
 fi
 

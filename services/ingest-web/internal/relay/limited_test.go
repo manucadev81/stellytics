@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/netip"
 	"runtime"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -54,7 +55,7 @@ func waitStarted(t *testing.T, g *gate, n int) {
 
 func TestLimitedCapsInflightAndRefusesAfterWait(t *testing.T) {
 	g := newGate()
-	l := NewLimited(g, 2, 30*time.Millisecond)
+	l := NewLimited(g, 3, 30*time.Millisecond)
 	var wg sync.WaitGroup
 	for range 2 {
 		wg.Add(1)
@@ -228,3 +229,48 @@ func TestLimitedConcurrentNoLeak(t *testing.T) {
 type senderFunc func(ctx context.Context) error
 
 func (f senderFunc) Send(ctx context.Context, _ Event, _ string, _ netip.Addr) error { return f(ctx) }
+
+func TestLimitedReservesSlotForAnotherSite(t *testing.T) {
+	g := newGate()
+	l := NewLimited(g, 3, 0)
+	event := func(site string) Event { return Event{Payload: Payload{Website: site}} }
+	for range 2 {
+		go func() { _ = l.Send(context.Background(), event("a"), "", netip.Addr{}) }()
+	}
+	waitStarted(t, g, 2)
+	if err := l.Send(context.Background(), event("a"), "", netip.Addr{}); !errors.Is(err, ErrSaturated) {
+		t.Fatalf("site em pico: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- l.Send(context.Background(), event("b"), "", netip.Addr{}) }()
+	waitStarted(t, g, 1)
+	if l.InFlight() != 3 {
+		t.Fatalf("em voo: %d", l.InFlight())
+	}
+	close(g.release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLimitedDoesNotRetainRejectedSites(t *testing.T) {
+	g := newGate()
+	l := NewLimited(g, 2, 0)
+	for _, site := range []string{"a", "b"} {
+		go func() { _ = l.Send(context.Background(), Event{Payload: Payload{Website: site}}, "", netip.Addr{}) }()
+	}
+	waitStarted(t, g, 2)
+	for i := 0; i < 10000; i++ {
+		err := l.Send(context.Background(), Event{Payload: Payload{Website: strconv.Itoa(i)}}, "", netip.Addr{})
+		if !errors.Is(err, ErrSaturated) {
+			t.Fatalf("site %d: %v", i, err)
+		}
+	}
+	l.mu.Lock()
+	n := len(l.bySite)
+	l.mu.Unlock()
+	if n != 2 {
+		t.Fatalf("sites em memória = %d", n)
+	}
+	close(g.release)
+}

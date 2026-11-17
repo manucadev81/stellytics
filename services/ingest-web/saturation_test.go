@@ -86,7 +86,7 @@ func postAsync(s setup, body string, ua string) <-chan *http.Response {
 
 func TestSaturationReturns204AndKeepsOtherRoutes(t *testing.T) {
 	umami, inner := newSlowUmami(t)
-	limited := relay.NewLimited(inner, 2, 20*time.Millisecond)
+	limited := relay.NewLimited(inner, 3, 20*time.Millisecond)
 	s := newSetup(t, func(g *gateway) { g.relay = limited })
 	t.Cleanup(umami.open) // roda antes do Close do gateway, para uma falha não travar
 
