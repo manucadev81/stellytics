@@ -37,9 +37,11 @@ fi
 
 cidr="${REPLICATION_ALLOWED_CIDR:-10.50.0.0/16}"
 keep="${REPLICATION_MAX_SLOT_WAL_KEEP:-10GB}"
+monitor_cidr="${REPLICATION_MONITOR_CIDR:-10.50.0.40/32}"
 
 # Valores que vão para o pg_hba.conf e para o SQL: só o formato esperado.
 case "$cidr" in *[!0-9a-fA-F:./,]* | "") echo "REPLICATION_ALLOWED_CIDR inválido: $cidr" >&2; exit 1 ;; esac
+case "$monitor_cidr" in *[!0-9a-fA-F:./]* | "") echo "REPLICATION_MONITOR_CIDR inválido" >&2; exit 1 ;; esac
 case "$keep" in *[!0-9A-Za-z]* | "") echo "REPLICATION_MAX_SLOT_WAL_KEEP inválido: $keep" >&2; exit 1 ;; esac
 
 psql() { command psql -v ON_ERROR_STOP=1 --username "${POSTGRES_USER:-postgres}" --dbname postgres "$@"; }
@@ -70,12 +72,45 @@ END
 $$;
 SQL
 
+# A conta só existe quando o monitoramento de replicação foi configurado.
+# pg_monitor permite ler as estatísticas sem conceder escrita nem replicação.
+if [ -n "${REPLICATION_MONITOR_PASSWORD:-}" ]; then
+  psql <<'SQL'
+\getenv monitor_pw REPLICATION_MONITOR_PASSWORD
+SELECT 'CREATE ROLE stellytics_replication_monitor LOGIN'
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'stellytics_replication_monitor')
+\gexec
+ALTER ROLE stellytics_replication_monitor LOGIN PASSWORD :'monitor_pw';
+GRANT pg_monitor TO stellytics_replication_monitor;
+SQL
+else
+  # Mesmo que um CIDR antigo não pertença mais à rede HA, desativar a sonda
+  # não pode deixar a credencial válida pela regra genérica do pg_hba.
+  psql <<'SQL'
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'stellytics_replication_monitor') THEN
+    ALTER ROLE stellytics_replication_monitor NOLOGIN;
+    REVOKE pg_monitor FROM stellytics_replication_monitor;
+  END IF;
+END
+$$;
+SQL
+fi
+
 hba=$(psql -Atc 'SHOW hba_file')
 # REPLICATION_ALLOWED_CIDR aceita uma lista separada por vírgulas (faixas IPv4
 # e IPv6). Idempotente: tira as linhas nossas da faixa e reinsere o bloco antes
 # da regra genérica (ou no fim, se ela não existir).
 # Monta o bloco de todas as faixas e a lista das linhas nossas a retirar.
 want=""
+# Retira o bloco antigo antes de inserir o atual, inclusive ao desligá-lo.
+tmp_monitor=$(mktemp)
+grep -vF '# stellytics-replication-monitor' "$hba" > "$tmp_monitor" || true
+if [ -n "${REPLICATION_MONITOR_PASSWORD:-}" ]; then
+  want="host postgres stellytics_replication_monitor $monitor_cidr scram-sha-256 # stellytics-replication-monitor
+"
+fi
 set --
 for range in $(echo "$cidr" | tr ',' ' '); do
   l1="host stellytics stellytics_ingest $range scram-sha-256"
@@ -88,7 +123,8 @@ $l3
   set -- "$@" -e "$l1" -e "$l2" -e "$l3"
 done
 tmp=$(mktemp)
-grep -vxF "$@" "$hba" > "$tmp" || true
+grep -vxF "$@" "$tmp_monitor" > "$tmp" || true
+rm -f "$tmp_monitor"
 awk -v block="$want" '
   !done && $0 == "host all all all scram-sha-256" { printf "%s", block; done = 1 }
   { print }

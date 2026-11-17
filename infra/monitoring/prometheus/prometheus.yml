@@ -40,3 +40,8 @@ scrape_configs:
   - job_name: blackbox
     static_configs:
       - targets: [blackbox:9115]
+
+  # Arquivo separado dos alvos do blackbox; vazio quando HA está desligada.
+  - job_name: replication
+    file_sd_configs:
+      - files: [/etc/prometheus/replication-targets/*.yml]

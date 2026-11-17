@@ -15,8 +15,15 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 project=stellytics-monitortest
 work=$(mktemp -d "${TMPDIR:-/tmp}/stellytics-monitortest.XXXXXX")
 cp -R "$root/monitoring/." "$work/"
+export MONITOR_TEST_WORK="$work"
+cat > "$work/replication-hba.conf" <<'EOT'
+local all all trust
+host all all 0.0.0.0/0 trust
+host replication all 0.0.0.0/0 trust
+EOT
 rm -rf "$work/test"
-mkdir -p "$work/prometheus/targets" "$work/alertmanager/secrets"
+mkdir -p "$work/prometheus/targets" "$work/prometheus/replication-targets" "$work/alertmanager/secrets"
+printf '%s\n' '- targets: [replication-monitor:9187]' > "$work/prometheus/replication-targets/replication.yml"
 
 cat > "$work/prometheus/targets/endpoints.yml" <<'EOT'
 - targets: ["http://target:8080/"]
@@ -53,7 +60,7 @@ compose() { docker compose -p "$project" -f "$work/compose.yaml" -f "$root/monit
 
 cleanup() {
   status=$?
-  if [ "$status" -ne 0 ]; then compose logs --tail 60 prometheus alertmanager >&2 || true; fi
+  if [ "$status" -ne 0 ]; then compose logs --tail 60 prometheus alertmanager replication-db replication-standby replication-monitor >&2 || true; fi
   compose down -v --remove-orphans >/dev/null 2>&1 || true
   rm -rf "$work"
   exit "$status"
@@ -67,7 +74,11 @@ wait_for() { # segundos, descrição, comando
   fail "$what (esperou ${limit}s)"
 }
 
+# A imagem é construída a partir do mesmo Dockerfile da release.
+docker build -q -f "$root/../services/replication-monitor/Dockerfile" -t stellytics-replication-monitor:test "$root/.." >/dev/null
 compose up -d --wait
+compose exec -T replication-db psql -v ON_ERROR_STOP=1 -U postgres -d postgres -c \
+  'CREATE ROLE stellytics_replication_monitor LOGIN; GRANT pg_monitor TO stellytics_replication_monitor' >/dev/null
 
 # 1. Configuração válida e regras testadas (promtool test rules).
 compose exec -T prometheus promtool check config /etc/prometheus/prometheus.yml >/dev/null
@@ -100,5 +111,18 @@ compose start target >/dev/null
 wait_for 60 "o Prometheus não viu o alvo voltar" probe_is 1
 wait_for 180 "o e-mail de resolvido não chegou" mail_with 'subject:"[RESOLVED] EndpointDown"'
 ok "e-mail de resolvido quando o alvo volta"
+
+# 5. Réplica real: o slot transmite, depois a parada deve ser detectada e
+# produzir alerta, enquanto o primário continua respondendo.
+replication_streaming() { [ "$(query 'stellytics_replication_streaming{job="replication"}')" = "$1" ]; }
+wait_for 90 "a sonda não observou a replicação ativa" replication_streaming 1
+compose stop replication-standby >/dev/null
+wait_for 90 "a sonda não observou a réplica parada" replication_streaming 0
+# Força WAL depois da parada; o slot deve reter bytes no primário.
+compose exec -T replication-db psql -U postgres -d postgres -c 'SELECT pg_switch_wal()' >/dev/null
+retained_wal() { query 'stellytics_replication_retained_wal_bytes{job="replication"}' | awk '$1 > 0 {ok=1} END {exit !ok}'; }
+wait_for 90 "a sonda não observou WAL retido" retained_wal
+wait_for 240 "o alerta de replicação parada não chegou" mail_with 'subject:"[FIRING:1] ReplicationStopped"'
+ok "parada real da réplica gera alerta"
 
 echo "monitoramento: tudo certo"
