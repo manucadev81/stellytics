@@ -12,7 +12,7 @@ Seções verificadas diretamente no código: 3.1 (`tracker.ts`, `relay.go`), 3.3
 - **Chamadas de API dos tenants (analytics de API):** só contadores e histogramas por rota, método e status, a cada minuto. Traces, spans e logs são descartados.
 - **Usuários do portal (e-mail, nome, senha com hash):** são dados pessoais e ficam no banco `stellytics`. O portal não grava o IP de quem entra.
 - **Onde ficariam:** a IaC fixa `nbg1` (Hetzner, Alemanha) por padrão para servidor, volume e backup; **a produção ainda não foi aplicada** (`docs/andamento.md`).
-- **Apagamento:** hoje **não há fluxo de apagamento** nem para visitantes nem para usuários. Para visitantes, a razão é que o IP completo e os identificadores persistentes não existem (seção 6), mas isso **não é o mesmo que "nenhum dado pessoal guardado"**: a seção 3 lista o que fica. Para usuários do portal, é uma lacuna (seção 7).
+- **Apagamento:** existe agora (#154), com três caminhos: o usuário exclui a própria conta em `/settings` (o projeto dele e os dados coletados saem junto); o operador SCF apaga os dados de um projeto removido; e a retenção automática apaga eventos web com mais de 183 dias (seção 6). O que não existe é apagar *os dados de um visitante específico* sem apagar o site inteiro: a seção 7 explica por quê.
 
 ## 2. Papéis (proposta a validar)
 
@@ -54,7 +54,9 @@ Tabelas `user`, `account`, `session` e `verification` (`apps/portal/src/lib/db/s
 
 ### 3.4 Registro de auditoria e chaves
 
-`audit_log` recebe ação, quem fez (`actor_user_id`), tenant, data e `details` (`tenant.created`, `tenant.removed`, `tenant.reactivated`, `operator.created`, `ingest_key.created`, `ingest_key.revoked`, entre outras). O código e o comentário do esquema dizem que não leva chave, senha nem IP. O motivo da remoção de um projeto é texto livre digitado pelo operador e vai para `details` e também para `tenant.status_reason`; `tenant.status_changed_by` guarda o operador (chave estrangeira para `user` com `onDelete: set null`), ou seja, apagar o operador zera esse campo, mas não o `actor_user_id` do `audit_log`. A tabela só aceita inserção (gatilhos em `apps/portal/drizzle/0002_ingest_views.sql` contra UPDATE, DELETE e TRUNCATE) e não tem chave estrangeira, de propósito: sobrevive à exclusão do usuário ou do tenant. Isso entra em conflito com um futuro apagamento de conta (seção 7): o `actor_user_id` fica, e corrigir ou apagar uma linha à mão exigiria desabilitar o gatilho.
+`audit_log` recebe ação, quem fez (`actor_user_id`), tenant, data e `details` (`tenant.created`, `tenant.removed`, `tenant.reactivated`, `operator.created`, `ingest_key.created`, `ingest_key.revoked`, entre outras). O código e o comentário do esquema dizem que não leva chave, senha nem IP. O motivo da remoção de um projeto é texto livre digitado pelo operador e vai para `details` e também para `tenant.status_reason`; `tenant.status_changed_by` guarda o operador (chave estrangeira para `user` com `onDelete: set null`), ou seja, apagar o operador zera esse campo, mas não o `actor_user_id` do `audit_log`. A tabela só aceita inserção (gatilhos em `apps/portal/drizzle/0002_ingest_views.sql` e `0009_erasure.sql` contra UPDATE, DELETE e TRUNCATE) e não tem chave estrangeira, de propósito: sobrevive à exclusão do usuário ou do tenant.
+
+**Exceção única (#154):** o gatilho de `0009_erasure.sql` aceita uma mudança e só ela — trocar um `actor_user_id` existente pelo marcador `[apagado]`, sem tocar nas outras colunas. É o que a exclusão de conta executa: as ações da pessoa continuam no histórico, mas deixam de apontar para ela, cuja linha saiu do banco. O teste de isolamento (`apps/portal/test/isolation.test.ts`) confere que qualquer outra mudança, DELETE e TRUNCATE continuam recusados e que o marcador do código é o mesmo do gatilho.
 
 A chave de ingestão completa nunca é gravada; só o prefixo e o SHA-256 (`ingest_key`), e `last_used_on` guarda só a data.
 
@@ -91,32 +93,40 @@ O portal envia por SMTP (`apps/portal/src/lib/mail.ts`, variável `SMTP_URL`) s�
 |---|---|---|
 | `api_metric_1m` | 35 dias, por `DROP` de partição mensal | migração `0005_api_metric_rollup.sql`, spec do E5 |
 | `api_metric_1h`, `api_metric_1d` | 25 meses | idem |
-| Eventos web no Umami | **Não encontrei retenção configurada**; sem ela, ficam indefinidamente | nenhum job nem variável no `compose`/Ansible; busca pontual, não exaustiva |
-| Conta, sessões, tenants, sites, chaves | Até alguém apagar à mão; **sem fluxo** | seção 7 |
-| `audit_log` | Para sempre (só inserção) | esquema |
+| Eventos web no Umami | **183 dias, cerca de seis meses** (#154): o job de consolidação (`services/rollup`) apaga eventos e sessões mais antigos, com `UMAMI_DATABASE_URL` e `UMAMI_RETENTION_DAYS` | `services/rollup/main.go`, `docs/umami.md` |
+| Conta, sessões, sites, chaves | Apagadas na exclusão da própria conta (`/settings`) ou no apagamento de projeto removido pelo operador (#154) | `src/lib/data/erasure.ts` |
+| `audit_log` | Para sempre, **anonimizado** na exclusão da conta: `actor_user_id` vira `[apagado]`, única mudança que o gatilho aceita (migração `0009_erasure.sql`) | esquema |
 | Backups | Os 7 backups base mais recentes mais WAL contínuo (ADR 0004). Dados apagados continuam nos backups até saírem da janela | ADR 0004 |
 
 O serviço de consolidação (`services/rollup`) e o coletor estão no `infra/compose/prod.yaml` desde 16/11/2026 (ADR 0012). A retenção de API descrita acima está implementada e testada, mas nenhuma produção real foi aplicada ainda. O log do Caddy não guarda cabeçalhos, então a chave de ingestão (`Authorization`) não vai para log.
 
-## 7. Direito ao apagamento e outros direitos: lacunas
+## 7. Direito ao apagamento e outros direitos
 
-A issue pede a justificativa para não haver fluxo de apagamento por "nenhum dado pessoal guardado". Depois de ler o código, a frase só vale em parte, e o documento não promete mais do que isso.
+A issue pede a justificativa para não haver fluxo de apagamento por "nenhum dado pessoal guardado". Depois de ler o código, a frase só vale em parte, e o documento não promete mais do que isso. **A partir de 17/11/2026 os fluxos abaixo existem** (issue #154); o que continua em aberto está marcado.
 
 **Visitantes dos sites (analytics web):**
 
-- O navegador não guarda identificador (sem cookie ou storage), o gateway não repassa `id` do cliente e o IP completo não é gravado. Mas o Umami deriva um identificador de sessão (`session_id`) a partir de IP truncado, `User-Agent` e um sal; essa derivação **não foi analisada** aqui. Por isso, "não dá para localizar os dados de uma pessoa" é uma hipótese, não uma justificativa firme para dispensar o fluxo de apagamento de visitantes. Está no checklist da seção 9.
-- Também não vale dizer "nenhum dado pessoal": o Umami recebe IP truncado e `User-Agent` e deriva sessão, navegador, sistema, dispositivo e localização; o que ele **persiste** não foi verificado. E o caminho e o título que o tenant manda podem conter dado pessoal. Se isso é dado pessoal sob o GDPR ou é anonimização efetiva é **questão jurídica em aberto**, não decidida aqui.
-- Arquivar um site (`site.archived_at`) para a ingestão e tira o site dos painéis, mas **nenhum fluxo apaga os dados já coletados** no Umami. Apagar à mão no banco `umami` é possível a quem administra, mas não há processo.
+- O navegador não guarda identificador (sem cookie ou storage), o gateway não repassa `id` do cliente e o IP completo não é gravado. **Como o Umami 3.4.1 deriva o `session_id` (conferido no código-fonte da versão, tag `v3.4.1`, `src/app/api/send/route.ts` e `src/lib/crypto.ts`):** `uuid5(sha512(website_id, ip, user_agent, sal, distinct_id, APP_SECRET))`, em que o `ip` é o já truncado e o sal rotaciona por mês (`SALT_ROTATION`, padrão `month`). Ou seja: é um pseudônimo **derivado de IP truncado mais User-Agent**, cifrado com o segredo do servidor — não é identificador anônimo, e um conjunto de IP truncado mais User-Agent provavelmente é dado pessoal. Não há `distinct_id` aqui: o gateway nunca repassa o `id` do cliente.
+- Consequência prática para apagamento individual: **não há como mapear o pedido de um visitante ("apague meus dados") para linhas do banco**, porque nem o tenant nem a plataforma sabem qual `session_id` é daquela pessoa (a menos que ela mesma identifique, o que não acontece). Os caminhos de apagamento que valem:
+  1. **Retenção automática:** eventos e sessões saem depois de 183 dias (`services/rollup`, `docs/umami.md`).
+  2. **Apagar o site inteiro:** na remoção do projeto pelo operador ou na exclusão da conta do dono, todos os sites saem do Umami (`DELETE /api/websites/:id`) com tudo que coletaram.
+  3. **Um visitante específico**, no improbável caso de ele apresentar seu `session_id` ou um recorte identificável: procedimento manual de quem administra o banco (`DELETE` em `website_event`/`session` por `session_id`); sem tela e sem processo automático — registrado no checklist da seção 9.
+- Arquivar um site (`site.archived_at`) para a ingestão e tira o site dos painéis; apagar os dados coletados é o fluxo de apagamento de projeto, que remove o site do Umami inteiro.
 
 **Usuários do portal (controlador: a plataforma):**
 
-- **Não existe exclusão da própria conta** (lacuna apontada em `docs/andamento.md`, item 9, sem issue) nem exportação dos dados. Também não existe convite de membros; hoje só quem cria o projeto tem acesso.
-- **Remover um projeto é desativação** (#20, `removeTenant`): muda o status, grava quem (`status_changed_by`), o motivo em texto livre (`status_reason`) e um `audit_log`, bloqueia a ingestão e some dos painéis. Os dados continuam no banco. O spec do E2 deixa "apagar os dados de um tenant removido" como ação separada e ainda inexistente.
-- Um pedido de correção de dado no `audit_log` só poderia ser atendido desabilitando o gatilho da migração `0002`, que bloqueia UPDATE, DELETE e TRUNCATE.
-- No esquema, `session`, `account` e `tenant_member` apagam em cascata quando o `user` é apagado, e `audit_log` não tem chave estrangeira, então manteria o `actor_user_id`. Nenhuma tela ou comando apaga usuário hoje.
-- Retificação (mudar nome ou e-mail), portabilidade, limitação e oposição: **não há tela nem processo**. O pedido hoje seria atendido à mão por quem administra o banco.
+- **Exclusão da própria conta existe:** página `/settings` do portal, com confirmação pelo e-mail digitado (`src/app/(private)/settings/`). Ela apaga, na ordem: os sites no Umami do projeto (se o usuário é dono dele), linhas de site/serviço/chave, as métricas de API (`api_metric_purge_tenant`, migração `0009`), as chaves de leitura do SCF criadas pelo usuário, e por fim a linha do usuário — sessão, senha e vínculo saem em cascata. O projeto fica no banco como `removed`, sem dados, e o histórico dele continua legível.
+- **Audit_log:** todas as ações do usuário (`tenant.purged`, a própria `account.deleted` e as anteriores) recebem `actor_user_id = [apagado]`, a única mudança que o gatilho aceita. O `status_changed_by` do projeto vira nulo por chave estrangeira.
+- **Retificação (mudar nome ou e-mail), portabilidade, limitação e oposição: continuam sem tela nem processo.** O pedido hoje é atendido à mão por quem administra o banco; processo documentado de pedidos de titulares continua no checklist (seção 9, item 7).
+- **Um pedido de correção de dado no `audit_log`** continua impossível por desenho: o gatilho aceita só a troca do `actor_user_id` pelo marcador.
 
-**Próximos passos sugeridos** (nenhum tem issue ainda, a abrir): exclusão da própria conta com tratamento do `audit_log` (por exemplo, trocar o `actor_user_id` por um marcador); apagar dados de um tenant removido (Umami e `api_metric_*`); retenção dos eventos web no Umami; processo documentado de pedidos de titulares; DPA e aviso de privacidade.
+**Operador SCF:** página do projeto, em `/operator/tenants/[id]`, tem "Erase project data" para projetos `removed` (não vale para ativo nem pendente), com confirmação pelo slug digitado. A ação é a mesma da exclusão de conta, sem apagar o usuário.
+
+**Limites conhecidos dos fluxos:**
+
+- **Backups:** dados apagados continuam nos backups até saírem da janela (ADR 0004). A restauração volta o que estava na hora alvo; não há "apagar também nos backups".
+- **Concorrência:** os sites saem do Umami antes do banco; se a parte do banco falhar, repetir a operação completa (o DELETE no Umami trata 404 como sucesso). Eventos que chegarem entre o DELETE do site e a conclusão são apagados pelo Umami junto com o site.
+- **Projetos com mais de um membro:** hoje não há convites e cada usuário pertence a um projeto único; a exclusão da conta do dono apaga o projeto dele. Se convites forem implementados, a regra precisa de revisão.
 
 ## 8. Jurisdições: lista provisória (proposta)
 
@@ -129,7 +139,7 @@ O que o código faz, verificado: o script não escreve nem lê cookie, `localSto
 | Jurisdição | Ponto a revisar |
 |---|---|
 | UE/EEE (GDPR e diretiva ePrivacy, art. 5(3)) | Se ler `language` e `screen` e enviar IP truncado e `User-Agent` ao Umami exige consentimento ou base legal. **Em aberto** |
-| Alemanha (TDDDG, antes TTDSG) e França (orientação da CNIL sobre medição de audiência) | Orientações próprias, com condições para dispensar consentimento. As condições (como limite de retenção) **não foram conferidas aqui**; a falta de retenção nos eventos do Umami (seção 6) é provável ponto de conflito |
+| Alemanha (TDDDG, antes TTDSG) e França (orientação da CNIL sobre medição de audiência) | Orientações próprias, com condições para dispensar consentimento. As condições (como limite de retenção) **não foram conferidas aqui**; a retenção dos eventos do Umami (183 dias, seção 6) já está implementada, mas a lista completa de condições **não foi conferida contra ela** |
 | Reino Unido (UK GDPR e PECR) | Regime análogo, com orientações do ICO; **não verificado** |
 
 **Não analisadas** (podem ter regras próprias de privacidade ou de consentimento): Brasil (LGPD), Califórnia (CCPA/CPRA), Suíça e demais jurisdições. Aplicação e enquadramento, inclusive o fato de o código não enviar dados a terceiros de publicidade (verificado só no gateway e no portal), não substituem essa análise.
@@ -143,15 +153,15 @@ Não há transferência para fora da UE por parte do código: o gateway só fala
 1. Entidade legal operadora, papéis da seção 2 e DPA com tenants (e com o SCF).
 2. Qualificação de IP truncado (/24, /48) mais User-Agent como dado pessoal ou não.
 3. Necessidade de consentimento por jurisdição (seção 8).
-4. Retenção dos eventos do Umami e conclusão sobre `audit_log` permanente.
+4. ~~Retenção dos eventos do Umami e conclusão sobre `audit_log` permanente.~~ Implementados (#154): 183 dias nos eventos (`docs/umami.md`) e `audit_log` anonimizado na exclusão de conta (seções 3.4 e 7). **Falta** a validação jurídica do prazo de 183 dias e do marcador.
 5. Suboperadores: Hetzner (VM e Object Storage), provedor de SMTP e, se houver, o do monitoramento.
 6. Aviso de privacidade do portal e texto-modelo para os tenants.
-7. Processo de pedidos de titulares enquanto não houver fluxo automático.
-8. Como o Umami deriva e persiste o `session_id` e os demais campos da sessão (IP truncado, `User-Agent`, sal), e se isso permite ou dispensa um fluxo de apagamento de visitantes.
-9. Gatilho de `audit_log` e pedidos de correção ou apagamento (seção 3.4).
+7. Processo de pedidos de titulares: **continua em aberto** — apagamento automático existe (seção 7), mas não há processo documentado para pedidos individuais (retificação, portabilidade, um visitante específico).
+8. Como o Umami deriva e persiste o `session_id` e os demais campos da sessão (IP truncado, `User-Agent`, sal), e se isso permite ou dispensa um fluxo de apagamento de visitantes. **Derivação conferida no código-fonte da v3.4.1** (seção 7): `uuid5(sha512(website_id, ip, user_agent, sal, distinct_id, APP_SECRET))`, sal rotativo mensal. **Falta** a conclusão jurídica sobre o conjunto.
+9. Gatilho de `audit_log` e pedidos de correção ou apagamento (seção 3.4): **parcialmente resolvido** — a única mudança aceita é a anonimização na exclusão de conta; correção de conteúdo continua impossível por desenho.
 
 ## 10. Arquivos conferidos
 
-`services/ingest-web/internal/clientip/clientip.go`, `services/ingest-web/internal/relay/relay.go`, `services/ingest-web/internal/fingerprint/fingerprint.go`, `services/ingest-web/handler.go`, `services/ingest-web/main.go` (logs), `services/ingest-web/e2e/privacy_test.go` (lido o cabeçalho e o teste de IP), `packages/tracker/src/tracker.ts`, `apps/portal/src/lib/auth.ts`, `apps/portal/src/lib/mail.ts`, `apps/portal/src/lib/db/schema.ts`, `apps/portal/src/lib/data/operator/tenants.ts`, `infra/caddy/Caddyfile`, `infra/compose/prod.yaml` (lista de serviços), `docs/adr/0004-hospedagem-e-backup.md`, `docs/umami.md`, `docs/specs/e5-pipeline-de-api.md` e `docs/specs/e2-tenants-e-controle-de-acesso.md` (trechos sobre retenção e remoção).
+`services/ingest-web/internal/clientip/clientip.go`, `services/ingest-web/internal/relay/relay.go`, `services/ingest-web/internal/fingerprint/fingerprint.go`, `services/ingest-web/handler.go`, `services/ingest-web/main.go` (logs), `services/ingest-web/e2e/privacy_test.go` (lido o cabeçalho e o teste de IP), `packages/tracker/src/tracker.ts`, `apps/portal/src/lib/auth.ts`, `apps/portal/src/lib/mail.ts`, `apps/portal/src/lib/db/schema.ts`, `apps/portal/src/lib/data/operator/tenants.ts`, `apps/portal/src/lib/data/erasure.ts`, `apps/portal/src/app/(private)/settings/`, `infra/caddy/Caddyfile`, `infra/compose/prod.yaml` (lista de serviços), `docs/adr/0004-hospedagem-e-backup.md`, `docs/umami.md`, `docs/specs/e5-pipeline-de-api.md` e `docs/specs/e2-tenants-e-controle-de-acesso.md` (trechos sobre retenção e remoção). Em 17/11/2026 (#154): o código-fonte do Umami 3.4.1 (`src/app/api/send/route.ts`, `src/lib/crypto.ts`, `src/queries/sql/sessions/createSession.ts`, tag `v3.4.1`) para a derivação do `session_id`, e o schema do banco `umami` (tabelas `session` e `website_event`, conferidas num banco da versão).
 
-**Não lidos nem testados:** o código do Umami (campos gravados na sessão), as migrações `0002` e `0005` em SQL (só os resumos do `CLAUDE.md` e dos specs), o código completo do coletor e do exporter, logs reais de execução, a configuração real do SMTP e do monitoramento.
+**Não lidos nem testados:** o código do Umami além da derivação do `session_id` (como grava eventos e a geolocalização), as migrações `0002` e `0005` em SQL (só os resumos do `CLAUDE.md` e dos specs), o código completo do coletor e do exporter, logs reais de execução, a configuração real do SMTP e do monitoramento.

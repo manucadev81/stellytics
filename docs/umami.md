@@ -32,3 +32,21 @@ Ficam desligados por três motivos independentes:
 O teste ponta a ponta `TestRecorderRecordsNothing` (`services/ingest-web/e2e/recorder_test.go`, no job `compose`) cria um site como o portal cria, manda page views reais pelo gateway, tenta gravar replay e heatmap pelo gateway e direto no Umami e confere que as três tabelas continuam vazias e que nenhum site tem `recorder_enabled` ou `replay_config`.
 
 Ao subir a versão do Umami, confira se esses nomes (colunas, rota e tabelas) mudaram e ajuste o teste e esta página.
+
+## Retenção dos eventos (#154)
+
+O Umami 3.4.1 **não tem** configuração própria de retenção de eventos (nenhuma variável de ambiente apaga dados antigos). Quem aplica a retenção é o job de consolidação (`services/rollup`), a cada execução, com a URL do banco `umami`:
+
+| Variável | Padrão | O que faz |
+|---|---|---|
+| `UMAMI_DATABASE_URL` | (sem) | Liga a poda; sem ela, a retenção fica desligada e o resto do job segue normal |
+| `UMAMI_RETENTION_DAYS` | `183` | Idade máxima dos eventos web, cerca de seis meses; `0` desliga a poda |
+
+O que o job apaga, nesta ordem:
+
+1. **Eventos** em `website_event` com `created_at` mais antigo que a retenção.
+2. **Sessões** em `session` da mesma idade que não sustentam mais nenhum evento — a sessão de um visitante que continua voltando fica, para que os eventos recentes dela continuem com navegador, sistema e localização.
+
+O schema do Umami 3.4.1 não tem chaves estrangeiras entre essas tabelas, então a ordem é uma escolha, não uma exigência; a execução é idempotente. O teste `TestPruneUmami` (`services/rollup/main_test.go`) confere o comportamento num banco temporário.
+
+O valor de 183 dias é a decisão registrada em `docs/privacidade.md` (seção 6), pendente de validação com assessoria jurídica (checklist da seção 9).

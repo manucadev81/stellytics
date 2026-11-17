@@ -239,8 +239,10 @@ export const operatorApiKey = pgTable(
   ],
 );
 
-// Só recebe inserções: um gatilho recusa UPDATE e DELETE (0002_ingest_views.sql).
-// Sem chave estrangeira, para o registro sobreviver à exclusão do usuário ou do tenant.
+// Só recebe inserções: um gatilho recusa UPDATE e DELETE (0002_ingest_views.sql
+// e 0009_erasure.sql). A única mudança aceita troca actor_user_id pelo marcador
+// '[apagado]' na exclusão de conta (#154). Sem chave estrangeira, para o
+// registro sobreviver à exclusão do usuário ou do tenant.
 export const auditLog = pgTable(
   "audit_log",
   {
