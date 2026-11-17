@@ -46,9 +46,9 @@ Regras que os testes precisam cobrir:
 
 ## Dependências
 
-- Toda dependência precisa de licença aprovada pela [OSI](https://opensource.org/licenses).
+- Dependências devem usar licença aprovada pela [OSI](https://opensource.org/licenses); exceções específicas e temporárias para ferramentas de build são registradas em `scripts/licenses/allowed.json` e revistas na data indicada.
 - Fixe versões exatas e commite o lockfile (`pnpm-lock.yaml`, `services/go.sum`). O CI falha se o lockfile estiver desatualizado.
-- Só adote releases com pelo menos 14 dias. O pnpm já recusa versões mais novas (`minimumReleaseAge`), e o Renovate segue a mesma regra.
+- Só adote releases com pelo menos 14 dias, salvo a exceção restrita para correções de segurança críticas ou altas descrita no [runbook](docs/runbooks/vulnerabilidades.md). O pnpm aplica `minimumReleaseAge`; o Renovate ainda depende de instalação e dos alertas do GitHub.
 - Actions do GitHub fixadas por SHA, com a tag em comentário.
 
 ### Alertas de dependências e licenças
@@ -73,8 +73,8 @@ node --test scripts/deps/*.test.mjs   # testes dos conferidores
 **Licença fora da lista.** A allowlist é `scripts/licenses/allowed.json` (ids SPDX). Expressão com `OR` (dual license) passa se uma alternativa estiver na lista; com `AND`, todas precisam estar; `X WITH exceção` vale como `X`. Sem licença, `UNLICENSED`, `Unknown` e `SEE LICENSE IN ...` falham sempre. O que fazer, em ordem:
 
 1. Trocar a dependência por uma com licença permitida.
-2. Se a licença é aprovada pela [OSI](https://opensource.org/licenses) e permissiva, acrescentar o id SPDX em `allowed` no PR, com a justificativa na descrição. Copyleft (LGPL, GPL, AGPL; a MPL-2.0 já está liberada) não entra na lista geral: vira exceção por pacote (`package` pode terminar em `*` para npm, como `@img/sharp-libvips-*`). No caso do LGPL-3.0 do libvips, a obrigação é manter o texto da licença e a possibilidade de substituir a biblioteca (ela vai como arquivo separado, sem alteração) e dar acesso ao código-fonte; a decisão de aceitar é do mantenedor.
-3. Se é um caso pontual (por exemplo, dados e não código), acrescentar uma entrada em `exceptions` com `ecosystem` (`npm` ou `go`), `package` (nome npm ou caminho do módulo Go), `license` (exatamente a que o conferidor mostrou), `reason`, `date` e `expires` (no máximo seis meses, 183 dias; datas em AAAA-MM-DD, inválidas fazem o job falhar). A exceção vale só para aquele pacote e aquela licença, em qualquer versão, e **vence**: depois da data o job volta a falhar, para forçar a revisão. Exceção sem uso aparece como aviso e deve ser removida.
+2. Se a licença é aprovada pela [OSI](https://opensource.org/licenses) e permissiva, acrescentar o id SPDX em `allowed` no PR, com a justificativa na descrição. Copyleft (LGPL, GPL, AGPL; a MPL-2.0 já está liberada) não entra na lista geral: vira exceção por pacote (`package` pode terminar em `*` para npm, como `@img/sharp-libvips-*`). No caso do libvips, a decisão atual é não distribuí-lo: a otimização de imagens está desativada e sharp/libvips são removidos do standalone. Uma futura distribuição de LGPL exige análise e cumprimento das obrigações aplicáveis antes de reativar o recurso.
+3. Se é um caso pontual (por exemplo, dependência de build sem licença OSI), acrescentar uma entrada em `exceptions` com `ecosystem` (`npm` ou `go`), `package` (nome npm ou caminho do módulo Go), `license` (exatamente a que o conferidor mostrou), `reason`, `date` e `expires` (no máximo seis meses, 183 dias; datas em AAAA-MM-DD, inválidas fazem o job falhar). A exceção vale só para aquele pacote e aquela licença, em qualquer versão, e **vence**: depois da data o job volta a falhar, para forçar a revisão. Exceção sem uso aparece como aviso e deve ser removida.
 
 ## Commits e pull requests
 

@@ -1,5 +1,5 @@
 {
-  "comment": "Allowlist de licencas das dependencias de producao (regra do projeto: toda dependencia precisa de licenca aprovada pela OSI). Veja CONTRIBUTING.md, secao Dependencias. Ids SPDX; expressoes com OR passam se uma alternativa estiver aqui, com AND exigem todas. Excecoes: date e expires em AAAA-MM-DD, prazo de no maximo 183 dias; package de npm pode terminar em * (prefixo).",
+  "comment": "Allowlist de licencas das dependencias de producao: licencas aprovadas pela OSI, com excecoes especificas e temporarias para dependencias de build. Veja CONTRIBUTING.md. Ids SPDX; expressoes OR passam se uma alternativa estiver aqui, AND exige todas. Excecoes: date e expires em AAAA-MM-DD, prazo de no maximo 183 dias; package npm pode terminar em * (prefixo).",
   "allowed": [
     "0BSD",
     "Apache-2.0",
@@ -16,7 +16,7 @@
       "ecosystem": "npm",
       "package": "caniuse-lite",
       "license": "CC-BY-4.0",
-      "reason": "CC-BY-4.0 nao e aprovada pela OSI, mas cobre so dados (tabelas de suporte de navegadores do Can I Use), nao codigo. Chega por next/browserslist. Verificado em 2026-11-15: o build standalone do portal (next build, base da imagem) nao contem caniuse-lite (so aparece como texto no package.json do next), entao nao vai para a imagem do portal; o script de rastreamento e empacotado com esbuild e nao a usa. Nao ha substituto: o Next.js a exige no build. A aceitacao da licenca e decisao do mantenedor.",
+      "reason": "Aceita CC-BY-4.0 para caniuse-lite, dependencia nao OSI usada na ferramenta de build next/browserslist; atribuicao em docs/avisos-de-terceiros.md. Nao e distribuida no standalone do portal, e essa ausencia e conferida no teste da imagem. Revisar ao vencer.",
       "date": "2026-11-15",
       "expires": "2027-05-15"
     },
@@ -24,7 +24,7 @@
       "ecosystem": "npm",
       "package": "@img/sharp-libvips-*",
       "license": "LGPL-3.0-or-later",
-      "reason": "LGPL-3.0-or-later (libvips, binario nativo do sharp, que e Apache-2.0) e aprovada pela OSI, mas e copyleft: fica fora da allowlist geral. Verificado em 2026-11-15: o build standalone do portal inclui @img/sharp-libvips-<plataforma> (via next, otimizacao de imagens), como biblioteca compartilhada separada e substituivel, sem alteracao. A obrigacao e manter o texto da licenca e o acesso ao codigo-fonte (ver CONTRIBUTING.md). A aceitacao e decisao do mantenedor.",
+      "reason": "O pacote LGPL de libvips e dependencia transitiva usada na instalacao/build do Next. A otimizacao de imagens esta desligada e sharp e libvips sao removidos do standalone antes da imagem final; o teste da imagem verifica a ausencia. Excecao de build temporaria, nao uma autorizacao para distribuir a biblioteca; revisar ao vencer.",
       "date": "2026-11-15",
       "expires": "2027-05-15"
     }

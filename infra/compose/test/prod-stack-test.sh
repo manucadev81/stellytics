@@ -79,6 +79,12 @@ compose up -d --build --wait
 # 1. Rotas do Caddy (certificado interno para *.localhost).
 get() { curl -sk -o /dev/null -w '%{http_code}' --resolve "$1:443:127.0.0.1" "https://$1$2"; }
 [ "$(get portal.localhost /sign-in)" = 200 ] || fail "portal em /sign-in"
+# O otimizador não é usado pelo portal; nenhuma biblioteca sharp/libvips ou
+# pacote de dados caniuse-lite deve ser distribuído no standalone.
+[ "$(get portal.localhost '/_next/image?url=%2Ffavicon.ico&w=64&q=75')" = 404 ] || fail "otimizador de imagens deveria estar desligado"
+license_files=$(compose exec -T portal sh -c 'find /app \( -name "@img+sharp-*" -o -name "sharp-*" -o -name "sharp@*" -o -name sharp -o -name "caniuse-lite" -o -name "caniuse-lite@*" \) -print') || fail "não foi possível inspecionar a imagem do portal"
+[ -z "$license_files" ] || fail "imagem do portal contém dependências removidas: $license_files"
+
 [ "$(get ingest.localhost /healthz)" = 200 ] || fail "gateway em /healthz"
 for path in /api/send /api/heartbeat /api/websites /api/record /; do
   [ "$(get ingest.localhost "$path")" = 404 ] || fail "host da ingestão deveria dar 404 em $path"
