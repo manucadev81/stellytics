@@ -1,6 +1,6 @@
 # Monitoramento externo da produção (#15, ADR 0005). Uso, de infra/ansible:
 #   ansible-playbook monitoring.yml -e @secrets.yml
-- name: Monitoramento do notify
+- name: Monitoramento do stellytics
   hosts: monitor
   become: true
   pre_tasks:

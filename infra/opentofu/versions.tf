@@ -1,4 +1,4 @@
-# Produção do notify na Hetzner Cloud (#14, ADR 0004). OpenTofu, não Terraform:
+# Produção do stellytics na Hetzner Cloud (#14, ADR 0004). OpenTofu, não Terraform:
 # o Terraform deixou de ter licença aprovada pela OSI (BUSL), e toda
 # dependência do projeto precisa ter uma.
 terraform {

@@ -8,7 +8,7 @@
 #   infra/scripts/admin-tunnel.sh <ip-da-vm>
 #
 # Com o túnel aberto, em outro terminal:
-#   Postgres: postgresql://notify:<senha>@127.0.0.1:15432/notify
+#   Postgres: postgresql://stellytics:<senha>@127.0.0.1:15432/stellytics
 #   Umami:    http://127.0.0.1:13001 (interface e API)
 # Ctrl+C fecha o túnel.
 set -euo pipefail

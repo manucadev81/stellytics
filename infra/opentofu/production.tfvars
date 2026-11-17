@@ -9,8 +9,8 @@ server_type = "CONFIRA: hcloud server-type list"
 monitor_location    = "fsn1"
 monitor_server_type = "CONFIRA: hcloud server-type list"
 data_volume_size    = 40
-backup_bucket       = "CONFIRA: nome único, ex.: notify-backup-<sufixo>"
+backup_bucket       = "CONFIRA: nome único, ex.: stellytics-backup-<sufixo>"
 
 # Chave pública de quem administra e redes que podem entrar por SSH.
-admin_ssh_public_key = "CONFIRA: ssh-ed25519 AAAA... admin@notify"
+admin_ssh_public_key = "CONFIRA: ssh-ed25519 AAAA... admin@stellytics"
 admin_cidrs          = ["CONFIRA: 203.0.113.10/32"]

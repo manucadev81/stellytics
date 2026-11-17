@@ -6,29 +6,29 @@
     state: directory
     mode: "0755"
   loop:
-    - "{{ notify_root }}/infra/compose"
-    - "{{ notify_root }}/infra/caddy"
+    - "{{ stellytics_root }}/infra/compose"
+    - "{{ stellytics_root }}/infra/caddy"
 
 - name: Pasta dos dados do Caddy (certificados)
   ansible.builtin.file:
-    path: "{{ notify_data_dir }}/caddy"
+    path: "{{ stellytics_data_dir }}/caddy"
     state: directory
     mode: "0755"
 
 - name: Copia o Compose e o Caddyfile da ingestão
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../{{ item }}"
-    dest: "{{ notify_root }}/infra/{{ item }}"
+    dest: "{{ stellytics_root }}/infra/{{ item }}"
     mode: "0644"
   loop:
     - compose/prod-ingest.yaml
     - caddy/Caddyfile.ingest
-  register: notify_ingest_files
+  register: stellytics_ingest_files
 
 - name: Segredos e configuração da pilha (.env)
   ansible.builtin.template:
     src: env.j2
-    dest: "{{ notify_root }}/infra/compose/.env"
+    dest: "{{ stellytics_root }}/infra/compose/.env"
     mode: "0600"
   no_log: true
 
@@ -43,15 +43,15 @@
 - name: Sobe a pilha de ingestão
   ansible.builtin.command:
     cmd: docker compose -f prod-ingest.yaml up -d --wait --remove-orphans
-    chdir: "{{ notify_root }}/infra/compose"
+    chdir: "{{ stellytics_root }}/infra/compose"
   tags: [images]
-  register: notify_ingest_up
-  changed_when: "'Started' in notify_ingest_up.stderr or 'Recreated' in notify_ingest_up.stderr or 'Created' in notify_ingest_up.stderr"
+  register: stellytics_ingest_up
+  changed_when: "'Started' in stellytics_ingest_up.stderr or 'Recreated' in stellytics_ingest_up.stderr or 'Created' in stellytics_ingest_up.stderr"
 
 - name: Recarrega o Caddy se o Caddyfile mudou
   ansible.builtin.command:
     cmd: docker compose -f prod-ingest.yaml exec -T caddy caddy reload --config /etc/caddy/Caddyfile.ingest --adapter caddyfile
-    chdir: "{{ notify_root }}/infra/compose"
-  when: notify_ingest_files.results | selectattr('item', 'equalto', 'caddy/Caddyfile.ingest') | selectattr('changed') | list | length > 0
+    chdir: "{{ stellytics_root }}/infra/compose"
+  when: stellytics_ingest_files.results | selectattr('item', 'equalto', 'caddy/Caddyfile.ingest') | selectattr('changed') | list | length > 0
   changed_when: true
   tags: [images]

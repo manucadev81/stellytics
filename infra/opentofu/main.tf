@@ -20,12 +20,26 @@ provider "aws" {
 
 locals {
   labels = {
-    app        = "notify"
+    app        = "stellytics"
     managed-by = "opentofu"
   }
 }
 
+# A mudança de marca renomeia endereços de recursos já presentes no state.
+# Sem estes mapeamentos, um `tofu apply` entenderia a VM e o firewall atuais
+# como removidos e tentaria criar substitutos.
+moved {
+  from = hcloud_firewall.notify
+  to   = hcloud_firewall.stellytics
+}
+
+moved {
+  from = hcloud_server.notify
+  to   = hcloud_server.stellytics
+}
+
 resource "hcloud_ssh_key" "admin" {
+  # Preserve the remote object name during the branding migration.
   name       = "notify-admin"
   public_key = var.admin_ssh_public_key
   labels     = local.labels
@@ -33,7 +47,7 @@ resource "hcloud_ssh_key" "admin" {
 
 # Só o Caddy (80 e 443) fica aberto para a internet. Postgres, Umami, portal e
 # gateway não têm porta pública (infra/README.md, #62).
-resource "hcloud_firewall" "notify" {
+resource "hcloud_firewall" "stellytics" {
   name   = "notify"
   labels = local.labels
 
@@ -78,7 +92,7 @@ resource "hcloud_firewall" "notify" {
 }
 
 # Dados do Postgres e do Caddy num volume separado: sobrevivem se a VM for
-# recriada. O Ansible monta em /srv/notify.
+# recriada. O Ansible monta em /srv/stellytics.
 resource "hcloud_volume" "data" {
   name              = "notify-data"
   size              = var.data_volume_size
@@ -92,13 +106,13 @@ resource "hcloud_volume" "data" {
   }
 }
 
-resource "hcloud_server" "notify" {
+resource "hcloud_server" "stellytics" {
   name         = "notify"
   server_type  = var.server_type
   image        = var.server_image
   location     = var.location
   ssh_keys     = [hcloud_ssh_key.admin.id]
-  firewall_ids = [hcloud_firewall.notify.id]
+  firewall_ids = [hcloud_firewall.stellytics.id]
   labels       = local.labels
 
   # Só o mínimo; o resto é do Ansible (infra/ansible).
@@ -120,7 +134,7 @@ resource "hcloud_server" "notify" {
 
 resource "hcloud_volume_attachment" "data" {
   volume_id = hcloud_volume.data.id
-  server_id = hcloud_server.notify.id
+  server_id = hcloud_server.stellytics.id
   automount = false
 }
 
@@ -206,7 +220,7 @@ resource "hcloud_network_subnet" "ha" {
 
 resource "hcloud_server_network" "primary" {
   count     = local.ha_enabled ? 1 : 0
-  server_id = hcloud_server.notify.id
+  server_id = hcloud_server.stellytics.id
   subnet_id = hcloud_network_subnet.ha[0].id
   ip        = "10.50.0.10"
 }
@@ -219,7 +233,7 @@ resource "hcloud_server" "ingest" {
   image        = var.server_image
   location     = var.ha_ingest_location
   ssh_keys     = [hcloud_ssh_key.admin.id]
-  firewall_ids = [hcloud_firewall.notify.id]
+  firewall_ids = [hcloud_firewall.stellytics.id]
   labels       = merge(local.labels, { role = "ingest" })
   user_data    = file("${path.module}/cloud-init.yaml")
 
@@ -324,5 +338,5 @@ resource "hcloud_floating_ip" "ingest" {
 resource "hcloud_floating_ip_assignment" "ingest" {
   count          = var.ha_floating_ip ? 1 : 0
   floating_ip_id = hcloud_floating_ip.ingest[0].id
-  server_id      = hcloud_server.notify.id
+  server_id      = hcloud_server.stellytics.id
 }

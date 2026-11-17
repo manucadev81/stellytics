@@ -25,8 +25,8 @@ jobs:
         with:
           path: .
           format: spdx-json
-          artifact-name: notify-${{ github.event.release.tag_name }}.spdx.json
-          output-file: notify-${{ github.event.release.tag_name }}.spdx.json
+          artifact-name: stellytics-${{ github.event.release.tag_name }}.spdx.json
+          output-file: stellytics-${{ github.event.release.tag_name }}.spdx.json
           upload-release-assets: true
 
   discover:

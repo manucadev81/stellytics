@@ -5,7 +5,7 @@
 # O que muda:
 # - o Postgres passa a atender a rede privada (HA_PRIVATE_IP, 10.50.0.10 na
 #   IaC) em 5432, para a réplica (replicação em streaming) e para os gateways
-#   das VMs de ingestão (usuário notify_ingest, só lê ingest_site);
+#   das VMs de ingestão (usuário stellytics_ingest, só lê ingest_site);
 # - o Umami passa a atender a mesma rede privada em 3000, porque os gateways
 #   das réplicas repassam os eventos para ele. Continua sem rota no Caddy e sem
 #   porta na interface pública (#62): só quem está na rede privada alcança.
@@ -14,9 +14,9 @@
 #
 # Proteção real (não é só "os papéis"): o pg_hba.conf da imagem termina em
 # `host all all all scram-sha-256`, que deixaria todos os papéis (postgres,
-# umami, notify, notify_collector) alcançáveis pela rede privada só com senha.
+# umami, stellytics, stellytics_collector) alcançáveis pela rede privada só com senha.
 # O init/03-replication.sh insere ANTES dela, para cada faixa de
-# REPLICATION_ALLOWED_CIDR: notify_ingest só no banco notify, replicator só em
+# REPLICATION_ALLOWED_CIDR: stellytics_ingest só no banco stellytics, replicator só em
 # replicação e `reject` para o resto. O tráfego do próprio Compose (portal,
 # Umami, gateway local) vem de 172.30.0.0/24, fora dessas faixas.
 #

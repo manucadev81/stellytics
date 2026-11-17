@@ -2,7 +2,7 @@
 # `site.yml` com ha_replication: true no primário:
 #   ansible-playbook standby.yml -e @secrets.yml
 # A promoção é manual: docs/runbooks/failover-do-banco.md.
-- name: Réplica do Postgres do notify
+- name: Réplica do Postgres do stellytics
   hosts: standby
   become: true
   pre_tasks:

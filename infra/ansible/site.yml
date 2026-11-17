@@ -1,6 +1,6 @@
 # Deploy completo e idempotente da VM de produção (#14, ADR 0004).
-- name: Produção do notify
-  hosts: notify
+- name: Produção do stellytics
+  hosts: stellytics
   become: true
   pre_tasks:
     - name: Confere os segredos obrigatórios
@@ -13,9 +13,9 @@
       loop:
         - "{{ postgres_password | default('') }}"
         - "{{ umami_db_password | default('') }}"
-        - "{{ notify_db_password | default('') }}"
-        - "{{ notify_ingest_db_password | default('') }}"
-        - "{{ notify_collector_db_password | default('') }}"
+        - "{{ stellytics_db_password | default('') }}"
+        - "{{ stellytics_ingest_db_password | default('') }}"
+        - "{{ stellytics_collector_db_password | default('') }}"
         - "{{ umami_app_secret | default('') }}"
         - "{{ portal_auth_secret | default('') }}"
         - "{{ ingest_proof_secret | default('') }}"
@@ -56,5 +56,5 @@
     - base
     - docker
     - data_volume
-    - notify
+    - stellytics
     - backup

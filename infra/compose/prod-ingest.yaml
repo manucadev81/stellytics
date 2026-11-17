@@ -11,7 +11,7 @@
 # Mesmas imagens, por digest e conferidas com cosign pelo Ansible, e a mesma
 # rede interna do prod.yaml (o Caddy mantém o IP fixo que TRUSTED_PROXIES usa).
 
-name: notify-ingest
+name: stellytics-ingest
 
 x-logging: &logging
   driver: json-file
@@ -23,9 +23,9 @@ services:
   ingest-web:
     image: ${INGEST_WEB_IMAGE:?}
     environment:
-      DATABASE_URL: postgresql://notify_ingest:${NOTIFY_INGEST_DB_PASSWORD:?}@${DB_HOST:?}:${DB_PORT:-5432}/notify
+      DATABASE_URL: postgresql://stellytics_ingest:${STELLYTICS_INGEST_DB_PASSWORD:?}@${DB_HOST:?}:${DB_PORT:-5432}/stellytics
       UMAMI_URL: http://${UMAMI_HOST:?}:${UMAMI_PORT:-3000}
-      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-x-notify-client-ip}
+      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-x-stellytics-client-ip}
       TRUSTED_PROXIES: 172.30.0.10,fd30:6e6f:7466::10
       PROOF_SECRET: ${INGEST_PROOF_SECRET:?}
       RATE_LIMIT: ${INGEST_RATE_LIMIT:-20}
@@ -59,7 +59,7 @@ services:
     volumes:
       # A pasta, não o arquivo (o Ansible troca arquivos por renomeação).
       - ../caddy:/etc/caddy:ro
-      - ${NOTIFY_DATA_DIR:-/srv/notify}/caddy:/data
+      - ${STELLYTICS_DATA_DIR:-/srv/stellytics}/caddy:/data
     depends_on:
       ingest-web:
         condition: service_healthy

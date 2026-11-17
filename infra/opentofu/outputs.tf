@@ -1,15 +1,15 @@
 output "server_ipv4" {
   description = "IPv4 da VM: registros A de PORTAL_HOST, INGEST_HOST e API_HOST."
-  value       = hcloud_server.notify.ipv4_address
+  value       = hcloud_server.stellytics.ipv4_address
 }
 
 output "server_ipv6" {
   description = "IPv6 da VM: registros AAAA de PORTAL_HOST, INGEST_HOST e API_HOST."
-  value       = hcloud_server.notify.ipv6_address
+  value       = hcloud_server.stellytics.ipv6_address
 }
 
 output "data_volume_device" {
-  description = "Dispositivo do volume de dados na VM (o Ansible monta em /srv/notify)."
+  description = "Dispositivo do volume de dados na VM (o Ansible monta em /srv/stellytics)."
   value       = "/dev/disk/by-id/scsi-0HC_Volume_${hcloud_volume.data.id}"
 }
 

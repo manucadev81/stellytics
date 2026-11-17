@@ -9,11 +9,11 @@
 # - para cada faixa de REPLICATION_ALLOWED_CIDR (a rede privada 10.50.0.0/16 do
 #   OpenTofu) insere no pg_hba.conf, ANTES da regra genérica da imagem
 #   (`host all all all scram-sha-256`; o pg_hba é "primeira que casa"):
-#     host notify      notify_ingest <faixa> scram-sha-256   (gateways das réplicas)
+#     host stellytics      stellytics_ingest <faixa> scram-sha-256   (gateways das réplicas)
 #     host replication replicator    <faixa> scram-sha-256   (a réplica)
 #     host all         all           <faixa> reject          (todo o resto)
-#   Sem isso, publicar o 5432 no IP privado deixaria postgres, umami, notify e
-#   notify_collector acessíveis pela rede privada só com senha. O tráfego do
+#   Sem isso, publicar o 5432 no IP privado deixaria postgres, umami, stellytics e
+#   stellytics_collector acessíveis pela rede privada só com senha. O tráfego do
 #   próprio Compose (portal, Umami, gateway local) vem da rede 172.30.0.0/24,
 #   fora destas faixas, e não é afetado;
 # - limita em max_slot_wal_keep_size o WAL que o slot da réplica pode reter,
@@ -78,7 +78,7 @@ hba=$(psql -Atc 'SHOW hba_file')
 want=""
 set --
 for range in $(echo "$cidr" | tr ',' ' '); do
-  l1="host notify notify_ingest $range scram-sha-256"
+  l1="host stellytics stellytics_ingest $range scram-sha-256"
   l2="host replication replicator $range scram-sha-256"
   l3="host all all $range reject"
   want="$want$l1

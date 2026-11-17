@@ -19,42 +19,42 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-project=notify-prodtest
-work=$(mktemp -d "${TMPDIR:-/tmp}/notify-prodtest.XXXXXX")
+project=stellytics-prodtest
+work=$(mktemp -d "${TMPDIR:-/tmp}/stellytics-prodtest.XXXXXX")
 env_file="$work/.env"
 rand() { openssl rand -hex "${1:-24}"; }
 
 cat > "$env_file" <<EOF
 POSTGRES_PASSWORD=$(rand)
 UMAMI_DB_PASSWORD=$(rand)
-NOTIFY_DB_PASSWORD=$(rand)
-NOTIFY_INGEST_DB_PASSWORD=$(rand)
-NOTIFY_COLLECTOR_DB_PASSWORD=$(rand)
+STELLYTICS_DB_PASSWORD=$(rand)
+STELLYTICS_INGEST_DB_PASSWORD=$(rand)
+STELLYTICS_COLLECTOR_DB_PASSWORD=$(rand)
 UMAMI_APP_SECRET=$(rand)
 PORTAL_AUTH_SECRET=$(rand)
 INGEST_PROOF_SECRET=$(rand)
-WALG_S3_PREFIX=s3://notify-backup/test
+WALG_S3_PREFIX=s3://stellytics-backup/test
 WALG_S3_ENDPOINT=http://s3:8333
 WALG_S3_REGION=us-east-1
 WALG_S3_ACCESS_KEY=$(rand 10)
 WALG_S3_SECRET_KEY=$(rand)
 WALG_LIBSODIUM_KEY=$(rand 32)
-PORTAL_IMAGE=${PORTAL_IMAGE:-notify-portal:dev}
-INGEST_WEB_IMAGE=${INGEST_WEB_IMAGE:-notify-ingest-web:dev}
-COLLECTOR_IMAGE=${COLLECTOR_IMAGE:-notify-collector:dev}
-ROLLUP_IMAGE=${ROLLUP_IMAGE:-notify-rollup:dev}
+PORTAL_IMAGE=${PORTAL_IMAGE:-stellytics-portal:dev}
+INGEST_WEB_IMAGE=${INGEST_WEB_IMAGE:-stellytics-ingest-web:dev}
+COLLECTOR_IMAGE=${COLLECTOR_IMAGE:-stellytics-collector:dev}
+ROLLUP_IMAGE=${ROLLUP_IMAGE:-stellytics-rollup:dev}
 PORTAL_HOST=portal.localhost
 INGEST_HOST=ingest.localhost
 API_HOST=api.localhost
 ACME_EMAIL=ops@example.org
 SMTP_URL=smtp://127.0.0.1:25
-MAIL_FROM=notify <no-reply@example.org>
-NOTIFY_DATA_DIR=$work/data
+MAIL_FROM=stellytics <no-reply@example.org>
+STELLYTICS_DATA_DIR=$work/data
 POSTGRES_ADMIN_PORT=15432
 EOF
 
 compose() { docker compose -p "$project" --env-file "$env_file" -f prod.yaml -f test/prod-test.yaml "$@"; }
-psql_notify() { compose exec -T -u postgres postgres psql -d notify -Atc "$1"; }
+psql_stellytics() { compose exec -T -u postgres postgres psql -d stellytics -Atc "$1"; }
 
 cleanup() {
   status=$?
@@ -73,7 +73,7 @@ ok() { echo "ok: $*"; }
 
 mkdir -p "$work/data"
 compose up -d s3 --wait
-compose exec -T s3 sh -c 'echo "s3.bucket.create -name notify-backup" | weed shell -master=localhost:9333' >/dev/null
+compose exec -T s3 sh -c 'echo "s3.bucket.create -name stellytics-backup" | weed shell -master=localhost:9333' >/dev/null
 compose up -d --build --wait
 
 # 1. Rotas do Caddy (certificado interno para *.localhost).
@@ -112,7 +112,7 @@ ok "Caddy publica o portal, só as rotas do gateway e só o OTLP (HTTP e gRPC) d
 # parado, o pedido dá 502 e o Caddy registra o erro.
 marker="marcador-$(rand 6)"
 compose stop ingest-web >/dev/null
-code=$(curl -sk -o /dev/null -w '%{http_code}' -H "X-Notify-Test: $marker" \
+code=$(curl -sk -o /dev/null -w '%{http_code}' -H "X-Stellytics-Test: $marker" \
   --resolve ingest.localhost:443:127.0.0.1 "https://ingest.localhost/healthz?m=$marker")
 [ "$code" = 502 ] || fail "com o gateway parado, esperava 502 e veio $code"
 caddy_logs=$(compose logs --no-color caddy)
@@ -137,11 +137,11 @@ ok "Umami, coletor e rollup sem porta; Postgres só no loopback"
 suffix=$(rand 5)
 prefix=$(LC_ALL=C tr -dc 'a-z2-7' </dev/urandom | head -c 8 || true)
 key="ntf_${prefix}_$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 43 || true)"
-psql_notify "insert into \"user\" (id, name, email, email_verified)
+psql_stellytics "insert into \"user\" (id, name, email, email_verified)
   values ('prodtest-$suffix', 'prodtest', 'prodtest-$suffix@example.invalid', true)" >/dev/null
-tenant=$(psql_notify "insert into tenant (name, slug, status) values ('prodtest-$suffix', 'prodtest-$suffix', 'active') returning id" | head -1)
-service=$(psql_notify "insert into api_service (tenant_id, name) values ('$tenant', 'prodtest') returning id" | head -1)
-psql_notify "insert into ingest_key (api_service_id, tenant_id, prefix, key_hash, created_by)
+tenant=$(psql_stellytics "insert into tenant (name, slug, status) values ('prodtest-$suffix', 'prodtest-$suffix', 'active') returning id" | head -1)
+service=$(psql_stellytics "insert into api_service (tenant_id, name) values ('$tenant', 'prodtest') returning id" | head -1)
+psql_stellytics "insert into ingest_key (api_service_id, tenant_id, prefix, key_hash, created_by)
   values ('$service', '$tenant', '$prefix', sha256(convert_to('$key', 'UTF8')), 'prodtest-$suffix')" >/dev/null
 now=$(date +%s)000000000
 code=$(curl -sk -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $key" -H 'Content-Type: application/json' \
@@ -149,7 +149,7 @@ code=$(curl -sk -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $key" -
   -d '{"resourceSpans":[{"scopeSpans":[{"spans":[{"traceId":"5b8efff798038103d269b633813fc60c","spanId":"eee19b7ec3c1b174","name":"GET","kind":2,"startTimeUnixNano":"'"$now"'","endTimeUnixNano":"'"$now"'","attributes":[{"key":"http.request.method","value":{"stringValue":"GET"}},{"key":"http.route","value":{"stringValue":"/prodtest/{id}"}},{"key":"http.response.status_code","value":{"intValue":"200"}}]}]}]}]}')
 [ "$code" = 200 ] || fail "OTLP com chave válida respondeu $code"
 for _ in $(seq 1 30); do
-  n=$(psql_notify "select count(*) from api_metric_1m where route = '/prodtest/{id}' and tenant_id = '$tenant' and api_service_id = '$service'")
+  n=$(psql_stellytics "select count(*) from api_metric_1m where route = '/prodtest/{id}' and tenant_id = '$tenant' and api_service_id = '$service'")
   [ "$n" -ge 1 ] && break
   sleep 2
 done
@@ -158,18 +158,18 @@ done
   --resolve api.localhost:443:127.0.0.1 https://api.localhost/v1/traces)" = 401 ] || fail "chave inválida deveria dar 401"
 if compose logs --no-color caddy collector | grep -q "$key"; then fail "a chave de ingestão apareceu num log"; fi
 # O rollup criou as partições do mês (api_metric_maintain) ao subir.
-[ "$(psql_notify "select count(*) from pg_class where relname = 'api_metric_1h_p$(date -u +%Y%m)'")" = 1 ] ||
+[ "$(psql_stellytics "select count(*) from pg_class where relname = 'api_metric_1h_p$(date -u +%Y%m)'")" = 1 ] ||
   fail "o rollup não criou a partição do mês em api_metric_1h"
 ok "OTLP pelo Caddy grava em api_metric_1m no tenant da chave; rollup no ar"
 
 # 3. Backup base e WAL no S3.
-psql_notify "create table restore_check (note text primary key)"
-psql_notify "insert into restore_check values ('before-backup')"
-compose exec -T -u postgres postgres notify-backup >/dev/null
-psql_notify "insert into restore_check values ('after-backup')"
-wal=$(psql_notify "select pg_walfile_name(pg_switch_wal())")
+psql_stellytics "create table restore_check (note text primary key)"
+psql_stellytics "insert into restore_check values ('before-backup')"
+compose exec -T -u postgres postgres stellytics-backup >/dev/null
+psql_stellytics "insert into restore_check values ('after-backup')"
+wal=$(psql_stellytics "select pg_walfile_name(pg_switch_wal())")
 for _ in $(seq 1 60); do
-  archived=$(psql_notify "select coalesce(last_archived_wal, '') from pg_stat_archiver")
+  archived=$(psql_stellytics "select coalesce(last_archived_wal, '') from pg_stat_archiver")
   [[ "$archived" > "$wal" || "$archived" == "$wal" ]] && break
   sleep 1
 done
@@ -197,7 +197,7 @@ EOF2
 mkdir -p "$work/data/nokey"
 docker run -d --name "$project-nokey" --network "$network" -v "$work/data/nokey:/var/lib/postgresql/data" \
   --env-file "$work/nokey.env" --entrypoint sh "$image" \
-  -c 'chown postgres:postgres "$PGDATA" && chmod 700 "$PGDATA" && su postgres -c "notify-restore"' >/dev/null
+  -c 'chown postgres:postgres "$PGDATA" && chmod 700 "$PGDATA" && su postgres -c "stellytics-restore"' >/dev/null
 for _ in $(seq 1 60); do
   docker logs "$project-nokey" 2>&1 | grep -q "Extraction error" && break
   sleep 1
@@ -214,16 +214,16 @@ restore_db() {
   docker run --rm -v "$work/data:/d" alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f \
     sh -c "mv /d/postgres /d/postgres.antes-$1 && mkdir /d/postgres"
   compose run --rm --no-deps -e BACKUP="$2" -e TARGET="${3:-}" --entrypoint sh postgres -c \
-    'chown postgres:postgres "$PGDATA" && chmod 700 "$PGDATA" && su postgres -c "notify-restore \"$BACKUP\" \"$TARGET\""' >/dev/null
+    'chown postgres:postgres "$PGDATA" && chmod 700 "$PGDATA" && su postgres -c "stellytics-restore \"$BACKUP\" \"$TARGET\""' >/dev/null
   compose up -d --wait >/dev/null
-  [ "$(psql_notify "select pg_is_in_recovery()")" = f ] || fail "o banco restaurado ficou em recuperação"
+  [ "$(psql_stellytics "select pg_is_in_recovery()")" = f ] || fail "o banco restaurado ficou em recuperação"
 }
-notes() { psql_notify "select string_agg(note, ',' order by note) from restore_check"; }
+notes() { psql_stellytics "select string_agg(note, ',' order by note) from restore_check"; }
 archive_now() {
   local wal archived
-  wal=$(psql_notify "select pg_walfile_name(pg_switch_wal())")
+  wal=$(psql_stellytics "select pg_walfile_name(pg_switch_wal())")
   for _ in $(seq 1 60); do
-    archived=$(psql_notify "select coalesce(last_archived_wal, '') from pg_stat_archiver")
+    archived=$(psql_stellytics "select coalesce(last_archived_wal, '') from pg_stat_archiver")
     [[ "$archived" > "$wal" || "$archived" == "$wal" ]] && return 0
     sleep 1
   done
@@ -231,9 +231,9 @@ archive_now() {
 }
 
 # 4a. Até um horário: depois das duas linhas, antes da terceira.
-target=$(psql_notify "select now()")
+target=$(psql_stellytics "select now()")
 sleep 1
-psql_notify "insert into restore_check values ('after-target')"
+psql_stellytics "insert into restore_check values ('after-target')"
 archive_now
 restore_db 1 LATEST "$target"
 [ "$(notes)" = "after-backup,before-backup" ] || fail "restauração até $target trouxe '$(notes)'"
@@ -241,8 +241,8 @@ ok "restauração até um horário: backup base, WAL até o alvo e nada depois d
 
 # 4b. Backup novo depois da restauração e restauração completa: o alvo da
 # restauração anterior vem dentro do backup e não pode valer de novo.
-compose exec -T -u postgres postgres notify-backup >/dev/null
-psql_notify "insert into restore_check values ('after-second-backup')"
+compose exec -T -u postgres postgres stellytics-backup >/dev/null
+psql_stellytics "insert into restore_check values ('after-second-backup')"
 archive_now
 restore_db 2 LATEST
 [ "$(notes)" = "after-backup,after-second-backup,before-backup" ] || fail "segunda restauração trouxe '$(notes)'"
