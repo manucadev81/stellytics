@@ -372,8 +372,11 @@ stamp "D. o antigo primário volta como réplica do novo (diretório de dados ap
 # Antes de apagar: subir a réplica sobre o diretório do antigo primário tem de falhar.
 old_c up -d --no-build --wait --wait-timeout 30 >/dev/null 2>&1 && fail "réplica subiu sobre o diretório de um primário"
 sleep 3
-old_c logs postgres 2>&1 | grep -q 'sem standby.signal' || fail "recusa explícita não apareceu nos logs: $(old_c logs --tail 5 postgres 2>&1)"
-old_c logs postgres 2>&1 | grep -q 'ready to accept connections' && fail "o Postgres abriu sobre o diretório do primário"
+# Capture antes de procurar: grep -q pode encerrar a leitura cedo e fazer
+# docker compose logs receber SIGPIPE, que pipefail interpreta como falha.
+old_logs=$(old_c logs postgres 2>&1)
+[[ "$old_logs" == *"sem standby.signal"* ]] || fail "recusa explícita não apareceu nos logs: $old_logs"
+[[ "$old_logs" != *"ready to accept connections"* ]] || fail "o Postgres abriu sobre o diretório do primário"
 [ ! -e "$work/prim/standby.signal" ] || fail "o diretório do antigo primário foi alterado (standby.signal)"
 old_c down >/dev/null 2>&1
 ok "standby sobre o diretório de um primário antigo é recusado (erro explícito, Postgres não abre, diretório intacto)"
