@@ -24,7 +24,9 @@ Inclua, se possível:
 | Correção de severidade alta | até 30 dias corridos |
 | Correção de severidade média ou baixa | até 90 dias corridos |
 
-A severidade segue o CVSS 3.1. Depois da correção publicada, divulgamos um advisory no GitHub e damos crédito a quem relatou, se a pessoa quiser.
+Os prazos de correção contam do recebimento do relato ou da identificação pelo projeto, em dias corridos. A severidade segue o CVSS 3.1. O prazo de 24 horas para críticas e altas citado no RFP é uma meta externa que a operação atual, sem plantão contínuo, não assume como compromisso. Se não houver correção de uma dependência disponível ou o prazo estiver em risco, aplicamos contenção, registramos o risco e comunicamos a pessoa que relatou; isso não transforma contenção em correção.
+
+Correções de segurança críticas ou altas podem dispensar a espera de 14 dias da dependência quando o risco de esperar superar o de atualizar. A exceção é específica à dependência e à versão, registrada e revisada no PR, com os testes e a publicação assinada descritos no [runbook](docs/runbooks/vulnerabilidades.md). Depois da correção publicada, divulgamos um advisory no GitHub e damos crédito a quem relatou, se a pessoa quiser.
 
 ## Versões suportadas
 

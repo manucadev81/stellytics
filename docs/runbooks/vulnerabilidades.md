@@ -72,7 +72,15 @@ Versões publicadas são imutáveis (`packages/tracker/published/vX.Y.Z/n.js`, h
 2. PR com commit em inglês, Conventional Commits (`fix(...)`). O CI (`ci`) precisa passar.
 3. Publique uma **release** (`vX.Y.Z`): o `release.yml` gera o SBOM e publica no GHCR as imagens assinadas com cosign (keyless) com atestado do SBOM.
 4. Deploy: troque os digests em `infra/ansible/group_vars/all.yml` e rode `ansible-playbook site.yml -e @secrets.yml`; o playbook roda `cosign verify` com `cosign_identity_regexp` e `cosign_oidc_issuer` do `all.yml` e recusa imagem sem digest ou sem assinatura. Antes, `systemctl start stellytics-backup` se a versão tiver migração. Pormenores: `docs/deploy.md`, "Atualizar a aplicação".
-5. Dependência vulnerável: o Renovate (`renovate.json`) trata atualizações de segurança direto; versões maiores precisam de aprovação no Dependency Dashboard. Para o Umami, ver [atualização do Umami](atualizacao-do-umami.md).
+5. Dependência vulnerável: confira a correção upstream e siga a exceção abaixo quando a versão tiver menos de 14 dias. O Renovate ainda não está instalado e os alertas do GitHub precisam estar ativos; não dependa dele para detectar a vulnerabilidade. Para o Umami, ver [atualização do Umami](atualizacao-do-umami.md).
+
+### Exceção à espera de 14 dias
+
+Para vulnerabilidade crítica ou alta confirmada, o mantenedor pode usar uma versão de correção antes dos 14 dias quando esperar trouxer risco maior. Registre no advisory privado ou PR o identificador da vulnerabilidade, impacto e alcance, pacote e versão exatos, data da publicação, avaliação de procedência e integridade, motivo da exceção, responsável e data de retirada. A revisão, os testes, o CI e a assinatura da release continuam necessários. Sem correção upstream, contenha e comunique o risco; não classifique contenção como correção.
+
+Para pacote pnpm, adicione temporariamente ao `pnpm-workspace.yaml` uma entrada `minimumReleaseAgeExclude` com **nome e versão exata** (por exemplo `pacote@1.2.3`), atualize o lockfile e revise o diff. Não desligue a espera globalmente nem exclua todas as versões de um pacote. Remova a entrada depois que a versão atingir 14 dias e confirme o CI. Para Go e imagens, atualize somente a versão corrigida e, em imagens, fixe tag e digest; registre a mesma justificativa no PR. Se a correção exigir várias dependências jovens, registre e avalie cada exceção.
+
+O [Renovate](https://docs.renovatebot.com/configuration-options/#vulnerabilityalerts) pode levantar PRs de alertas de segurança sem a espera, mas depende do aplicativo e dos alertas do GitHub; no estado atual não está instalado. O pnpm mantém seu próprio controle de idade, mesmo quando o Renovate propõe uma atualização; veja [`minimumReleaseAgeExclude` no pnpm 10](https://pnpm.io/10.x/settings#minimumreleaseageexclude).
 
 ## 4. Verificar
 
