@@ -16,28 +16,28 @@
 # Compose que usa esse ponto antes de desmontá-lo; caso contrário o novo mount
 # falha e a atualização deixa as duas pilhas disputando as portas públicas.
 - name: Detecta o volume montado no caminho legado
-  ansible.builtin.command: findmnt -n --mountpoint {{ legacy_notify_data_dir }}
-  register: legacy_notify_mount
+  ansible.builtin.command: findmnt -n --mountpoint {{ data_volume_legacy_notify_data_dir }}
+  register: data_volume_legacy_notify_mount
   changed_when: false
   failed_when: false
 
 - name: Para a pilha legada antes de mover o volume
   ansible.builtin.command:
     cmd: docker compose -p notify -f prod.yaml down --remove-orphans
-    chdir: "{{ legacy_notify_root }}/infra/compose"
-  when: legacy_notify_mount.rc == 0
+    chdir: "{{ data_volume_legacy_notify_root }}/infra/compose"
+  when: data_volume_legacy_notify_mount.rc == 0
   changed_when: true
 
 - name: Remove a montagem legada do fstab
   ansible.builtin.lineinfile:
     path: /etc/fstab
-    regexp: '\s{{ legacy_notify_data_dir }}\s'
+    regexp: '\s{{ data_volume_legacy_notify_data_dir }}\s'
     state: absent
-  when: legacy_notify_mount.rc == 0
+  when: data_volume_legacy_notify_mount.rc == 0
 
 - name: Desmonta o volume do caminho legado
-  ansible.builtin.command: umount {{ legacy_notify_data_dir }}
-  when: legacy_notify_mount.rc == 0
+  ansible.builtin.command: umount {{ data_volume_legacy_notify_data_dir }}
+  when: data_volume_legacy_notify_mount.rc == 0
   changed_when: true
 
 - name: Monta o volume na subida da VM

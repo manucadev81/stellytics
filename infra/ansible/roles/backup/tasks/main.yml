@@ -16,18 +16,18 @@
 - name: Aplica os arquivos do systemd agora
   ansible.builtin.meta: flush_handlers
 
-- name: Descobre se o timer de backup legado existe
+- name: Descobre se o timer de backup legado existe  # noqa: command-instead-of-module
   ansible.builtin.command: systemctl show notify-backup.timer --property=LoadState --value
-  register: legacy_notify_backup_timer
+  register: backup_legacy_notify_timer
   changed_when: false
-  failed_when: legacy_notify_backup_timer.rc != 0
+  failed_when: backup_legacy_notify_timer.rc != 0
 
 - name: Desliga o timer de backup legado
   ansible.builtin.systemd_service:
     name: notify-backup.timer
     state: stopped
     enabled: false
-  when: legacy_notify_backup_timer.stdout | trim not in ['', 'not-found']
+  when: backup_legacy_notify_timer.stdout | trim not in ['', 'not-found']
 
 - name: Timer ligado
   ansible.builtin.systemd_service:
