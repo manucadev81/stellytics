@@ -2,7 +2,7 @@
 // Baixa as listas na hora (nada é commitado) e avalia cada requisição com o matcher de regras de
 // rede do @ghostery/adblocker, como se ela partisse da página de um tenant.
 //
-// Uso: pnpm --filter @notify/tracker check:adblock [host...]
+// Uso: pnpm --filter @stellytics/tracker check:adblock [host...]
 // Os hosts passados como argumento entram na lista dos que não podem ser bloqueados.
 import { FiltersEngine, Request } from "@ghostery/adblocker";
 import type { RequestType } from "@ghostery/adblocker";
@@ -32,7 +32,7 @@ const requiredHosts = [
 
 // Subdomínios que alguém poderia escolher em produção. Só informativo: mostra quais nomes evitar.
 const candidateHosts = [
-  "notify",
+  "stellytics",
   "ingest",
   "events",
   "stats",

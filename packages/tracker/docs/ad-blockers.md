@@ -28,8 +28,8 @@ A Online Malicious URL Blocklist, também ligada por padrão, fica de fora: só 
 ## Como roda
 
 ```bash
-pnpm --filter @notify/tracker check:adblock                    # host de exemplo gw.example.com
-pnpm --filter @notify/tracker check:adblock e.seu-dominio.org  # também confere um host real
+pnpm --filter @stellytics/tracker check:adblock                    # host de exemplo gw.example.com
+pnpm --filter @stellytics/tracker check:adblock e.seu-dominio.org  # também confere um host real
 ```
 
 O script (`scripts/check-adblock.ts`) usa o matcher de regras de rede do [`@ghostery/adblocker`](https://github.com/ghostery/adblocker) (MPL-2.0), que entende a sintaxe do uBlock Origin e da Adblock Plus. Só as regras de rede importam aqui; as cosméticas escondem elementos da página e não afetam requisições.
@@ -46,7 +46,7 @@ Execução de 14/11/2026 (listas: EasyList 202611140151, EasyPrivacy 20261114015
 
 - **Nenhuma das três requisições é bloqueada** em `gw.example.com`, nas duas versões publicadas (v1.0.0 e v1.1.0), de página de terceiro ou do mesmo domínio.
 - Os caminhos padrão do Umami são bloqueados no mesmo host: `/umami.js` pela regra `/umami.js` e `/api/collect` pela regra `/api/collect|$ping,xhr`. Por isso o gateway usa `/s/`, `/e` e `/c`, e repassa ao `/api/send` do Umami só do lado do servidor.
-- Hoje nenhuma lista padrão bloqueia pelo nome do subdomínio: `analytics.`, `track.`, `tracking.`, `collect.`, `umami.`, `stats.`, `metrics.`, `telemetry.`, `insights.`, `events.`, `ingest.` e `notify.` em `example.com` passam.
+- Hoje nenhuma lista padrão bloqueia pelo nome do subdomínio: `analytics.`, `track.`, `tracking.`, `collect.`, `umami.`, `stats.`, `metrics.`, `telemetry.`, `insights.`, `events.`, `ingest.` e `stellytics.` em `example.com` passam.
 
 ## Recomendação de host
 
