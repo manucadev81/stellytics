@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/netip"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -30,45 +31,76 @@ type Limited struct {
 	slots   chan struct{}
 	wait    time.Duration
 	dropped atomic.Uint64
+	mu      sync.Mutex
+	bySite  map[string]int
+	changed chan struct{}
 }
 
 // NewLimited envolve next com até max repasses simultâneos e espera de até
 // wait por uma vaga (wait 0 recusa na hora). max precisa ser maior que zero.
 func NewLimited(next Sender, max int, wait time.Duration) *Limited {
-	return &Limited{next: next, slots: make(chan struct{}, max), wait: wait}
+	return &Limited{next: next, slots: make(chan struct{}, max), wait: wait, bySite: make(map[string]int), changed: make(chan struct{})}
 }
 
 // Send repassa ev quando há (ou surge a tempo) uma vaga.
 func (l *Limited) Send(ctx context.Context, ev Event, userAgent string, truncatedIP netip.Addr) error {
-	if err := l.acquire(ctx); err != nil {
+	if err := l.acquire(ctx, ev.Payload.Website); err != nil {
 		return err
 	}
-	defer func() { <-l.slots }()
+	defer l.release(ev.Payload.Website)
 	return l.next.Send(ctx, ev, userAgent, truncatedIP)
 }
 
-func (l *Limited) acquire(ctx context.Context) error {
-	select {
-	case l.slots <- struct{}{}:
-		return nil
-	default:
+// Uma vaga permanece reservada para outros sites quando há pelo menos duas.
+// O mapa só contém sites com repasses ativos e tem no máximo cap(slots) entradas.
+func (l *Limited) acquire(ctx context.Context, site string) error {
+	var timer *time.Timer
+	if l.wait > 0 {
+		timer = time.NewTimer(l.wait)
+		defer timer.Stop()
 	}
-	if l.wait <= 0 {
-		l.dropped.Add(1)
-		return ErrSaturated
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		l.mu.Lock()
+		limit := cap(l.slots)
+		if limit > 1 {
+			limit--
+		}
+		if len(l.slots) < cap(l.slots) && l.bySite[site] < limit {
+			l.slots <- struct{}{}
+			l.bySite[site]++
+			l.mu.Unlock()
+			return nil
+		}
+		changed := l.changed
+		l.mu.Unlock()
+		if timer == nil {
+			l.dropped.Add(1)
+			return ErrSaturated
+		}
+		select {
+		case <-changed:
+		case <-timer.C:
+			l.dropped.Add(1)
+			return ErrSaturated
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
-	t := time.NewTimer(l.wait)
-	defer t.Stop()
-	select {
-	case l.slots <- struct{}{}:
-		return nil
-	case <-t.C:
-		l.dropped.Add(1)
-		return ErrSaturated
-	case <-ctx.Done():
-		// O cliente desistiu: não é saturação, não entra no contador.
-		return ctx.Err()
+}
+
+func (l *Limited) release(site string) {
+	l.mu.Lock()
+	<-l.slots
+	l.bySite[site]--
+	if l.bySite[site] == 0 {
+		delete(l.bySite, site)
 	}
+	close(l.changed)
+	l.changed = make(chan struct{})
+	l.mu.Unlock()
 }
 
 // Dropped é o total de eventos recusados por saturação desde o início.

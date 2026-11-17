@@ -23,7 +23,7 @@ go build -o /tmp/loadtest ./loadtest
   isso o algoritmo é repetido em `web.go`). No fim, conta `website_event` no
   banco do Umami (`-umami-db`) contra os 204 recebidos. O relatório traz uma
   linha extra `event <status>` por código (204, 503, 502...), para separar a
-  latência dos aceitos da das recusas.
+  latência de cada status. Desde a #133, 204 inclui descartes; use a contagem do Umami para saber quantos foram gravados.
 - **api:** simula serviços de API que exportam histogramas delta
   (`-modes metrics`) ou um span de servidor por requisição (`-modes spans`),
   com `Authorization: Bearer` de chaves criadas no `setup`. No fim compara

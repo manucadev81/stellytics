@@ -136,7 +136,7 @@ func runWeb(args []string) error {
 			d := time.Since(t0)
 			rec.add(stepIdx, op, d, strconv.Itoa(resp.StatusCode))
 			// Linha à parte por status: com o limite de repasses ligado, as
-			// latências dos aceitos (204) e das recusas (503) não devem se misturar.
+			// respostas de cada status são medidas separadamente; 204 inclui descartes.
 			rec.add(stepIdx, op+" "+strconv.Itoa(resp.StatusCode), d, strconv.Itoa(resp.StatusCode))
 			return resp, nil
 		}
