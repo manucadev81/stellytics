@@ -32,7 +32,7 @@ fail() { echo "FALHOU: $*" >&2; exit 1; }
 ok() { stamp "ok: $*"; }
 
 POSTGRES_PASSWORD=$(rand); STELLYTICS_DB_PASSWORD=$(rand); STELLYTICS_INGEST_DB_PASSWORD=$(rand)
-REPL_PW=$(rand); PROOF_SECRET=$(rand); UMAMI_PW=$(rand); COLLECTOR_PW=$(rand)
+REPL_PW=$(rand); MONITOR_PW=$(rand); PROOF_SECRET=$(rand); UMAMI_PW=$(rand); COLLECTOR_PW=$(rand)
 S3_KEY=$(rand 10); S3_SECRET=$(rand); LIBSODIUM=$(rand 32)
 INGEST_IMG=${INGEST_WEB_IMAGE:-stellytics-ingest-web:dev}
 PG_IMG=stellytics-postgres-walg:17.11-walg3.0.9
@@ -78,6 +78,8 @@ MAIL_FROM=stellytics <no-reply@example.org>
 STELLYTICS_DATA_DIR=$2
 POSTGRES_ADMIN_PORT=$PGPORT_PRIM
 REPLICATION_DB_PASSWORD=$REPL_PW
+REPLICATION_MONITOR_PASSWORD=$MONITOR_PW
+REPLICATION_MONITOR_CIDR=172.31.52.0/24
 REPLICATION_ALLOWED_CIDR=172.31.52.0/24,fd31:6e6f:5200::/64
 HA_PRIVATE_IP=127.0.0.1
 HA_POSTGRES_PORT=$PGPORT_HA
@@ -161,6 +163,17 @@ gen=$(hba_rules "$PRIM" | grep 'host all all all ' | cut -d: -f1)
 [ "$(hba_rules "$PRIM" | grep -E 'stellytics_ingest|replicator|reject' | cut -d: -f1 | sort -n | tail -1)" -lt "$gen" ] || fail "regras da faixa depois da regra genérica"
 [ "$(psql_at "$PRIM" "SHOW max_slot_wal_keep_size")" = 10GB ] || fail "max_slot_wal_keep_size"
 ok "primário: papel replicator, pg_hba (stellytics_ingest, replicator e reject por faixa, antes da regra genérica) e max_slot_wal_keep_size=10GB"
+# A sonda só recebe permissão de monitoramento e entra pelo CIDR configurado.
+PRIMARY_IPV4=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$PRIM")
+[ "$(cpsql "$MONITOR_PW" "$PRIMARY_IPV4" stellytics_replication_monitor postgres 'SELECT count(*) FROM pg_stat_replication')" = 0 ] || fail "a sonda não consegue ler estatísticas"
+if cpsql "$MONITOR_PW" "$PRIMARY_IPV4" stellytics_replication_monitor postgres 'CREATE TABLE monitor_forbidden (id int)' >/dev/null 2>&1; then
+  fail "a sonda não deve poder criar tabelas"
+fi
+if cpsql "$MONITOR_PW" "$PRIMARY_IPV4" stellytics_replication_monitor stellytics 'SELECT 1' >/dev/null 2>&1; then
+  fail "a sonda não deve acessar o banco da aplicação pela rede privada"
+fi
+ok "conta da sonda lê estatísticas pela rede privada e não escreve nem acessa o banco da aplicação"
+
 # O primário não guarda WAL para uma réplica que ainda não existe.
 [ "$(psql_at "$PRIM" "SELECT count(*) FROM pg_replication_slots")" = 0 ] || fail "slot criado cedo demais"
 
@@ -171,6 +184,14 @@ echo "$out" | grep -q '03-replication: changed' && fail "reaplicar disse que mud
 [ "$(docker exec "$PRIM" cat /var/lib/postgresql/data/pg_hba.conf | md5sum)" = "$hba_before" ] || fail "03 mudou o pg_hba ao reaplicar"
 [ "$(hba_rules "$PRIM" | grep -c -E 'stellytics_ingest|replicator|reject')" = 6 ] || fail "03 duplicou linhas do pg_hba"
 ok "03-replication.sh reaplicado: pg_hba idêntico byte a byte, sem duplicar nada, sem reportar mudança"
+# Desligar deve revogar a credencial, inclusive fora do CIDR privado atual.
+docker exec -i -e REPLICATION_MONITOR_PASSWORD= "$PRIM" sh < "$root/infra/compose/postgres/init/03-replication.sh" >/dev/null
+[ "$(psql_at "$PRIM" "SELECT rolcanlogin FROM pg_roles WHERE rolname='stellytics_replication_monitor'")" = f ] || fail "sonda desligada ainda permite login"
+if cpsql "$MONITOR_PW" "$PRIMARY_IPV4" stellytics_replication_monitor postgres 'SELECT 1' >/dev/null 2>&1; then fail "sonda desligada ainda conecta"; fi
+prim_c "$work/env.prim" exec -T postgres sh < "$root/infra/compose/postgres/init/03-replication.sh" >/dev/null
+[ "$(cpsql "$MONITOR_PW" "$PRIMARY_IPV4" stellytics_replication_monitor postgres 'SELECT 1')" = 1 ] || fail "sonda não voltou após reabilitação"
+ok "desativação revoga login e reativação o restabelece"
+
 
 # Papéis: replicator não entra em banco de aplicação; stellytics_ingest não replica.
 if cpsql "$REPL_PW" pg-primary replicator stellytics 'select 1' >/dev/null 2>&1; then fail "replicator abriu o banco stellytics"; fi

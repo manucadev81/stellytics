@@ -8,6 +8,7 @@
   loop:
     - "{{ monitor_root }}/prometheus/rules"
     - "{{ monitor_root }}/prometheus/targets"
+    - "{{ monitor_root }}/prometheus/replication-targets"
     - "{{ monitor_root }}/blackbox"
     - "{{ monitor_root }}/alertmanager"
 
@@ -26,6 +27,7 @@
     mode: "0644"
   loop:
     - compose.yaml
+    - replication.yaml
     - prometheus/prometheus.yml
     - prometheus/rules/alerts.yml
     - blackbox/blackbox.yml
@@ -35,6 +37,34 @@
     src: endpoints.yml.j2
     dest: "{{ monitor_root }}/prometheus/targets/endpoints.yml"
     mode: "0644"
+
+- name: Alvo da sonda de replicação (vazio quando desligada)
+  ansible.builtin.copy:
+    dest: "{{ monitor_root }}/prometheus/replication-targets/replication.yml"
+    content: "{{ '- targets: [replication-monitor:9187]' if (monitor_replication_enabled | default(false) | bool) else '[]' }}\n"
+    mode: "0644"
+
+- name: Configuração privada da sonda de replicação
+  ansible.builtin.template:
+    src: replication.env.j2
+    dest: "{{ monitor_root }}/replication.env"
+    mode: "0600"
+  no_log: true
+  when: monitor_replication_enabled | default(false) | bool
+
+- name: Remove o segredo da sonda quando desligada
+  ansible.builtin.file:
+    path: "{{ monitor_root }}/replication.env"
+    state: absent
+  when: not (monitor_replication_enabled | default(false) | bool)
+
+- name: Confere a assinatura da imagem da sonda
+  ansible.builtin.command: >-
+    cosign verify {{ monitor_replication_image }}
+    --certificate-identity-regexp '{{ cosign_identity_regexp }}'
+    --certificate-oidc-issuer {{ cosign_oidc_issuer }}
+  changed_when: false
+  when: monitor_replication_enabled | default(false) | bool
 
 - name: Configuração do Alertmanager
   ansible.builtin.template:
@@ -62,7 +92,11 @@
 
 - name: Sobe o monitoramento
   ansible.builtin.command:
-    cmd: docker compose up -d --wait --remove-orphans
+    cmd: >-
+      docker compose
+      {{ '--env-file replication.env -f compose.yaml -f replication.yaml'
+         if (monitor_replication_enabled | default(false) | bool) else '-f compose.yaml' }}
+      up -d --wait --remove-orphans
     chdir: "{{ monitor_root }}"
   register: monitoring_compose_up
   changed_when: "'Started' in monitoring_compose_up.stderr or 'Recreated' in monitoring_compose_up.stderr or 'Created' in monitoring_compose_up.stderr"

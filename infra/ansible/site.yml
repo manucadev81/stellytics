@@ -35,6 +35,16 @@
       no_log: true
       when: ha_replication | default(false) | bool
 
+    - name: Confere o segredo da sonda de replicação
+      ansible.builtin.assert:
+        that:
+          - ha_replication | default(false) | bool
+          - replication_monitor_password | default('') is regex('^[0-9a-f]{64}$')
+        fail_msg: "A sonda exige HA e replication_monitor_password com 64 caracteres hexadecimais."
+        quiet: true
+      no_log: true
+      when: monitor_replication_enabled | default(false) | bool
+
     - name: Confere a chave do backup (32 bytes em hexadecimal)
       ansible.builtin.assert:
         that: walg_libsodium_key is regex('^[0-9a-f]{64}$')

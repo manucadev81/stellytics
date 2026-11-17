@@ -225,6 +225,15 @@ resource "hcloud_server_network" "primary" {
   ip        = "10.50.0.10"
 }
 
+# O monitor precisa alcançar o primário pela rede privada para medir o estado
+# da replicação. Só conecta a VM quando há réplica configurada.
+resource "hcloud_server_network" "monitor" {
+  count     = var.ha_db_standby ? 1 : 0
+  server_id = hcloud_server.monitor.id
+  subnet_id = hcloud_network_subnet.ha[0].id
+  ip        = "10.50.0.40"
+}
+
 # VMs extras de ingestão: mesmo firewall (só 80 e 443 abertos) da principal.
 resource "hcloud_server" "ingest" {
   count        = var.ha_ingest_replicas

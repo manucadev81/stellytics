@@ -87,8 +87,8 @@ O `prod.yaml` sobe o `postgres` **no mesmo diretório de dados** (`/srv/stellyti
 
 ## Disco e monitoramento
 
-- **Folga de disco:** com uma réplica parada, o slot faz o primário reter até `max_slot_wal_keep_size` (10 GB) de WAL **além** do banco. Mantenha pelo menos **10 GB livres, e mais o crescimento esperado**, no volume do primário (padrão do OpenTofu: 40 GB). Passou do limite, o slot é invalidado (o primário se protege) e a réplica precisa ser refeita.
-- **Ainda não há alerta** de atraso de replicação, de WAL retido nem de réplica fora. Hoje só se descobre olhando `pg_stat_replication` e `pg_replication_slots` (e `df -h /srv/stellytics`). É pendência do ADR 0009.
+- **Folga de disco:** mantenha no volume do primário pelo menos **10 GiB livres além do crescimento esperado do banco, backups locais e outros WAL**, com margem adicional para a carga entre checkpoints. O `max_slot_wal_keep_size` padrão é 10 GB; ele limita a retenção do slot em checkpoints, não é teto absoluto de uso do disco. Ao perder WAL necessário, o slot pode ser invalidado e a réplica precisa ser refeita.
+- **Alertas, quando a sonda estiver ligada:** `ReplicationStopped` dispara se o slot não existe ou deixa de transmitir por 2 minutos; `ReplicationLagHigh`, se a diferença entre o WAL atual e o replay ultrapassa 256 MiB por 5 minutos; `ReplicationSlotWALHigh`, se o slot retém mais de 5 GiB por 2 minutos. `ReplicationMonitorDown` avisa se a sonda ou a consulta ao primário falha por 2 minutos. O atraso é medido em bytes, não em tempo: confirme o RPO com os LSNs antes de promover. Consulte também `df -h /srv/stellytics`; os alertas não substituem um alerta de disco livre.
 - **Volume:** o papel `data_volume` **não formata** nada: só confere o dispositivo, grava o `fstab` e monta (o ext4 vem do OpenTofu na criação do volume). Um volume sem sistema de arquivos falha ao montar; um volume com dados é montado como está, sem apagar.
 
 ## Depois

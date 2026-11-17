@@ -364,6 +364,8 @@ Faça depois do deploy (passo 4) e do DNS, senão o monitor já nasce alertando.
 | `TLSCertificateExpiringSoon` | Certificado vencendo em menos de 14 dias (a renovação automática falhou) |
 | `ProbeFailing` | O Prometheus não consegue nem pedir o teste de um alvo ao blackbox |
 | `ProberDown` | O blackbox exporter, que faz os testes, está fora do ar |
+| `ReplicationStopped` / `ReplicationMonitorDown` | Com monitoramento de réplica habilitado: slot ausente ou sem streaming, ou falha de coleta por 2 minutos |
+| `ReplicationLagHigh` / `ReplicationSlotWALHigh` | Atraso acima de 256 MiB por 5 minutos ou retenção acima de 5 GiB por 2 minutos |
 
 Confira que o monitoramento enxerga a produção: no Prometheus (túnel abaixo), a página *Status → Targets* (ou a consulta `probe_success`) deve mostrar `1` para o portal, o gateway e a ingestão de API (`ingest-api`, um POST sem chave que espera o 401 do coletor). Para testar o e-mail de alerta de verdade, na VM de produção rode `docker compose -f prod.yaml stop ingest-web`, espere uns 2 minutos pelo `EndpointDown` e suba de novo (`start ingest-web`). **Parar o `ingest-web` descarta os eventos reais que chegarem nesse intervalo.** Faça o teste no primeiro deploy, antes de haver tenants, ou aceite a perda. O Alertmanager e o Prometheus ficam só no loopback; para vê-los, abra um túnel e acesse `http://127.0.0.1:9090` e `http://127.0.0.1:9093`:
 
@@ -402,7 +404,8 @@ Ordem (cada passo é um `ansible-playbook` de `infra/ansible`, com o `secrets.ym
    docker compose -f prod-standby.yaml exec -T postgres psql -U postgres -d stellytics -Atc "SELECT pg_is_in_recovery()"
    ```
 
-6. **Ingestão extra:** use o **mesmo** `ingest_proof_secret`, `stellytics_ingest_db_password` e `ingest_web_image` (por digest, verificada com cosign) do primário e rode `ansible-playbook ingest.yml -e @secrets.yml`. O Caddy dessas VMs só publica `/e`, `/c`, `/s/*` e `/healthz` do host da ingestão.
+6. **Monitorar a réplica (opcional, recomendado):** a opção OpenTofu `ha_db_standby=true` conecta a VM de monitoramento à rede HA em `10.50.0.40`. Publique primeiro uma release assinada contendo a imagem `replication-monitor` e configure `monitor_replication_image` com a referência por digest; o playbook verifica sua assinatura. Gere `replication_monitor_password` com `openssl rand -hex 32` e guarde em `secrets.yml`. Execute `site.yml` e depois `monitoring.yml`, ambos com `-e @secrets.yml -e ha_replication=true -e monitor_replication_enabled=true`. A conta limitada `stellytics_replication_monitor` recebe `pg_monitor` e só entra no banco `postgres` pelo endereço `monitor_replication_cidr` (padrão `10.50.0.40/32`); a conexão trafega sem TLS pela rede privada. Restrinja a rede privada e mantenha a senha protegida. Confira no Prometheus `stellytics_replication_scrape_success=1`, `stellytics_replication_slot_exists=1` e `stellytics_replication_streaming=1`. Se promover a réplica, atualize `ha_primary_private_ip` para o novo primário e execute ambos os playbooks novamente. A rede real da Hetzner ainda não foi testada.
+7. **Ingestão extra:** use o **mesmo** `ingest_proof_secret`, `stellytics_ingest_db_password` e `ingest_web_image` (por digest, verificada com cosign) do primário e rode `ansible-playbook ingest.yml -e @secrets.yml`. O Caddy dessas VMs só publica `/e`, `/c`, `/s/*` e `/healthz` do host da ingestão.
 
 Limites e cuidados:
 

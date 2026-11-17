@@ -55,6 +55,10 @@ monitor_smtp_require_tls: true
 # URL OTLP/HTTP da ingestão de API: o blackbox faz um POST sem chave e espera
 # o 401 do coletor (módulo otlp_401). Vazia, a ingestão de API não é testada.
 monitor_api_url: "https://{{ api_host }}/v1/metrics"
+# Opt-in com réplica configurada; imagem própria assinada por digest.
+monitor_replication_enabled: false
+monitor_replication_image: ""
+monitor_replication_cidr: 10.50.0.40/32
 
 # Alta disponibilidade (#52, ADR 0009). Tudo desligado por padrão: com estes
 # valores `site.yml` faz exatamente o que fazia antes. Os IPs vêm do OpenTofu
