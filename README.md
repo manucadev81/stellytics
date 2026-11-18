@@ -164,21 +164,20 @@ Ponha a chave impressa em `UMAMI_API_KEY`, no `.env` da raiz, e recrie o portal 
 
 ## Deploy em produção
 
-Uma VM na Hetzner (UE) com todos os serviços da aplicação em Docker Compose. O Caddy obtém e renova os certificados TLS automaticamente. O passo a passo está em [`docs/deploy.md`](docs/deploy.md).
+Para uma VPS Debian/Ubuntu já existente, o caminho mínimo é `sudo ./init.sh`, configurar `.env.production` e executar `sudo ./deploy.sh`. Ele sobe o portal, gateway web, API OTLP, Umami, Postgres e Caddy em Docker Compose. Os dados ficam em volumes locais da VPS, sem backup externo automático.
+
+O caminho gerenciado na Hetzner com OpenTofu, Ansible e backup WAL-G continua documentado em [`docs/deploy.md`](docs/deploy.md).
 
 | Passo | O que fazer | Ferramenta |
 |---|---|---|
-| 1. Infraestrutura | Criar a VM, o firewall, o volume e o bucket de backup | `tofu -chdir=infra/opentofu apply` |
-| 2. DNS | Apontar quatro nomes para a VM; o Caddy emite os certificados automaticamente | seu provedor de DNS |
-| 3. Imagens | Publicar uma release no GitHub; as imagens saem assinadas | workflow `release.yml` |
-| 4. Deploy | Preencher o inventário, os segredos e os digests das imagens e aplicar | `./deploy.sh` (ou `ansible-playbook site.yml -e @secrets.yml` em `infra/ansible/`) |
-| 5. Primeira subida | Trocar a senha do Umami, gerar a chave da conta de serviço, criar o primeiro operador do SCF e disparar o primeiro backup | túnel `infra/scripts/admin-tunnel.sh` |
+| 1. Pré-requisitos | VPS Debian/Ubuntu, DNS e SMTP | `sudo ./init.sh` |
+| 2. Configuração | Preencher domínios e SMTP; senhas são geradas pelo `init.sh` | `.env.production` |
+| 3. Deploy | Construir e iniciar os serviços | `sudo ./deploy.sh` |
+| 4. Analytics | Trocar a senha inicial do Umami e configurar sua chave de API | túnel `infra/scripts/admin-tunnel.sh` |
 
-O playbook é idempotente: atualizar a aplicação é trocar os digests e rodar o passo 4 de novo. Ele só sobe imagens por digest e com a assinatura conferida.
+No caminho mínimo, atualize o código e rode `sudo ./deploy.sh` novamente; os volumes existentes são preservados. No caminho gerenciado da Hetzner, o playbook usa imagens assinadas por digest, backup WAL-G e monitoramento externo.
 
-O que vem junto: TLS automático, backup contínuo e cifrado do Postgres com restauração testada no CI, e monitoramento externo com alerta por e-mail numa VM separada (playbook `monitoring.yml`), incluindo atraso de replicação e WAL retido.
-
-O passo a passo completo, com segredos, restauração e o que ainda não foi testado numa conta real, está em [`docs/deploy.md`](docs/deploy.md); os procedimentos de operação, nos [runbooks](docs/runbooks/README.md). Em Debian/Ubuntu, `sudo ./init.sh` prepara a máquina de controle para executar `./deploy.sh`.
+O passo a passo dos dois caminhos está em [`docs/deploy.md`](docs/deploy.md); os procedimentos de operação, nos [runbooks](docs/runbooks/README.md).
 
 ## CI e cadeia de suprimentos
 

@@ -1,6 +1,45 @@
 # Deploy da produção
 
-Como recriar a produção do stellytics do zero, só com este repositório e os segredos ([#14](https://github.com/romulospl/stellytics/issues/14)). As decisões estão no [ADR 0004](adr/0004-hospedagem-e-backup.md); os arquivos, em [`infra/`](../infra/README.md).
+Há dois caminhos: uma instalação mínima numa VPS existente, descrita abaixo, ou a infraestrutura gerenciada na Hetzner com OpenTofu e Ansible ([#14](https://github.com/romulospl/stellytics/issues/14)), detalhada nas seções seguintes.
+
+## Caminho mínimo: VPS existente
+
+Este caminho serve para uma VPS Debian/Ubuntu. Não exige conta na Hetzner nem armazenamento S3: o Postgres e os certificados ficam em volumes Docker locais. **Não há backup externo automático**; se a VPS ou o disco forem perdidos, os dados também podem ser perdidos.
+
+Pré-requisitos: acesso root à VPS; quatro nomes DNS apontando para ela (`PORTAL_HOST`, `PORTAL_ALIAS_HOST`, `INGEST_HOST` e `API_HOST`); portas 80 e 443 liberadas; e um SMTP real para confirmação de cadastro e redefinição de senha.
+
+Na VPS, dentro do clone do repositório:
+
+```bash
+cd /var/www/html/stellytics
+sudo ./init.sh
+sudo nano .env.production
+sudo ./deploy.sh
+```
+
+O `init.sh` instala Docker/Compose e gera senhas aleatórias no `.env.production` com permissão `0600`. Preencha nele os quatro domínios, `ACME_EMAIL`, `SMTP_URL` e `MAIL_FROM`; não troque as senhas geradas. Codifique caracteres especiais da senha SMTP como URL encoding.
+
+O `deploy.sh` constrói as imagens do portal, gateway, coletor e rollup no servidor. Postgres, Umami e Caddy usam imagens fixadas. Só o Caddy publica portas; Postgres fica acessível apenas pelo loopback e Umami só na rede interna. O comando `docker compose down` preserva os volumes; **não use `down -v`**, que apaga o banco e o estado TLS.
+
+Confira a pilha na VPS:
+
+```bash
+cd /var/www/html/stellytics
+sudo docker compose --env-file .env.production -f infra/compose/prod-vps.yaml ps
+```
+
+Na primeira subida, troque a senha inicial do Umami (`admin`/`umami`) pelo túnel `infra/scripts/admin-tunnel.sh <IP-da-VPS>`. Para o portal criar sites no Umami, gere a chave de conta de serviço num clone com Node 24, salve em `UMAMI_API_KEY` no `.env.production` e rode `sudo ./deploy.sh` novamente:
+
+```bash
+read -rs UMAMI_ADMIN_PASSWORD && export UMAMI_ADMIN_PASSWORD
+UMAMI_URL=http://127.0.0.1:13001 node apps/portal/scripts/umami-service-account.mjs
+```
+
+O script imprime a chave uma vez. Guarde-a no `.env.production`, sem compartilhá-la.
+
+## Caminho gerenciado: Hetzner
+
+As decisões deste caminho estão no [ADR 0004](adr/0004-hospedagem-e-backup.md); os arquivos, em [`infra/`](../infra/README.md).
 
 > **Escopo.** Este guia sobe toda a infraestrutura da aplicação em [`infra/compose/prod.yaml`](../infra/compose/prod.yaml): Caddy, portal, gateway de ingestão web, coletor de API, job de consolidação, Umami e Postgres com backup, mais o monitoramento externo. O Caddy termina TLS automaticamente e encaminha os hosts pela rede Docker. O coletor e o job de consolidação entraram em 16/11/2026 ([ADR 0012](adr/0012-ingestao-de-api-pelo-caddy.md)). **A [#42](https://github.com/romulospl/stellytics/issues/42) ainda não está cumprida:** o critério de aceite (alguém de fora faz o deploy seguindo só o guia) só será cumprido quando alguém de fora seguir o guia numa conta real.
 
@@ -62,10 +101,9 @@ git clone https://github.com/romulospl/stellytics.git && cd stellytics
 corepack enable && pnpm install
 ```
 
-Se esta máquina Debian/Ubuntu ainda não tiver o Ansible, prepare-a uma vez com
-`sudo ./init.sh`. Isso instala o `ansible-core` para executar o deploy; o Docker
-da VPS de produção é instalado pelo playbook. Depois, rode `./deploy.sh` sem
-`sudo`, usando o usuário que tem a chave SSH e os arquivos de configuração.
+Para o caminho gerenciado na Hetzner, instale OpenTofu e `ansible-core` conforme
+a lista acima. Os scripts `init.sh` e `deploy.sh` são do caminho mínimo de VPS;
+eles instalam Docker localmente e não substituem os playbooks Ansible desta seção.
 
 **Segredos** (nunca no repositório):
 
@@ -144,12 +182,6 @@ O deploy só aceita imagens publicadas pelo workflow de release, assinadas com c
    ansible-playbook site.yml -e @secrets.yml
    ```
 
-   Na raiz do repositório, o mesmo deploy pode ser iniciado com `./deploy.sh`.
-   O script confere dependências, inventário, permissões de `secrets.yml` e a
-   sintaxe do playbook antes de aplicar a produção. Ele implanta a aplicação
-   no host `stellytics`; o provisionamento com OpenTofu e o deploy do monitor
-   continuam sendo etapas separadas.
-
 Na primeira vez leva alguns minutos (atualizações, Docker, build da imagem do Postgres com WAL-G). O playbook prepara a VM e sobe a aplicação:
 
 - atualiza a VM e liga as atualizações automáticas de segurança;
@@ -182,7 +214,7 @@ papéis PostgreSQL e só então inicia os serviços novos. Ele interrompe o
 tráfego durante essa etapa. Se os dois bancos ou pares de papéis já existirem,
 ele para sem escolher qual conjunto de dados preservar.
 
-## 5. Primeira subida
+## 5. Primeira subida (caminho gerenciado na Hetzner)
 
 1. **Túnel de administração** (deixe aberto num terminal):
 
