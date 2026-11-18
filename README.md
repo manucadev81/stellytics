@@ -171,7 +171,7 @@ Uma VM na Hetzner (UE) com todos os serviços da aplicação em Docker Compose. 
 | 1. Infraestrutura | Criar a VM, o firewall, o volume e o bucket de backup | `tofu -chdir=infra/opentofu apply` |
 | 2. DNS | Apontar quatro nomes para a VM; o Caddy emite os certificados automaticamente | seu provedor de DNS |
 | 3. Imagens | Publicar uma release no GitHub; as imagens saem assinadas | workflow `release.yml` |
-| 4. Deploy | Preencher o inventário, os segredos e os digests das imagens e aplicar | `ansible-playbook site.yml -e @secrets.yml` |
+| 4. Deploy | Preencher o inventário, os segredos e os digests das imagens e aplicar | `./deploy.sh` (ou `ansible-playbook site.yml -e @secrets.yml` em `infra/ansible/`) |
 | 5. Primeira subida | Trocar a senha do Umami, gerar a chave da conta de serviço, criar o primeiro operador do SCF e disparar o primeiro backup | túnel `infra/scripts/admin-tunnel.sh` |
 
 O playbook é idempotente: atualizar a aplicação é trocar os digests e rodar o passo 4 de novo. Ele só sobe imagens por digest e com a assinatura conferida.
