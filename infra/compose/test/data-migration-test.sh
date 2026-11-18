@@ -63,6 +63,7 @@ INGEST_WEB_IMAGE=unused:none
 COLLECTOR_IMAGE=unused:none
 ROLLUP_IMAGE=unused:none
 PORTAL_HOST=portal.localhost
+PORTAL_ALIAS_HOST=alias.localhost
 INGEST_HOST=ingest.localhost
 API_HOST=api.localhost
 ACME_EMAIL=ops@example.org
