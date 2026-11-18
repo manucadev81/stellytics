@@ -1,6 +1,6 @@
 # Arquitetura e stack
 
-Visão de alto nível do stellytics ([#39](https://github.com/romulospl/notify/issues/39)): o que cada peça faz, como os dados andam e onde tudo roda. O texto vem primeiro, em linguagem simples; os detalhes técnicos estão nos [ADRs](adr/README.md) e nos links de cada seção.
+Visão de alto nível do stellytics ([#39](https://github.com/romulospl/stellytics/issues/39)): o que cada peça faz, como os dados andam e onde tudo roda. O texto vem primeiro, em linguagem simples; os detalhes técnicos estão nos [ADRs](adr/README.md) e nos links de cada seção.
 
 ## Em uma frase
 
@@ -18,7 +18,7 @@ flowchart LR
 
   pessoa(["Tenant ou operador SCF"])
 
-  caddy["Caddy<br/>TLS e porta pública"]
+  caddy["Caddy em Docker<br/>TLS e porta pública"]
 
   subgraph vm["Servidor do stellytics (Hetzner, Alemanha)"]
     portal["Portal<br/>Next.js"]
@@ -49,7 +49,7 @@ flowchart LR
 > **Siglas deste diagrama:** *tenant* é um projeto cliente com dados isolados dos demais; *OTLP* é o formato aberto de envio de medições (OpenTelemetry, ou OTel); *dual-export* é mandar a mesma medição para dois destinos; *APM* é a ferramenta de monitoramento que o projeto cliente já usa; *TLS* é o cadeado HTTPS.
 
 
-Linha pontilhada: envio que o projeto já faz hoje para o próprio APM, sem passar pelo stellytics. Na produção, o OTLP também entra pelo Caddy, num host próprio na 443 ([ADR 0012](adr/0012-ingestao-de-api-pelo-caddy.md)); o desenho mostra o coletor sem o Caddy para não repetir o proxy.
+Linha pontilhada: envio que o projeto já faz hoje para o próprio APM, sem passar pelo stellytics. Na produção, o OTLP também entra pelo Caddy, num host próprio na 443 ([ADR 0014](adr/0014-infra-em-docker-compose.md)); o desenho mostra o coletor sem repetir o proxy.
 
 ## Fluxo web: de uma visita a um gráfico
 
@@ -124,7 +124,7 @@ Mais detalhes: [`docs/specs/e5-pipeline-de-api.md`](specs/e5-pipeline-de-api.md)
 | Coletor de API | Recebe OTLP, autentica pela chave, normaliza rotas, grava métricas | OpenTelemetry Collector montado com OCB, componentes em Go | [`services/collector`](../services/collector/) |
 | Rollup | Consolida as métricas e aplica a retenção | Go, funções SQL | [`services/rollup`](../services/rollup/) |
 | Banco | Um PostgreSQL com dois bancos: `umami` (do Umami) e `stellytics` (tenants, chaves, métricas de API) | PostgreSQL 17 | [`infra/compose`](../infra/compose/) |
-| Caddy | Única porta pública, certificado TLS automático | Caddy | [`infra/caddy`](../infra/caddy/Caddyfile) |
+| Caddy | Único serviço público, TLS automático | Contêiner Docker Compose | [`infra/caddy/Caddyfile`](../infra/caddy/Caddyfile) |
 | Infraestrutura | Cria o servidor e publica o sistema | OpenTofu, Ansible, Docker Compose | [`infra/`](../infra/README.md) |
 | Monitoramento | Avisa por e-mail se o portal ou a ingestão saírem do ar | Prometheus, blackbox, Alertmanager | [`infra/monitoring`](../infra/monitoring/) |
 
@@ -142,12 +142,12 @@ Por que duas linguagens: TypeScript para tudo que tem tela e para o script do na
 - O IP completo nunca é gravado; a localização aproximada usa o IP truncado.
 - Sem cookies e sem armazenamento no navegador.
 - Gravação de sessão e mapas de calor do Umami ficam desligados.
-- Nenhum log do gateway ou do Caddy guarda IP ou `User-Agent`. O Caddy também não guarda a URL dos pedidos; o gateway só registra o caminho das próprias rotas (`/e`, `/c`), nunca a página visitada.
+- Nenhum log do gateway ou do Caddy guarda IP ou `User-Agent`. O Caddy não tem access log e filtra dados de requisição dos logs de erro; o gateway só registra o caminho das próprias rotas (`/e`, `/c`), nunca a página visitada.
 
 ## Infraestrutura
 
 - **Onde roda:** uma VM na Hetzner em Nuremberg (Alemanha), com os dados num volume separado e backup contínuo e cifrado no Object Storage da Hetzner, também na Alemanha ([ADR 0004](adr/0004-hospedagem-e-backup.md), [`deploy.md`](deploy.md)).
-- **Como é criada:** OpenTofu cria VM, firewall e bucket; Ansible instala o Docker e sobe a pilha com Docker Compose. Só o Caddy tem porta pública (80 e 443); a administração é por túnel SSH.
+- **Como é criada:** OpenTofu cria VM, firewall e bucket; Ansible instala Docker e sobe toda a pilha, incluindo Caddy, com Docker Compose. Caddy recebe 80 e 443; a administração é por túnel SSH.
 - **Quem vigia:** uma segunda VM, em outro data center (Falkenstein), testa de fora o portal e o gateway a cada 15 segundos e manda e-mail se algo cair ([ADR 0005](adr/0005-monitoramento-externo.md)).
 - **Supply chain:** imagens publicadas por release, com SBOM e assinatura (cosign); dependências novas só depois de 14 dias.
 
@@ -155,7 +155,7 @@ Por que duas linguagens: TypeScript para tudo que tem tela e para o script do na
 
 Este documento descreve o que está na `main`. Diferenças em relação ao desenho acima:
 
-- O **coletor de API e o rollup** estão em `infra/compose/prod.yaml` e no Caddyfile desde 16/11/2026 ([ADR 0012](adr/0012-ingestao-de-api-pelo-caddy.md)), testados na pilha local do CI; nenhuma produção real foi aplicada ainda ([`andamento.md`](andamento.md)).
+- O **coletor de API e o rollup** estão em `infra/compose/prod.yaml`; o Caddy publica as rotas OTLP conforme o [ADR 0014](adr/0014-infra-em-docker-compose.md). A pilha local do CI testa as rotas do Caddy; nenhuma produção real foi aplicada ainda ([`andamento.md`](andamento.md)).
 - O monitoramento da ingestão de API testa o host OTLP com um POST sem chave (`monitor_api_url`, [ADR 0005](adr/0005-monitoramento-externo.md)).
 - O Grafana, previsto no ADR 0002, não foi adotado por enquanto; o ADR 0005 explica por quê.
-- Alta disponibilidade e metas de SLA ficam para depois do MVP (issue [#52](https://github.com/romulospl/notify/issues/52)).
+- Alta disponibilidade e metas de SLA ficam para depois do MVP (issue [#52](https://github.com/romulospl/stellytics/issues/52)).

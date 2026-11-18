@@ -70,6 +70,7 @@ INGEST_WEB_IMAGE=$INGEST_IMG
 COLLECTOR_IMAGE=stellytics-collector:dev
 ROLLUP_IMAGE=stellytics-rollup:dev
 PORTAL_HOST=portal.localhost
+PORTAL_ALIAS_HOST=alias.localhost
 INGEST_HOST=ingest.localhost
 API_HOST=api.localhost
 ACME_EMAIL=ops@example.org

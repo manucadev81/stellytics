@@ -5,9 +5,9 @@
 package main
 
 import (
-	ingestkeyauth "github.com/romulospl/notify/services/collector/components/ingestkeyauth"
-	pgexporter "github.com/romulospl/notify/services/collector/components/pgexporter"
-	tenantattr "github.com/romulospl/notify/services/collector/components/tenantattr"
+	ingestkeyauth "github.com/romulospl/stellytics/services/collector/components/ingestkeyauth"
+	pgexporter "github.com/romulospl/stellytics/services/collector/components/pgexporter"
+	tenantattr "github.com/romulospl/stellytics/services/collector/components/tenantattr"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/connector"
 	"go.opentelemetry.io/collector/exporter"
@@ -49,7 +49,7 @@ func components() (otelcol.Factories, error) {
 		return otelcol.Factories{}, err
 	}
 	factories.ExtensionModules = makeModulesMap(factories.Extensions, map[component.Type]string{
-		ingestkeyauth.NewFactory().Type(): "github.com/romulospl/notify/services v0.0.0",
+		ingestkeyauth.NewFactory().Type(): "github.com/romulospl/stellytics/services v0.0.0",
 	})
 
 	factories.Receivers, err = otelcol.MakeFactoryMap[receiver.Factory](
@@ -70,7 +70,7 @@ func components() (otelcol.Factories, error) {
 		return otelcol.Factories{}, err
 	}
 	factories.ExporterModules = makeModulesMap(factories.Exporters, map[component.Type]string{
-		pgexporter.NewFactory().Type():  "github.com/romulospl/notify/services v0.0.0",
+		pgexporter.NewFactory().Type():  "github.com/romulospl/stellytics/services v0.0.0",
 		nopexporter.NewFactory().Type(): "go.opentelemetry.io/collector/exporter/nopexporter v0.164.0",
 	})
 
@@ -85,7 +85,7 @@ func components() (otelcol.Factories, error) {
 	factories.ProcessorModules = makeModulesMap(factories.Processors, map[component.Type]string{
 		memorylimiterprocessor.NewFactory().Type(): "go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.164.0",
 		batchprocessor.NewFactory().Type():         "go.opentelemetry.io/collector/processor/batchprocessor v0.164.0",
-		tenantattr.NewFactory().Type():             "github.com/romulospl/notify/services v0.0.0",
+		tenantattr.NewFactory().Type():             "github.com/romulospl/stellytics/services v0.0.0",
 	})
 
 	factories.Connectors, err = otelcol.MakeFactoryMap[connector.Factory]()

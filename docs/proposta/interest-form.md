@@ -1,6 +1,6 @@
 # Interest form draft: stellytics
 
-> **DRAFT. Not submitted.** Working draft for issue [#64](https://github.com/romulospl/notify/issues/64). Nothing was sent to SCF and no external form was filled. The real form lives at <https://communityfund.stellar.org> and its exact fields were **not verified** (the drafter cannot open it). The fields below follow the form as described in the SCF Handbook "Build Award" page (Raven, 2026-11-15: the form asks for the track and whether you were referred) and the SCF interest form guidance. Check every field against the live form before copying.
+> **DRAFT. Not submitted.** Working draft for issue [#64](https://github.com/romulospl/stellytics/issues/64). Nothing was sent to SCF and no external form was filled. The real form lives at <https://communityfund.stellar.org> and its exact fields were **not verified** (the drafter cannot open it). The fields below follow the form as described in the SCF Handbook "Build Award" page (Raven, 2026-11-15: the form asks for the track and whether you were referred) and the SCF interest form guidance. Check every field against the live form before copying.
 
 ## Open items for Romulo
 
@@ -49,7 +49,7 @@ This is ecosystem infrastructure for Stellar projects, required by an SCF RFP, n
 
 Evidence: public repository with ADRs, specs and tests; architecture and plain-language explanation in [`docs/arquitetura.md`](../arquitetura.md); current status in [`docs/andamento.md`](../andamento.md). `[DRAFT NOTE: replace the relative links with the public repository URL on submission.]`
 
-**Pilots and demand:** No pilot or letter of interest yet (issue [#44](https://github.com/romulospl/notify/issues/44)). The RFP requires at least three SCF-awarded projects on web and one on API. Pilot recruiting is planned; names will be added only with a letter.
+**Pilots and demand:** No pilot or letter of interest yet (issue [#44](https://github.com/romulospl/stellytics/issues/44)). The RFP requires at least three SCF-awarded projects on web and one on API. Pilot recruiting is planned; names will be added only with a letter.
 
 **Requested budget range:** `[PENDING Romulo]`. The proposal draft ([`proposal.md`](proposal.md)) uses USD 150,000 as an illustrative ceiling (handbook: Build Award up to USD 150,000, Raven 2026-11-15), split 10/20/30/40 across tranches. The total is a proposal to validate, not a quote.
 

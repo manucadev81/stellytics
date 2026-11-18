@@ -28,7 +28,7 @@ variable "server_image" {
 }
 
 variable "data_volume_size" {
-  description = "Tamanho, em GB, do volume com os dados do Postgres e do Caddy."
+  description = "Tamanho, em GB, do volume com os dados do Postgres."
   type        = number
   default     = 40
 
@@ -90,8 +90,8 @@ variable "monitor_server_type" {
 
 # Alta disponibilidade (#52, ADR 0009). Tudo desligado por padrão: com os
 # valores padrão o plano é idêntico ao anterior. Estes recursos são só a base
-# de provisionamento; a configuração do Postgres (replicação), do Caddy e do
-# sistema (IP flutuante) ainda não existe no Ansible. Ver docs/sla.md.
+# de provisionamento; a replicação do Postgres e o IP flutuante ainda não têm
+# failover automatizado no Ansible. As VMs extras usam Caddy. Ver docs/sla.md.
 variable "ha_ingest_replicas" {
   description = "Quantidade de VMs extras de ingestão (gateway, coletor e Caddy), além da principal. 0 desliga."
   type        = number

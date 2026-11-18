@@ -2,7 +2,7 @@
 
 - **Status:** Aceito
 - **Data:** 14/11/2026
-- **Épico:** [#5 (E5)](https://github.com/romulospl/notify/issues/5)
+- **Épico:** [#5 (E5)](https://github.com/romulospl/stellytics/issues/5)
 - **Issues cobertas:** #30, #31, #32, #33, #34, #35 e #36
 - **Depende de:** [ADR 0002](../adr/0002-arquitetura-e-stack.md) e [spec do E2](e2-tenants-e-controle-de-acesso.md) (seção 5, chave de ingestão; seção 6, status do tenant)
 

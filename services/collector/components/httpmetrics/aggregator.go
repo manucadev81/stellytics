@@ -13,7 +13,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
-	"github.com/romulospl/notify/services/collector/components/tenantattr"
+	"github.com/romulospl/stellytics/services/collector/components/tenantattr"
 )
 
 const (

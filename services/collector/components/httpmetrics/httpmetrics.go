@@ -10,7 +10,7 @@ package httpmetrics
 import (
 	"time"
 
-	"github.com/romulospl/notify/services/collector/components/routenorm"
+	"github.com/romulospl/stellytics/services/collector/components/routenorm"
 )
 
 // NumBuckets é o tamanho de duration_buckets (spec, seção 4, D2).

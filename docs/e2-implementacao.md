@@ -1,6 +1,6 @@
 # E2: o que foi implementado
 
-Registro da implementação do épico [E2 (#2)](https://github.com/romulospl/notify/issues/2), multi-tenant, cadastro e controle de acesso, feita em **13/11/2026**. O contrato que estas issues seguem está no [spec do E2](specs/e2-tenants-e-controle-de-acesso.md) e no [ADR 0003](adr/0003-isolamento-no-portal.md). Aqui fica o que foi construído, onde está, as escolhas feitas na implementação e o que falta.
+Registro da implementação do épico [E2 (#2)](https://github.com/romulospl/stellytics/issues/2), multi-tenant, cadastro e controle de acesso, feita em **13/11/2026**. O contrato que estas issues seguem está no [spec do E2](specs/e2-tenants-e-controle-de-acesso.md) e no [ADR 0003](adr/0003-isolamento-no-portal.md). Aqui fica o que foi construído, onde está, as escolhas feitas na implementação e o que falta.
 
 ## 1. Situação
 
@@ -8,18 +8,18 @@ As 9 issues de código do E2 estão na `main` e fechadas (a #57, esqueleto do po
 
 | Issue | O que é | PR | Commit |
 |---|---|---|---|
-| [#16 (2.1)](https://github.com/romulospl/notify/issues/16) | Modelo de tenant, visões e usuários de ingestão | [#71](https://github.com/romulospl/notify/pull/71) | `4eb25c3` |
-| [#58 (2.8)](https://github.com/romulospl/notify/issues/58) | Conta de serviço e provisionamento no Umami | [#71](https://github.com/romulospl/notify/pull/71) | `4c3da83` |
-| [#18 (2.3)](https://github.com/romulospl/notify/issues/18) | Camada única de acesso a dados | [#72](https://github.com/romulospl/notify/pull/72) | `2f8a2d1` |
-| [#59 (2.9)](https://github.com/romulospl/notify/issues/59) | Serviços de API e chaves de ingestão | [#73](https://github.com/romulospl/notify/pull/73) | `9d33fdf` |
-| [#60 (2.10)](https://github.com/romulospl/notify/issues/60) | Confirmação de e-mail e recuperação de senha | [#76](https://github.com/romulospl/notify/pull/76) | `e037b11` |
-| — | Correção da #59: nome de serviço repetido em pedidos simultâneos | [#76](https://github.com/romulospl/notify/pull/76) | `a6534fa` |
-| [#17 (2.2)](https://github.com/romulospl/notify/issues/17) | Cadastro self-service do projeto | [#77](https://github.com/romulospl/notify/pull/77) | `6f0a1cf` |
-| [#19 (2.4)](https://github.com/romulospl/notify/issues/19) | Operador SCF, comando de administração e seed | [#78](https://github.com/romulospl/notify/pull/78) | `b262905` |
-| [#20 (2.5)](https://github.com/romulospl/notify/issues/20) | Remoção e reativação de projeto (o coletor, #30, recusa a chave do projeto removido; teste da transição na branch `test/e2-collector-isolation`) | [#88](https://github.com/romulospl/notify/pull/88) | `f83dc69` |
-| — | Correção da #59: ações de chave com ID de outro tenant respondem 404 | [#88](https://github.com/romulospl/notify/pull/88) | `de177f7` |
-| [#21 (2.6)](https://github.com/romulospl/notify/issues/21) | Suíte de isolamento | [#88](https://github.com/romulospl/notify/pull/88) | `f867a3d` |
-| [#21 (2.6)](https://github.com/romulospl/notify/issues/21) | Último caso: chave de A dizendo ser de B, gravada como A (e2e do coletor) | [#99](https://github.com/romulospl/notify/pull/99) | `3659ae7` |
+| [#16 (2.1)](https://github.com/romulospl/stellytics/issues/16) | Modelo de tenant, visões e usuários de ingestão | [#71](https://github.com/romulospl/stellytics/pull/71) | `4eb25c3` |
+| [#58 (2.8)](https://github.com/romulospl/stellytics/issues/58) | Conta de serviço e provisionamento no Umami | [#71](https://github.com/romulospl/stellytics/pull/71) | `4c3da83` |
+| [#18 (2.3)](https://github.com/romulospl/stellytics/issues/18) | Camada única de acesso a dados | [#72](https://github.com/romulospl/stellytics/pull/72) | `2f8a2d1` |
+| [#59 (2.9)](https://github.com/romulospl/stellytics/issues/59) | Serviços de API e chaves de ingestão | [#73](https://github.com/romulospl/stellytics/pull/73) | `9d33fdf` |
+| [#60 (2.10)](https://github.com/romulospl/stellytics/issues/60) | Confirmação de e-mail e recuperação de senha | [#76](https://github.com/romulospl/stellytics/pull/76) | `e037b11` |
+| — | Correção da #59: nome de serviço repetido em pedidos simultâneos | [#76](https://github.com/romulospl/stellytics/pull/76) | `a6534fa` |
+| [#17 (2.2)](https://github.com/romulospl/stellytics/issues/17) | Cadastro self-service do projeto | [#77](https://github.com/romulospl/stellytics/pull/77) | `6f0a1cf` |
+| [#19 (2.4)](https://github.com/romulospl/stellytics/issues/19) | Operador SCF, comando de administração e seed | [#78](https://github.com/romulospl/stellytics/pull/78) | `b262905` |
+| [#20 (2.5)](https://github.com/romulospl/stellytics/issues/20) | Remoção e reativação de projeto (o coletor, #30, recusa a chave do projeto removido; teste da transição na branch `test/e2-collector-isolation`) | [#88](https://github.com/romulospl/stellytics/pull/88) | `f83dc69` |
+| — | Correção da #59: ações de chave com ID de outro tenant respondem 404 | [#88](https://github.com/romulospl/stellytics/pull/88) | `de177f7` |
+| [#21 (2.6)](https://github.com/romulospl/stellytics/issues/21) | Suíte de isolamento | [#88](https://github.com/romulospl/stellytics/pull/88) | `f867a3d` |
+| [#21 (2.6)](https://github.com/romulospl/stellytics/issues/21) | Último caso: chave de A dizendo ser de B, gravada como A (e2e do coletor) | [#99](https://github.com/romulospl/stellytics/pull/99) | `3659ae7` |
 
 O spec do E2 e o ADR 0003 entraram junto, no commit `75658a7`.
 

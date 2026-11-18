@@ -22,13 +22,13 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/romulospl/notify/services/ingest-web/internal/clientip"
-	"github.com/romulospl/notify/services/ingest-web/internal/config"
-	"github.com/romulospl/notify/services/ingest-web/internal/fingerprint"
-	"github.com/romulospl/notify/services/ingest-web/internal/limit"
-	"github.com/romulospl/notify/services/ingest-web/internal/proof"
-	"github.com/romulospl/notify/services/ingest-web/internal/relay"
-	"github.com/romulospl/notify/services/ingest-web/internal/site"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/clientip"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/config"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/fingerprint"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/limit"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/proof"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/relay"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/site"
 )
 
 func main() {

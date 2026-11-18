@@ -2,10 +2,9 @@
 # Teste da pilha de produção (#14), localmente e no job `prod-stack` do CI.
 #
 # Sobe compose/prod.yaml com um S3 local (test/prod-test.yaml) e confere:
-# 1. o Caddy publica o portal, só as rotas do gateway e só o OTLP do coletor;
-#    nada leva ao Umami;
-# 2. Umami, Postgres, coletor e rollup não têm porta pública;
-# 2b. uma métrica OTLP enviada pelo Caddy com chave de ingestão cai em
+# 1. Caddy publica o portal, só as rotas do gateway e só o OTLP; Umami não vaza;
+# 2. Caddy é o único serviço público; Postgres fica no loopback;
+# 2b. uma métrica OTLP com chave de ingestão cai em
 #    api_metric_1m no tenant da chave, e o rollup roda;
 # 3. o backup base e o WAL vão para o S3, cifrados;
 # 4. a restauração, seguindo docs/deploy.md, traz o banco de volta, inclusive
@@ -44,6 +43,7 @@ INGEST_WEB_IMAGE=${INGEST_WEB_IMAGE:-stellytics-ingest-web:dev}
 COLLECTOR_IMAGE=${COLLECTOR_IMAGE:-stellytics-collector:dev}
 ROLLUP_IMAGE=${ROLLUP_IMAGE:-stellytics-rollup:dev}
 PORTAL_HOST=portal.localhost
+PORTAL_ALIAS_HOST=alias.localhost
 INGEST_HOST=ingest.localhost
 API_HOST=api.localhost
 ACME_EMAIL=ops@example.org
@@ -100,8 +100,8 @@ for path in /api/send /api/heartbeat /api/websites /api/record /; do
   [ "$(get ingest.localhost "$path")" = 404 ] || fail "host da ingestão deveria dar 404 em $path"
 done
 # No host do portal, /api/heartbeat é do Next (404), não do Umami.
-[ "$(curl -sk --resolve portal.localhost:443:127.0.0.1 https://portal.localhost/api/heartbeat)" != "ok" ] \
-  || fail "o host do portal chega ao Umami"
+[ "$(curl -sk --resolve portal.localhost:443:127.0.0.1 https://portal.localhost/api/heartbeat)" != "ok" ] || fail "o host do portal chega ao Umami"
+[ "$(curl -sk --resolve alias.localhost:443:127.0.0.1 -o /dev/null -w '%{http_code}' https://alias.localhost/sign-in)" = 301 ] || fail "o alias do portal não redireciona"
 
 # Host da API (ADR 0012): só o OTLP, e só com chave de ingestão.
 post() { curl -sk -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' \
@@ -113,7 +113,7 @@ for path in / /healthz /e /api/send /v1/metrics; do
   [ "$(get api.localhost "$path")" = 404 ] || fail "host da API deveria dar 404 no GET $path"
 done
 [ "$(post /api/send)" = 404 ] || fail "host da API chega a outra rota por POST"
-# gRPC pela 443: sem chave, o coletor responde Unauthenticated (grpc-status 16).
+# gRPC local: sem chave, o coletor responde Unauthenticated (grpc-status 16).
 # O corpo é uma mensagem gRPC vazia (5 bytes de cabeçalho): o servidor lê a
 # mensagem antes de conferir a chave.
 grpc_status=$(printf '\0\0\0\0\0' | curl -sk --http2 -o /dev/null -D - -X POST --data-binary @- \
@@ -124,8 +124,7 @@ grpc_status=$(printf '\0\0\0\0\0' | curl -sk --http2 -o /dev/null -D - -X POST -
 [ "$grpc_status" = 16 ] || fail "gRPC sem chave deveria dar grpc-status 16 e veio '$grpc_status'"
 ok "Caddy publica o portal, só as rotas do gateway e só o OTLP (HTTP e gRPC) do coletor"
 
-# Logs do Caddy sem IP, cabeçalhos nem URL, também nos de erro: com o gateway
-# parado, o pedido dá 502 e o Caddy registra o erro.
+# Os logs não devem guardar IP, cabeçalhos ou URL, mesmo em erro de upstream.
 marker="marcador-$(rand 6)"
 compose stop ingest-web >/dev/null
 code=$(curl -sk -o /dev/null -w '%{http_code}' -H "X-Stellytics-Test: $marker" \
@@ -133,23 +132,23 @@ code=$(curl -sk -o /dev/null -w '%{http_code}' -H "X-Stellytics-Test: $marker" \
 [ "$code" = 502 ] || fail "com o gateway parado, esperava 502 e veio $code"
 caddy_logs=$(compose logs --no-color caddy)
 grep -q '"status":502' <<<"$caddy_logs" || fail "o Caddy não registrou o erro 502 (teste sem efeito)"
-if grep -qE "$marker|remote_ip|client_ip" <<<"$caddy_logs"; then
-  fail "o log do Caddy guarda IP, cabeçalho ou URL do pedido"
-fi
+if grep -qE "$marker|remote_ip|client_ip" <<<"$caddy_logs"; then fail "o log do Caddy guarda IP, cabeçalho ou URL do pedido"; fi
 compose up -d --wait ingest-web >/dev/null
 ok "logs do Caddy sem IP, cabeçalhos nem URL"
 
-# 2. Sem porta pública além do Caddy.
+# 2. Só Caddy publica portas públicas; Postgres fica no loopback.
 bindings() { docker inspect -f '{{json .HostConfig.PortBindings}}' "$(compose ps -q "$1")"; }
 for svc in umami portal ingest-web collector rollup s3; do
   b=$(bindings "$svc")
   [ "$b" = "{}" ] || [ "$b" = "null" ] || fail "$svc com porta publicada: $b"
 done
+caddy_bindings=$(bindings caddy)
+grep -q '80/tcp' <<<"$caddy_bindings" && grep -q '443/tcp' <<<"$caddy_bindings" || fail "Caddy não publica 80/443: $caddy_bindings"
 pg_port=$(compose port postgres 5432)
 case "$pg_port" in 127.0.0.1:*) ;; *) fail "Postgres publicado fora do loopback: $pg_port" ;; esac
-ok "Umami, coletor e rollup sem porta; Postgres só no loopback"
+ok "Caddy é o único serviço público; Umami e rollup sem porta; Postgres só no loopback"
 
-# 2b. Ingestão de API de ponta a ponta, pelo Caddy: a chave define o tenant.
+# 2b. Ingestão OTLP de ponta a ponta pelo Caddy: a chave define o tenant.
 suffix=$(rand 5)
 prefix=$(LC_ALL=C tr -dc 'a-z2-7' </dev/urandom | head -c 8 || true)
 key="ntf_${prefix}_$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 43 || true)"
@@ -169,14 +168,14 @@ for _ in $(seq 1 30); do
   [ "$n" -ge 1 ] && break
   sleep 2
 done
-[ "$n" -ge 1 ] || fail "a métrica enviada pelo Caddy não chegou a api_metric_1m"
+[ "$n" -ge 1 ] || fail "a métrica enviada pelo coletor não chegou a api_metric_1m"
 [ "$(curl -sk -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer ntf_aaaaaaaa_invalida' -H 'Content-Type: application/json' -d '{}' \
   --resolve api.localhost:443:127.0.0.1 https://api.localhost/v1/traces)" = 401 ] || fail "chave inválida deveria dar 401"
-if compose logs --no-color caddy collector | grep -q "$key"; then fail "a chave de ingestão apareceu num log"; fi
+if compose logs --no-color collector | grep -q "$key"; then fail "a chave de ingestão apareceu num log"; fi
 # O rollup criou as partições do mês (api_metric_maintain) ao subir.
 [ "$(psql_stellytics "select count(*) from pg_class where relname = 'api_metric_1h_p$(date -u +%Y%m)'")" = 1 ] ||
   fail "o rollup não criou a partição do mês em api_metric_1h"
-ok "OTLP pelo Caddy grava em api_metric_1m no tenant da chave; rollup no ar"
+ok "OTLP grava em api_metric_1m no tenant da chave; rollup no ar"
 
 # 3. Backup base e WAL no S3.
 psql_stellytics "create table restore_check (note text primary key)"

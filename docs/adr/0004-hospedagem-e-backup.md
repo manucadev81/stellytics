@@ -1,8 +1,8 @@
 # 0004. Hospedagem na Hetzner, OpenTofu e backup com WAL-G
 
-- **Status:** Aceito
+- **Status:** Aceito; proxy principal substituído por 0013
 - **Data:** 14/11/2026
-- **Issue:** [#14](https://github.com/romulospl/notify/issues/14)
+- **Issue:** [#14](https://github.com/romulospl/stellytics/issues/14)
 - **Depende de:** [ADR 0002](0002-arquitetura-e-stack.md)
 
 ## Contexto
@@ -51,5 +51,5 @@ Restrições que pesam:
 - **Volume obrigatório:** o volume é montado com `nofail`, para a VM subir mesmo sem ele, mas o Docker e o backup exigem `/srv/stellytics` montado (`RequiresMountsFor`). Sem isso, um reboot com o volume ausente criaria um banco vazio no disco da VM, e a retenção acabaria apagando os backups bons.
 - **IPv6:** a rede do Compose tem IPv4 e IPv6, porque com o `userland-proxy` desligado o Caddy só atende o registro AAAA assim. O gateway confia no `X-Forwarded-For` dos dois IPs fixos do Caddy.
 - **Restauração:** o `stellytics-restore` descarta os alvos de recuperação que vêm dentro de um backup feito depois de outra restauração. Para voltar a um horário, o ponto de partida é o último backup concluído antes dele (`docs/deploy.md`).
-- **Pontos únicos de falha:** a VM e o volume. Alta disponibilidade fica para o pós-MVP ([#52](https://github.com/romulospl/notify/issues/52)).
+- **Pontos únicos de falha:** a VM e o volume. Alta disponibilidade fica para o pós-MVP ([#52](https://github.com/romulospl/stellytics/issues/52)).
 - **Subir versões:** imagens e binários fixados por digest ou hash (Postgres, Caddy, Umami, WAL-G, cosign, OpenTofu e providers). O Renovate cobre os arquivos do Compose e os Dockerfiles; WAL-G e cosign são atualizados à mão, conferindo o hash da release.

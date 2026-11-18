@@ -1,13 +1,13 @@
 # E4: o que foi implementado
 
-Registro da implementação do épico [E4 (#4)](https://github.com/romulospl/notify/issues/4), painéis de analytics web, iniciado em **14/11/2026**. O E4 não tem spec próprio: ele roda todo dentro do portal e usa contratos que já existem, o isolamento do [ADR 0003](adr/0003-isolamento-no-portal.md) e da seção 4 do [spec do E2](specs/e2-tenants-e-controle-de-acesso.md), e a API do Umami 3.4.1 conferida no [ADR 0001](adr/0001-ferramenta-base.md).
+Registro da implementação do épico [E4 (#4)](https://github.com/romulospl/stellytics/issues/4), painéis de analytics web, iniciado em **14/11/2026**. O E4 não tem spec próprio: ele roda todo dentro do portal e usa contratos que já existem, o isolamento do [ADR 0003](adr/0003-isolamento-no-portal.md) e da seção 4 do [spec do E2](specs/e2-tenants-e-controle-de-acesso.md), e a API do Umami 3.4.1 conferida no [ADR 0001](adr/0001-ferramenta-base.md).
 
 ## 1. Situação
 
 | Issue | O que é | PR | Commit |
 |---|---|---|---|
-| [#28 (4.1)](https://github.com/romulospl/notify/issues/28) | Painel web do tenant com as 7 métricas mínimas | [#89](https://github.com/romulospl/notify/pull/89) | `9755566` |
-| [#29 (4.2)](https://github.com/romulospl/notify/issues/29) | Painel web global do SCF, com comparação entre projetos | — | Em revisão |
+| [#28 (4.1)](https://github.com/romulospl/stellytics/issues/28) | Painel web do tenant com as 7 métricas mínimas | [#89](https://github.com/romulospl/stellytics/pull/89) | `9755566` |
+| [#29 (4.2)](https://github.com/romulospl/stellytics/issues/29) | Painel web global do SCF, com comparação entre projetos | — | Em revisão |
 
 ## 2. #28: painel web do tenant
 

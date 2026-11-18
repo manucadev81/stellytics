@@ -11,7 +11,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
-	"github.com/romulospl/notify/services/collector/components/httpmetrics"
+	"github.com/romulospl/stellytics/services/collector/components/httpmetrics"
 )
 
 func TestParseProfile(t *testing.T) {

@@ -2,7 +2,7 @@
 
 - **Status:** Aceito
 - **Data:** 13/11/2026
-- **Issue:** [#18](https://github.com/romulospl/notify/issues/18)
+- **Issue:** [#18](https://github.com/romulospl/stellytics/issues/18)
 - **Altera em parte:** [ADR 0001](0001-ferramenta-base.md) (justificativa 3 e primeira consequência)
 
 ## Contexto
@@ -12,11 +12,11 @@ O ADR 0001 escolheu o Umami em parte porque ele já tem equipes e sites, e afirm
 O ADR 0002 mudou o cenário:
 
 - o portal é a única porta de entrada para tenants e operadores;
-- o Umami é usado como motor headless e fica só na rede interna (issue [#62](https://github.com/romulospl/notify/issues/62));
+- o Umami é usado como motor headless e fica só na rede interna (issue [#62](https://github.com/romulospl/stellytics/issues/62));
 - o portal lê as estatísticas com uma conta de serviço que enxerga todos os sites;
 - as métricas de API ficam no banco `stellytics`, fora do Umami.
 
-Nessas condições, o controle de acesso do Umami nunca é exercido por um tenant: quem chama o Umami é sempre o portal, com acesso total. O isolamento precisa de um dono claro, porque é critério de avaliação do RFP e exige testes automatizados (issue [#21](https://github.com/romulospl/notify/issues/21)).
+Nessas condições, o controle de acesso do Umami nunca é exercido por um tenant: quem chama o Umami é sempre o portal, com acesso total. O isolamento precisa de um dono claro, porque é critério de avaliação do RFP e exige testes automatizados (issue [#21](https://github.com/romulospl/stellytics/issues/21)).
 
 ## Decisão
 
@@ -46,4 +46,4 @@ O contrato detalhado está no [spec do E2](../specs/e2-tenants-e-controle-de-ace
   - o gateway e o coletor usam usuários de banco próprios, com permissão mínima.
 - O cadastro fica mais simples: um site no Umami por site do tenant, sem sincronizar usuários.
 - A conta de serviço do Umami passa a ser uma credencial crítica. Fica só no portal, em variável de ambiente.
-- A issue [#58](https://github.com/romulospl/notify/issues/58) cria só sites no Umami.
+- A issue [#58](https://github.com/romulospl/stellytics/issues/58) cria só sites no Umami.

@@ -120,7 +120,7 @@ jobs:
         run: |
           go-licenses report ./... \
             --template "$GITHUB_WORKSPACE/scripts/licenses/go-licenses.tpl" \
-            --ignore github.com/romulospl/notify/services \
+            --ignore github.com/romulospl/stellytics/services \
             > "$RUNNER_TEMP/go-licenses.tsv"
       - name: Confere contra a allowlist
         run: |

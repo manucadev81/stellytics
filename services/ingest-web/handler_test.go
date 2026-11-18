@@ -17,12 +17,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/romulospl/notify/services/ingest-web/internal/clientip"
-	"github.com/romulospl/notify/services/ingest-web/internal/fingerprint"
-	"github.com/romulospl/notify/services/ingest-web/internal/limit"
-	"github.com/romulospl/notify/services/ingest-web/internal/proof"
-	"github.com/romulospl/notify/services/ingest-web/internal/relay"
-	"github.com/romulospl/notify/services/ingest-web/internal/site"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/clientip"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/fingerprint"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/limit"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/proof"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/relay"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/site"
 )
 
 const (

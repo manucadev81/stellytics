@@ -8,7 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/romulospl/notify/services/internal/pgtest"
+	"github.com/romulospl/stellytics/services/internal/pgtest"
 )
 
 // Teste de integração: precisa de DATABASE_URL (o banco stellytics, com o dono das

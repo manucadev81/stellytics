@@ -17,8 +17,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/romulospl/notify/services/ingest-web/internal/clientip"
-	"github.com/romulospl/notify/services/ingest-web/internal/relay"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/clientip"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/relay"
 )
 
 // clientIP é o IP que o "Caddy" do teste informa no X-Forwarded-For.

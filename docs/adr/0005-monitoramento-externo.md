@@ -2,7 +2,7 @@
 
 - **Status:** Aceito
 - **Data:** 14/11/2026
-- **Issue:** [#15](https://github.com/romulospl/notify/issues/15)
+- **Issue:** [#15](https://github.com/romulospl/stellytics/issues/15)
 - **Depende de:** [ADR 0002](0002-arquitetura-e-stack.md), [ADR 0004](0004-hospedagem-e-backup.md)
 
 ## Contexto

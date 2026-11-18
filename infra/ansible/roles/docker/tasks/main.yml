@@ -40,8 +40,8 @@
     state: present
     update_cache: true
 
-# userland-proxy desligado: o Caddy vê o IP real do cliente também em IPv6, e o
-# gateway trunca esse IP (ver infra/caddy/Caddyfile).
+# userland-proxy desligado para o Caddy em contêiner receber o IP real do
+# cliente também em IPv6; o gateway confia no IP fixo do Caddy.
 - name: Configuração do Docker
   ansible.builtin.copy:
     dest: /etc/docker/daemon.json

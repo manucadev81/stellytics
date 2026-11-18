@@ -7,11 +7,12 @@ stellytics_data_dir: /srv/stellytics
 
 # Hosts públicos (registros A e AAAA apontando para a VM). O da ingestão não
 # pode ter umami, analytics, track nem collect (CLAUDE.md).
-portal_host: app.example.org
-ingest_host: e.example.org
+portal_host: app.stellytics.xyz
+portal_alias_host: stellytics.xyz
+ingest_host: e.stellytics.xyz
 # Host da ingestão de API (OTLP/HTTP e gRPC na 443, ADR 0012). É o endpoint que
 # os tenants põem no exportador OTLP.
-api_host: otlp.example.org
+api_host: otlp.stellytics.xyz
 acme_email: ops@example.org
 mail_from: "stellytics <no-reply@example.org>"
 # Cadastro com aprovação prévia (#49): true deixa projetos novos pendentes até
@@ -20,13 +21,13 @@ signup_approval: false
 
 # Imagens publicadas pelo workflow de release, SEMPRE por digest. O deploy
 # confere a assinatura de cada uma com cosign antes de subir.
-portal_image: ghcr.io/romulospl/notify/portal@sha256:CONFIRA
-ingest_web_image: ghcr.io/romulospl/notify/ingest-web@sha256:CONFIRA
-collector_image: ghcr.io/romulospl/notify/collector@sha256:CONFIRA
-rollup_image: ghcr.io/romulospl/notify/rollup@sha256:CONFIRA
+portal_image: ghcr.io/romulospl/stellytics/portal@sha256:CONFIRA
+ingest_web_image: ghcr.io/romulospl/stellytics/ingest-web@sha256:CONFIRA
+collector_image: ghcr.io/romulospl/stellytics/collector@sha256:CONFIRA
+rollup_image: ghcr.io/romulospl/stellytics/rollup@sha256:CONFIRA
 # Teto de memória do coletor; o memory_limiter dele recusa dados a 80% disso.
 collector_mem_limit: 512m
-cosign_identity_regexp: '^https://github.com/romulospl/notify/\.github/workflows/release\.yml@refs/tags/v'
+cosign_identity_regexp: '^https://github.com/romulospl/stellytics/\.github/workflows/release\.yml@refs/tags/v'
 cosign_oidc_issuer: https://token.actions.githubusercontent.com
 
 # cosign 3.1.4, fixado por hash (https://github.com/sigstore/cosign/releases).

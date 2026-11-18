@@ -1,6 +1,6 @@
-# Produção (#14, ADR 0004): uma VM na Hetzner, com o Caddy como única porta de
-# entrada (80 e 443). Postgres, Umami, portal, gateway, coletor e rollup ficam
-# só na rede interna. O Ansible copia este arquivo, o Caddyfile e o .env para a VM e sobe
+# Produção (#14, ADR 0004): todos os serviços rodam em Docker Compose. O Caddy
+# é o único serviço com portas públicas; Postgres, Umami e rollup ficam
+# apenas na rede Docker. O Ansible copia este arquivo e o .env para a VM e sobe
 # tudo com `docker compose -f prod.yaml up -d`.
 #
 # Diferenças do ambiente local (dev.yaml):
@@ -9,12 +9,11 @@
 #   INGEST_WEB_IMAGE, COLLECTOR_IMAGE e ROLLUP_IMAGE);
 # - o Postgres é a variante Debian com WAL-G (postgres/Dockerfile), com o
 #   arquivamento contínuo de WAL no Object Storage;
-# - nenhuma porta publicada além das do Caddy; o Postgres escuta só no
-#   loopback da VM, para o túnel SSH de administração;
+# - Caddy termina TLS e encaminha para portal, gateway e coletor pela rede
+#   Docker; Postgres publica só no loopback para o túnel SSH de administração;
 # - sem Mailpit: o SMTP vem de SMTP_URL;
 # - todas as senhas e chaves são obrigatórias (sem valor padrão);
-# - o coletor OTLP não publica 4317 nem 4318: sai pelo Caddy, em API_HOST, na
-#   443 (ADR 0012).
+# - Caddy encaminha OTLP/HTTP e OTLP/gRPC para o coletor (ADR 0012).
 
 # Nome fixo do projeto: contêineres stellytics-<serviço>-1 e rede stellytics_internal.
 name: stellytics
@@ -95,7 +94,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    # Sem porta publicada e sem rota no Caddy (#62, infra/README.md).
+    # Sem porta publicada e sem rota pública (#62, infra/README.md).
     init: true
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:3000/api/heartbeat"]
@@ -145,7 +144,7 @@ services:
       DATABASE_URL: postgresql://stellytics_ingest:${STELLYTICS_INGEST_DB_PASSWORD:?}@postgres:5432/stellytics
       UMAMI_URL: http://umami:3000
       CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-x-stellytics-client-ip}
-      # O X-Forwarded-For só vale vindo do Caddy, que tem IPs fixos na rede.
+      # Só confia no Caddy, que tem IP fixo na rede Docker.
       TRUSTED_PROXIES: 172.30.0.10,fd30:6e6f:7466::10
       PROOF_SECRET: ${INGEST_PROOF_SECRET:?}
       RATE_LIMIT: ${INGEST_RATE_LIMIT:-20}
@@ -231,11 +230,11 @@ services:
     networks: [internal]
 
   caddy:
-    # Caddy 2.11.7, fixado por digest. Única porta de entrada: TLS automático
-    # (Let's Encrypt) para PORTAL_HOST, INGEST_HOST e API_HOST.
+    # Caddy com TLS automático. Só ele publica portas públicas.
     image: caddy:2.11.7-alpine@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5
     environment:
       PORTAL_HOST: ${PORTAL_HOST:?}
+      PORTAL_ALIAS_HOST: ${PORTAL_ALIAS_HOST:?}
       INGEST_HOST: ${INGEST_HOST:?}
       API_HOST: ${API_HOST:?}
       ACME_EMAIL: ${ACME_EMAIL:?}
@@ -244,8 +243,6 @@ services:
       - "443:443"
       - "443:443/udp"
     volumes:
-      # A pasta, não o arquivo: o Ansible troca o Caddyfile por renomeação, e um
-      # arquivo montado sozinho continuaria apontando para a versão antiga.
       - ../caddy:/etc/caddy:ro
       - ${STELLYTICS_DATA_DIR:-/srv/stellytics}/caddy:/data
     depends_on:
@@ -262,8 +259,7 @@ services:
         ipv4_address: 172.30.0.10
         ipv6_address: fd30:6e6f:7466::10
 
-# IPv4 e IPv6: com o userland-proxy desligado (Ansible, papel docker), o Caddy
-# só atende clientes IPv6 (registro AAAA) se a rede tiver IPv6.
+# Rede isolada dos serviços internos; somente Caddy publica portas públicas.
 networks:
   internal:
     enable_ipv6: true

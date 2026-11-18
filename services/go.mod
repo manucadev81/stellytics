@@ -1,4 +1,4 @@
-module github.com/romulospl/notify/services
+module github.com/romulospl/stellytics/services
 
 go 1.26.0
 

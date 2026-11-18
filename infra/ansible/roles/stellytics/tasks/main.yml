@@ -10,7 +10,7 @@
     - "{{ stellytics_root }}/infra/caddy"
     - "{{ stellytics_root }}/infra/scripts"
 
-- name: Copia o Compose, o Postgres com WAL-G, o Caddyfile e os scripts de migração do repositório
+- name: Copia o Compose, o Postgres com WAL-G e os scripts de migração do repositório
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../{{ item.src }}"
     dest: "{{ stellytics_root }}/infra/{{ item.src }}"
@@ -117,6 +117,19 @@
   no_log: true
   tags: [images]
 
+# A versão anterior da role mantinha o Nginx no host. Desative-o antes de o
+# Compose publicar 80/443 para o Caddy; em instalações novas, o serviço não
+# existe e esta etapa não altera nada.
+- name: Descobre os serviços instalados no host
+  ansible.builtin.service_facts:
+
+- name: Desativa o Nginx legado antes de iniciar o proxy em Docker
+  ansible.builtin.service:
+    name: nginx
+    state: stopped
+    enabled: false
+  when: "'nginx.service' in ansible_facts.services"
+
 - name: Sobe a pilha
   ansible.builtin.command:
     cmd: "docker compose {{ stellytics_compose_files }} up -d --build --wait --remove-orphans"
@@ -138,7 +151,6 @@
   no_log: true
   tags: [images]
 
-# O Caddy não relê o Caddyfile sozinho; recarrega sem derrubar conexões.
 - name: Recarrega o Caddy se o Caddyfile mudou
   ansible.builtin.command:
     cmd: "docker compose {{ stellytics_compose_files }} exec -T caddy caddy reload --config /etc/caddy/Caddyfile"

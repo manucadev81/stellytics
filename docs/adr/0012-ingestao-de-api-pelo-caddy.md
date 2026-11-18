@@ -1,6 +1,6 @@
 # 0012. Ingestão de API em produção pelo Caddy, na porta 443
 
-- **Status:** Proposto
+- **Status:** Retomado por 0014
 - **Data:** 16/11/2026
 - **Issue:** #14 (IaC da produção), #30 e #34
 

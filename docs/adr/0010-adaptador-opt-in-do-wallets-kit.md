@@ -2,7 +2,7 @@
 
 - **Status:** Aceito
 - **Data:** 15/11/2026
-- **Issue:** [#50](https://github.com/romulospl/notify/issues/50) (continua aberta: refs, não fecha)
+- **Issue:** [#50](https://github.com/romulospl/stellytics/issues/50) (continua aberta: refs, não fecha)
 
 ## Contexto
 

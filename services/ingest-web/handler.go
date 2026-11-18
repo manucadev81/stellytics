@@ -13,11 +13,11 @@ import (
 	"path"
 	"strings"
 
-	"github.com/romulospl/notify/services/ingest-web/internal/clientip"
-	"github.com/romulospl/notify/services/ingest-web/internal/fingerprint"
-	"github.com/romulospl/notify/services/ingest-web/internal/proof"
-	"github.com/romulospl/notify/services/ingest-web/internal/relay"
-	"github.com/romulospl/notify/services/ingest-web/internal/site"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/clientip"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/fingerprint"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/proof"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/relay"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/site"
 )
 
 // maxBody é o tamanho máximo do corpo de um evento.

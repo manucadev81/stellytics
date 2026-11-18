@@ -20,7 +20,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
-	"github.com/romulospl/notify/services/collector/components/httpmetrics"
+	"github.com/romulospl/stellytics/services/collector/components/httpmetrics"
 )
 
 // route é uma rota simulada: o template (http.route) e como montar o caminho real.

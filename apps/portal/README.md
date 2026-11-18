@@ -2,14 +2,14 @@
 
 Portal em Next.js (App Router), com Drizzle ORM, Better Auth e Tailwind. É a única porta de entrada da plataforma: cadastro self-service, login, painéis do tenant e painéis globais do SCF.
 
-Lê as estatísticas web pela API do Umami (com uma conta de serviço, [#58](https://github.com/romulospl/notify/issues/58)) e as métricas de API direto do banco `stellytics`. O isolamento entre tenants na leitura é responsabilidade do portal: o tenant vem sempre da sessão ([#18](https://github.com/romulospl/notify/issues/18)).
+Lê as estatísticas web pela API do Umami (com uma conta de serviço, [#58](https://github.com/romulospl/stellytics/issues/58)) e as métricas de API direto do banco `stellytics`. O isolamento entre tenants na leitura é responsabilidade do portal: o tenant vem sempre da sessão ([#18](https://github.com/romulospl/stellytics/issues/18)).
 
-## O que já existe ([#57](https://github.com/romulospl/notify/issues/57))
+## O que já existe ([#57](https://github.com/romulospl/stellytics/issues/57))
 
 - Login por e-mail e senha com sessão no servidor (Better Auth, tabelas no banco `stellytics`).
 - Rotas privadas: `/dashboard` (área do tenant) e `/operator` (área do operador SCF, só para o papel `operator`; outros recebem 404).
 - O `proxy.ts` redireciona para `/sign-in` quem não tem cookie de sessão; a validação de verdade é feita no servidor (`src/lib/access.ts`).
-- Cadastro aberto com confirmação de e-mail e recuperação de senha ([#60](https://github.com/romulospl/notify/issues/60)); ver a seção "Cadastro e e-mail".
+- Cadastro aberto com confirmação de e-mail e recuperação de senha ([#60](https://github.com/romulospl/stellytics/issues/60)); ver a seção "Cadastro e e-mail".
 - O IP de quem entra no portal não é gravado na sessão; ele só é usado em memória para o limite de tentativas.
 
 A interface é em inglês, porque o público são os projetos do ecossistema Stellar e o SCF.
@@ -44,7 +44,7 @@ pnpm user:create --email voce@example.com --name "Seu nome"
 
 O usuário nasce com e-mail confirmado e sem projeto; ao entrar, cai em `/onboarding`. Esse script não cria operador.
 
-### Seed de desenvolvimento ([#19](https://github.com/romulospl/notify/issues/19))
+### Seed de desenvolvimento ([#19](https://github.com/romulospl/stellytics/issues/19))
 
 Cria 2 projetos de teste (cada um com dono, um serviço de API e uma chave) e 1 operador SCF. Pode rodar mais de uma vez; o que já existe fica como está. Com `UMAMI_API_KEY` definida, cada projeto ganha também um site no Umami.
 
@@ -56,7 +56,7 @@ pnpm db:seed
 
 Contas, todas com a senha de `SEED_PASSWORD`: `owner-a@seed.stellytics.localhost`, `owner-b@seed.stellytics.localhost` e `operator@seed.stellytics.localhost`. Os testes de integração rodam o seed com a senha de teste deles, então o banco local fica com essas contas.
 
-## Operador SCF ([#19](https://github.com/romulospl/notify/issues/19))
+## Operador SCF ([#19](https://github.com/romulospl/stellytics/issues/19))
 
 - Lê todos os projetos, inclusive os removidos: `/operator` lista os projetos com contagens e `/operator/tenants/[tenantId]` mostra membros, sites e serviços. Das chaves de ingestão aparecem só o prefixo e as datas.
 - Não é membro de tenant (D2). O banco recusa pôr um operador num tenant e promover um membro a operador (`drizzle/0003_operator_not_member.sql`); quem é do SCF e tem um projeto usa duas contas.
@@ -70,7 +70,7 @@ pnpm operator:promote --email pessoa@example.org
 pnpm operator:demote --email pessoa@example.org
 ```
 
-## Umami ([#58](https://github.com/romulospl/notify/issues/58))
+## Umami ([#58](https://github.com/romulospl/stellytics/issues/58))
 
 O portal fala com o Umami só por `src/lib/umami/` (o ESLint proíbe importar `src/lib/umami/http.ts` de outro lugar):
 
@@ -80,12 +80,12 @@ O portal fala com o Umami só por `src/lib/umami/` (o ESLint proíbe importar `s
 
 O portal cria só sites no Umami, nunca usuários nem equipes (ADR 0003).
 
-## Isolamento entre tenants ([#18](https://github.com/romulospl/notify/issues/18))
+## Isolamento entre tenants ([#18](https://github.com/romulospl/stellytics/issues/18))
 
 - `src/lib/access.ts` cria os contextos a partir da sessão: `requireTenantContext()` / `getTenantContext()` para membros de tenant e `requireOperatorContext()` para operadores. Os tipos são marcados, então só esse arquivo consegue criá-los.
 - Toda leitura e gravação passa por `src/lib/data/` (banco) e `src/lib/umami/` (Umami), com o contexto como primeiro argumento. Funções do operador ficam em `src/lib/data/operator/`.
 - O ESLint proíbe importar o cliente do banco, o driver `postgres` e o cliente HTTP do Umami fora dessas pastas. O esquema (`src/lib/db/schema.ts`) pode ser importado em qualquer lugar.
-- Quem não tem acesso recebe 404: operador em `/dashboard` é levado a `/operator`, membro de tenant em `/operator` recebe 404, e usuário sem projeto vê um aviso até o cadastro self-service ([#17](https://github.com/romulospl/notify/issues/17)).
+- Quem não tem acesso recebe 404: operador em `/dashboard` é levado a `/operator`, membro de tenant em `/operator` recebe 404, e usuário sem projeto vê um aviso até o cadastro self-service ([#17](https://github.com/romulospl/stellytics/issues/17)).
 
 ### Conta de serviço
 
@@ -103,14 +103,14 @@ Ponha a chave em `UMAMI_API_KEY` (no `.env` da raiz para o Compose) e recrie o p
 
 Use `127.0.0.1`, não `localhost`: se outro programa escutar a mesma porta em IPv6, `localhost` cai nele.
 
-## Serviços de API e chaves de ingestão ([#59](https://github.com/romulospl/notify/issues/59))
+## Serviços de API e chaves de ingestão ([#59](https://github.com/romulospl/stellytics/issues/59))
 
 - Telas: `/services` (lista e criação de serviços) e `/services/[serviceId]` (chaves do serviço: criar e revogar).
-- Formato e hash da chave em `src/lib/ingest-key.ts`: `ntf_<prefixo>_<segredo>`, prefixo de 8 caracteres base32 e segredo de 32 bytes em base64url. O banco guarda só o prefixo e o SHA-256 da chave completa; é o contrato com o coletor ([#30](https://github.com/romulospl/notify/issues/30)), que lê a visão `ingest_key_active`.
+- Formato e hash da chave em `src/lib/ingest-key.ts`: `ntf_<prefixo>_<segredo>`, prefixo de 8 caracteres base32 e segredo de 32 bytes em base64url. O banco guarda só o prefixo e o SHA-256 da chave completa; é o contrato com o coletor ([#30](https://github.com/romulospl/stellytics/issues/30)), que lê a visão `ingest_key_active`.
 - Funções em `src/lib/data/api-services.ts`. Criar um serviço já gera a primeira chave. Limite de 5 chaves ativas por serviço, garantido com trava na linha do serviço. Criar e revogar chave entram no `audit_log` só com o prefixo.
 - A chave completa aparece uma única vez, no retorno da server action, e nunca é registrada em log. Revogar tira a chave da visão do coletor na hora; o cache do coletor faz valer em até 60 segundos.
 
-## Cadastro self-service ([#17](https://github.com/romulospl/notify/issues/17))
+## Cadastro self-service ([#17](https://github.com/romulospl/stellytics/issues/17))
 
 Um projeto Stellar entra sozinho, sem ajuda do SCF:
 
@@ -121,7 +121,7 @@ Um projeto Stellar entra sozinho, sem ajuda do SCF:
 
 Quem ainda não tem projeto e abre uma página do tenant é levado a `/onboarding`. O slug do projeto vem do nome; se já existir, ganha um sufixo aleatório.
 
-## Cadastro e e-mail ([#60](https://github.com/romulospl/notify/issues/60))
+## Cadastro e e-mail ([#60](https://github.com/romulospl/stellytics/issues/60))
 
 - `/sign-up` cria a conta e envia o link de confirmação (vale 24 horas). Sem confirmar, a pessoa não entra, então não cria projeto; ao tentar entrar, recebe outro link.
 - O link de confirmação abre a sessão e leva a `/dashboard`. Link vencido ou inválido leva a `/email-verified`, que explica o que fazer.
@@ -129,7 +129,7 @@ Quem ainda não tem projeto e abre uma página do tenant é levado a `/onboardin
 - Cadastro com e-mail já existente e pedido de redefinição para e-mail sem conta recebem a mesma resposta dos casos normais, sem revelar quem tem conta.
 - Limites por IP (em memória, por instância): entrar, 3 a cada 10 segundos; cadastrar, 10 por hora; pedir redefinição ou novo link de confirmação, 5 por hora. Atrás do proxy, o IP vem de `X-Forwarded-For`, então o portal não deve ficar exposto sem o Caddy na frente.
 - Os e-mails são só texto (`src/lib/mail.ts`), sem HTML, e nem o destinatário nem o link vão para o log.
-- No Compose, os e-mails vão para o Mailpit: caixa de entrada em http://127.0.0.1:8025 e SMTP em `127.0.0.1:1025` (para o `next dev`, use `SMTP_URL=smtp://127.0.0.1:1025`). Em produção, o SMTP vem da IaC ([#14](https://github.com/romulospl/notify/issues/14)).
+- No Compose, os e-mails vão para o Mailpit: caixa de entrada em http://127.0.0.1:8025 e SMTP em `127.0.0.1:1025` (para o `next dev`, use `SMTP_URL=smtp://127.0.0.1:1025`). Em produção, o SMTP vem da IaC ([#14](https://github.com/romulospl/stellytics/issues/14)).
 
 ## Variáveis de ambiente
 

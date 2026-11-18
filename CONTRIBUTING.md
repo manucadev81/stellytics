@@ -4,7 +4,7 @@ Obrigado pelo interesse no stellytics. Este guia explica como preparar o ambient
 
 ## Antes de começar
 
-- **Bugs e dúvidas:** abra uma [issue](https://github.com/romulospl/notify/issues/new/choose) com o modelo adequado.
+- **Bugs e dúvidas:** abra uma [issue](https://github.com/romulospl/stellytics/issues/new/choose) com o modelo adequado.
 - **Vulnerabilidades:** não abra issue pública; siga o [`SECURITY.md`](SECURITY.md).
 - **Mudanças grandes ou de arquitetura:** abra uma issue antes de programar. Decisões de arquitetura viram um ADR em [`docs/adr/`](docs/adr/README.md), a partir do [template](docs/adr/template.md). ADR aceito não é reescrito: crie outro e marque o antigo como substituído.
 
@@ -63,7 +63,7 @@ GOTOOLCHAIN=go1.26.9 go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 node scripts/deps/audit-pnpm.mjs
 # da raiz, depois de pnpm install: licenças
 pnpm licenses list --json --prod > /tmp/npm-licenses.json
-(cd services && go run github.com/google/go-licenses/v2@v2.0.1 report ./... --template ../scripts/licenses/go-licenses.tpl --ignore github.com/romulospl/notify/services) > /tmp/go-licenses.tsv
+(cd services && go run github.com/google/go-licenses/v2@v2.0.1 report ./... --template ../scripts/licenses/go-licenses.tpl --ignore github.com/romulospl/stellytics/services) > /tmp/go-licenses.tsv
 node scripts/deps/check-licenses.mjs --npm /tmp/npm-licenses.json --go /tmp/go-licenses.tsv
 node --test scripts/deps/*.test.mjs   # testes dos conferidores
 ```

@@ -2,7 +2,7 @@
 
 - **Status:** Aceito
 - **Data:** 13/11/2026
-- **Épico:** [#2 (E2)](https://github.com/romulospl/notify/issues/2)
+- **Épico:** [#2 (E2)](https://github.com/romulospl/stellytics/issues/2)
 - **Issues cobertas:** #16, #58, #59, #60, #17, #18, #19, #20 e #21
 - **Depende de:** [ADR 0003](../adr/0003-isolamento-no-portal.md)
 - **Implementação:** [o que foi feito no E2](../e2-implementacao.md)

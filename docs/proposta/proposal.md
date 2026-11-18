@@ -1,6 +1,6 @@
 # Proposal draft: Web and API Analytics for Stellar Ecosystem Projects (stellytics)
 
-> **DRAFT. Not submitted.** This file is a working draft for issue [#65](https://github.com/romulospl/notify/issues/65). Nothing here has been sent to the Stellar Community Fund (SCF). Statements about the Stellar ecosystem come from the Stellar Raven MCP (queried on 2026-11-15) and carry a source and date; anything not confirmed is marked **UNVERIFIED**. Statements about the project come from this repository (links are relative and were checked).
+> **DRAFT. Not submitted.** This file is a working draft for issue [#65](https://github.com/romulospl/stellytics/issues/65). Nothing here has been sent to the Stellar Community Fund (SCF). Statements about the Stellar ecosystem come from the Stellar Raven MCP (queried on 2026-11-15) and carry a source and date; anything not confirmed is marked **UNVERIFIED**. Statements about the project come from this repository (links are relative and were checked).
 
 ## 0. Open items that depend on Romulo
 
@@ -8,10 +8,10 @@ None of these can be decided by the drafter. Each one blocks submission or weake
 
 | # | Item | Why it matters | Status |
 |---|---|---|---|
-| 1 | **Referral code** (issue [#64](https://github.com/romulospl/notify/issues/64)) | The RFP brief says builders unknown to SCF are not eligible. The handbook says SCF "relies heavily" on referral signals, and a referral is not mandatory (see [section 11](#11-ecosystem-facts-and-sources)). | Not obtained. Decide: seek a referrer or record the decision to send without one. |
+| 1 | **Referral code** (issue [#64](https://github.com/romulospl/stellytics/issues/64)) | The RFP brief says builders unknown to SCF are not eligible. The handbook says SCF "relies heavily" on referral signals, and a referral is not mandatory (see [section 11](#11-ecosystem-facts-and-sources)). | Not obtained. Decide: seek a referrer or record the decision to send without one. |
 | 2 | **Budget** (section 6) | All amounts are a **PROPOSAL** built from benchmark rates, not a quote. | To validate. |
 | 3 | **Team and open source history** (section 9) | The repository has no biographical data. Reviewers weigh team identity and prior work. | Placeholders only. |
-| 4 | **Pilots and letters of interest** (section 8) | No letters exist yet ([#44](https://github.com/romulospl/notify/issues/44)). The RFP requires at least three SCF-awarded projects on web and one on API. | None secured. |
+| 4 | **Pilots and letters of interest** (section 8) | No letters exist yet ([#44](https://github.com/romulospl/stellytics/issues/44)). The RFP requires at least three SCF-awarded projects on web and one on API. | None secured. |
 | 5 | **Language of the repository docs** | The handbook says the RFP Track proposal needs a plain-English explanation and a diagram, and reviewers "assess each application based solely on the information provided". The linked docs in this repository are in Portuguese. Acceptance criterion of #65: "README e documentos citados disponíveis em inglês". | Not done. Decide: translate before submission, or write the English summaries inline. |
 | 6 | **How to present work already built** | Much of the web pipeline and the portal already exist. The handbook says Tranche 1 "should focus on actual development" and that architecture must be complete at application time. Funded scope has to be the work that remains (section 5). | Decide how to frame prior work. |
 | 7 | **Legal entity, jurisdiction and payee** | Needed on the form. Not in the repository. [`docs/privacidade.md`](../privacidade.md) also leaves the operating entity open. | Not decided. |
@@ -104,13 +104,13 @@ Requirements are from the RFP brief (Scout `getRfps`, id `scf-web-api-analytics`
 | GDPR-compliant web analytics (RFP wording) | **Compliance is not claimed.** [`docs/privacidade.md`](../privacidade.md) records what the system does (no cookies, no browser storage, truncated IP, residency in Germany by IaC default) and its gaps (no retention for Umami events, no account deletion, no erasure of a removed project, roles and jurisdictions to validate with counsel). Not legal advice |
 | Version-pinned tracker, bot and inflation mitigation, supply-chain defenses | Built (section 7) |
 | API: dual-export OTel, drop traces and spans, keep route, status and latency in PostgreSQL, 24 months of aggregates | Collector, exporter, route normalization, rollup and retention built and tested locally ([`docs/specs/e5-pipeline-de-api.md`](../specs/e5-pipeline-de-api.md)); **collector and rollup are not in `infra/compose/prod.yaml`** |
-| About 1,000,000 requests a day | **Not load tested.** There is a volume estimate in the E5 spec; the load test is issue [#51](https://github.com/romulospl/notify/issues/51) |
+| About 1,000,000 requests a day | **Not load tested.** There is a volume estimate in the E5 spec; the load test is issue [#51](https://github.com/romulospl/stellytics/issues/51) |
 | Self-service enrollment, strict isolation, global SCF view | Built, with an isolation test suite ([`docs/e2-implementacao.md`](../e2-implementacao.md)) |
-| Revocable API keys for machine consumers (SCF) | **Not built** ([#48](https://github.com/romulospl/notify/issues/48)). Ingest keys for tenants exist, which is a different thing |
+| Revocable API keys for machine consumers (SCF) | **Not built** ([#48](https://github.com/romulospl/stellytics/issues/48)). Ingest keys for tenants exist, which is a different thing |
 | Dashboards: private per project plus global comparison, for web and API | Built ([`docs/e4-implementacao.md`](../e4-implementacao.md), [`docs/e6-implementacao.md`](../e6-implementacao.md)) |
-| One OSI-licensed monorepo with IaC, runbooks, onboarding guide, tests, security and privacy docs | MIT monorepo, IaC, onboarding guide ([`docs/onboarding-de-tenant.md`](../onboarding-de-tenant.md)), privacy and security docs exist. **Runbooks are in PR [#111](https://github.com/romulospl/notify/pull/111) (open, pending merge; issue [#53](https://github.com/romulospl/notify/issues/53))** |
+| One OSI-licensed monorepo with IaC, runbooks, onboarding guide, tests, security and privacy docs | MIT monorepo, IaC, onboarding guide ([`docs/onboarding-de-tenant.md`](../onboarding-de-tenant.md)), privacy and security docs exist. **Runbooks are in PR [#111](https://github.com/romulospl/stellytics/pull/111) (open, pending merge; issue [#53](https://github.com/romulospl/stellytics/issues/53))** |
 | Hosting and support for 12 months, 99.99% ingestion, 99.90% dashboards, critical and high patched in 24 hours | **Not met today** (section 5, SLA) |
-| Handover to a community operator between months 6 and 12 | **Not planned in detail** ([#54](https://github.com/romulospl/notify/issues/54)) |
+| Handover to a community operator between months 6 and 12 | **Not planned in detail** ([#54](https://github.com/romulospl/stellytics/issues/54)) |
 | Adoption: at least three SCF-awarded projects on web, one on API | **None** (section 8) |
 
 ## 4. Current state, stated plainly
@@ -129,7 +129,7 @@ Delivered on `main` as of 2026-11-15 (source: [`docs/andamento.md`](../andamento
 - **The production environment has not been applied.** No Hetzner account, domain, DNS or SMTP is set up, and no release has been published. The `cosign verify` of real images, certificate issuance and e-mail delivery were never exercised ([`docs/deploy.md`](../deploy.md), "Como este guia foi conferido").
 - **The API collector and rollup are not in production** (`infra/compose/prod.yaml`, Caddyfile).
 - **No pilot and no letters of interest.**
-- **No load test, no high availability and no handover plan.** Runbooks are in PR [#111](https://github.com/romulospl/notify/pull/111), open and pending merge; they are not on `main`.
+- **No load test, no high availability and no handover plan.** Runbooks are in PR [#111](https://github.com/romulospl/stellytics/pull/111), open and pending merge; they are not on `main`.
 - Privacy gaps listed in [`docs/privacidade.md`](../privacidade.md): no retention configured for web events in Umami, no account deletion, no erasure of a removed project's data.
 - No vulnerability scanning, no license check and no reproducible-build verification in CI ([`docs/anti-bot-e-cadeia-de-suprimentos.md`](../anti-bot-e-cadeia-de-suprimentos.md)).
 
@@ -193,7 +193,7 @@ Stellar mainnet deployment does not apply to an analytics service. Go-live is th
 | 3.2 | Measured availability | External monitoring report for the period since the production go-live (T0, so about 4 months by T3) against the targets, including incidents. The 12 months of operation are not needed to deliver this report |
 | 3.3 | Runbooks | `docs/runbooks/` (in PR #111, open and pending merge; issue #53): review the merged runbooks against the real production environment, correct them after the restore drill (1.1) and a failover exercise (3.1) |
 | 3.4 | Handover plan and tested data migration | Written plan for repository, data and domain transfer; migration procedure tested on a second environment (issue #54) |
-| 3.5 | Video | Walkthrough of the tenant experience and of the SCF global view (issue [#47](https://github.com/romulospl/notify/issues/47)) |
+| 3.5 | Video | Walkthrough of the tenant experience and of the SCF global view (issue [#47](https://github.com/romulospl/stellytics/issues/47)) |
 | 3.6 | Operation plan for the 12 months | Hosting, support and vulnerability process documented and funded by the T3 operation lines; the 12 months start after the final tranche and are reported to SCF monthly. This is operation, not development (see the eligibility risk in the budget notes) |
 
 ### Budget (PROPOSAL, to validate with Romulo)
@@ -252,7 +252,7 @@ In absolute terms: 99.99% is about 4.3 minutes of downtime in a 30-day month and
 
 ## 8. Pilots
 
-**There are no pilots and no letters of interest yet.** Issue [#44](https://github.com/romulospl/notify/issues/44) (collect pilots and letters) is open, and so are #45, #46 and #47. The RFP requires at least three SCF-awarded projects instrumented for web and one for API (Raven `getRfps`, 2026-11-15).
+**There are no pilots and no letters of interest yet.** Issue [#44](https://github.com/romulospl/stellytics/issues/44) (collect pilots and letters) is open, and so are #45, #46 and #47. The RFP requires at least three SCF-awarded projects instrumented for web and one for API (Raven `getRfps`, 2026-11-15).
 
 Onboarding plan for pilots:
 
@@ -274,15 +274,15 @@ The public record in the repository itself: an MIT-licensed monorepo with 5 ADRs
 
 ## 10. Plan for transfer, high availability and load (summary of the E9 issues)
 
-All of these are open post-MVP issues ([#9](https://github.com/romulospl/notify/issues/9)); none is started. Here they are scoped into Tranches 2 and 3.
+All of these are open post-MVP issues ([#9](https://github.com/romulospl/stellytics/issues/9)); none is started. Here they are scoped into Tranches 2 and 3.
 
 | Area | Issue | What it delivers | Tranche |
 |---|---|---|---|
-| Load | [#51](https://github.com/romulospl/notify/issues/51) | Load test at the RFP target (about 700 requests per minute is the 1,000,000 a day average used in the E5 spec) and a committed report | T2 |
-| High availability | [#52](https://github.com/romulospl/notify/issues/52) | HA plan in IaC for the 99.99% and 99.90% targets and written SLA commitments | T3 |
-| Runbooks | [#53](https://github.com/romulospl/notify/issues/53) | `docs/runbooks/`: incidents, backup and restore, secret rotation, Umami upgrade, vulnerability response | T3 |
-| Handover | [#54](https://github.com/romulospl/notify/issues/54) | Transfer of repository, data and domain to a community-appointed operator; counts as done only when the new operator runs the system alone | T3 |
-| SCF machine keys | [#48](https://github.com/romulospl/notify/issues/48) | Operators create and revoke keys; authenticated read API for metrics | T2 |
+| Load | [#51](https://github.com/romulospl/stellytics/issues/51) | Load test at the RFP target (about 700 requests per minute is the 1,000,000 a day average used in the E5 spec) and a committed report | T2 |
+| High availability | [#52](https://github.com/romulospl/stellytics/issues/52) | HA plan in IaC for the 99.99% and 99.90% targets and written SLA commitments | T3 |
+| Runbooks | [#53](https://github.com/romulospl/stellytics/issues/53) | `docs/runbooks/`: incidents, backup and restore, secret rotation, Umami upgrade, vulnerability response | T3 |
+| Handover | [#54](https://github.com/romulospl/stellytics/issues/54) | Transfer of repository, data and domain to a community-appointed operator; counts as done only when the new operator runs the system alone | T3 |
+| SCF machine keys | [#48](https://github.com/romulospl/stellytics/issues/48) | Operators create and revoke keys; authenticated read API for metrics | T2 |
 
 Handover timing: the RFP asks for the handover between months 6 and 12 of operation, at SCF's discretion. The design already helps: MIT license, a single repository with IaC, one database engine, pinned versions, no heavy fork of Umami. What is missing is the merge of the runbooks (PR #111, open) and a tested data migration, which Tranche 3 delivers before month 6. Who the community operator is and who decides is SCF's call; we do not assume it.
 

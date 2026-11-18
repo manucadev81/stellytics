@@ -24,13 +24,13 @@ Serve para os quatro alertas reais do monitoramento externo ([`alerts.yml`](../.
 
 ## EndpointDown
 
-**Sintomas.** E-mail `<componente> is down`: o alvo (portal, gateway web ou, no futuro, ingestão de API) ficou 1 minuto sem 2xx.
+**Sintomas.** E-mail `<componente> is down`: o alvo (portal, gateway web ou ingestão de API) ficou 1 minuto sem a resposta esperada.
 
 **Diagnóstico.**
 
 - Qual componente? Está no rótulo `component` do e-mail. Se só um caiu, o problema é do serviço dele; se todos caíram, é a VM, o Caddy ou a rede.
 - Na VM: `docker compose -f prod.yaml ps` (procure `unhealthy`, `restarting` ou ausente) e `docker compose -f prod.yaml logs --tail 200 <serviço>`.
-- Cadeia de dependências do `prod.yaml`: `caddy` depende de `portal`, `ingest-web` e `collector`; `ingest-web` depende de `postgres`, `umami` e `portal`; `collector` e `rollup` dependem de `postgres` e `portal`; `portal` e `umami` dependem de `postgres`. Comece pelo mais fundo que esteja ruim (normalmente `postgres`: `df -h /srv/stellytics`, disco cheio derruba tudo).
+- O proxy é o serviço Caddy do Compose; ele encaminha pela rede Docker para `portal`, `ingest-web` e `collector`. No Compose, `ingest-web` depende de `postgres`, `umami` e `portal`; `collector` e `rollup` dependem de `postgres` e `portal`; `portal` e `umami` dependem de `postgres`. Comece pelo mais fundo que esteja ruim (normalmente `postgres`: `df -h /srv/stellytics`, disco cheio derruba tudo).
 - Pelo Prometheus da VM de monitoramento (túnel `ssh -N -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 root@<monitor_ipv4>`, depois `http://127.0.0.1:9090`): a consulta `probe_success` e a página *Status → Targets* mostram qual alvo falha.
 
 **Ação.**
@@ -49,21 +49,21 @@ Serve para os quatro alertas reais do monitoramento externo ([`alerts.yml`](../.
 
 ## TLSCertificateExpiringSoon
 
-**Sintomas.** O certificado de um alvo vence em menos de 14 dias. O Caddy renova sozinho cerca de 30 dias antes, então a renovação está falhando.
+**Sintomas.** O certificado de um alvo vence em menos de 14 dias; a renovação automática do Caddy pode estar falhando.
 
 **Diagnóstico.**
 
-- `docker compose -f prod.yaml logs --tail 300 caddy | grep -i -E 'acme|certificate|error'`.
-- DNS: `dig +short <portal_host>` e `dig +short <ingest_host>` precisam apontar para a VM (A e AAAA).
-- Porta 80 aberta de fora: `nc -vz -w3 <ip-da-vm> 80` (o desafio do Let's Encrypt passa por ela; o firewall da Hetzner abre 80 e 443).
-- O volume do Caddy está em `/srv/stellytics/caddy` e precisa estar montado e gravável.
-- Limite do Let's Encrypt (muitas emissões): o log do Caddy diz.
+- `docker compose -f prod.yaml logs --since=24h caddy`; o estado persistente fica em `/srv/stellytics/caddy`.
+- DNS: `dig +short <portal_host>`, `dig +short <ingest_host>` e `dig +short <api_host>` precisam apontar para a VM (A e AAAA).
+- Porta 80 aberta de fora: `nc -vz -w3 <ip-da-vm> 80` (o desafio HTTP-01 do Let's Encrypt passa por ela; o firewall da Hetzner abre 80 e 443).
+- O certificado deve estar em `/etc/letsencrypt/live/stellytics.xyz/` e cobrir o apex, portal, ingestão web e API.
+- Confira se o contêiner está ativo: `docker compose -f prod.yaml ps caddy`.
 
-**Ação.** Corrija a causa (DNS, firewall, volume). Depois `docker compose -f prod.yaml restart caddy` para uma nova tentativa imediata.
+**Ação.** Corrija DNS/firewall e confirme que 80/443 chegam à VPS. Caddy tenta emitir e renovar automaticamente; acompanhe `docker compose -f prod.yaml logs -f caddy`.
 
 **Verificação.** `echo | openssl s_client -connect <portal_host>:443 -servername <portal_host> 2>/dev/null | openssl x509 -noout -enddate` mostra data nova; o alerta se resolve (tem `for: 1h`).
 
-**Escalar** se faltarem menos de 3 dias: um certificado vencido derruba o portal e a ingestão para os navegadores. Se o Let's Encrypt estiver fora, aguarde o status deles.
+**Escalar** se faltarem menos de 3 dias: um certificado vencido derruba portal, ingestão e API. Se o Let's Encrypt estiver fora, aguarde o status deles.
 
 ## ProbeFailing
 
