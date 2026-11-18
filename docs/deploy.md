@@ -139,6 +139,12 @@ O deploy só aceita imagens publicadas pelo workflow de release, assinadas com c
    ansible-playbook site.yml -e @secrets.yml
    ```
 
+   Na raiz do repositório, o mesmo deploy pode ser iniciado com `./deploy.sh`.
+   O script confere dependências, inventário, permissões de `secrets.yml` e a
+   sintaxe do playbook antes de aplicar a produção. Ele implanta a aplicação
+   no host `stellytics`; o provisionamento com OpenTofu e o deploy do monitor
+   continuam sendo etapas separadas.
+
 Na primeira vez leva alguns minutos (atualizações, Docker, build da imagem do Postgres com WAL-G). O playbook prepara a VM e sobe a aplicação:
 
 - atualiza a VM e liga as atualizações automáticas de segurança;
