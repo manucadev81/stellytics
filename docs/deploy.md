@@ -62,6 +62,11 @@ git clone https://github.com/romulospl/stellytics.git && cd stellytics
 corepack enable && pnpm install
 ```
 
+Se esta máquina Debian/Ubuntu ainda não tiver o Ansible, prepare-a uma vez com
+`sudo ./init.sh`. Isso instala o `ansible-core` para executar o deploy; o Docker
+da VPS de produção é instalado pelo playbook. Depois, rode `./deploy.sh` sem
+`sudo`, usando o usuário que tem a chave SSH e os arquivos de configuração.
+
 **Segredos** (nunca no repositório):
 
 | Segredo | Onde é usado | Como obter |
