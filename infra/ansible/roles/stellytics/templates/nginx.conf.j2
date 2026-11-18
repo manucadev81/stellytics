@@ -1,0 +1,147 @@
+# Managed by Ansible. Nginx runs on the VPS host; Docker upstreams bind to
+# loopback only. The certificate must cover all four names below.
+map $http_upgrade $stellytics_connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+server_tokens off;
+
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    access_log off;
+    error_log /var/log/nginx/stellytics-error.log crit;
+    return 444;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name {{ portal_alias_host }} {{ portal_host }} {{ ingest_host }} {{ api_host }};
+    access_log off;
+    error_log /var/log/nginx/stellytics-error.log crit;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    server_name _;
+    access_log off;
+    error_log /var/log/nginx/stellytics-error.log crit;
+    ssl_reject_handshake on;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name {{ portal_alias_host }};
+    ssl_certificate {{ nginx_tls_dir }}/fullchain.pem;
+    ssl_certificate_key {{ nginx_tls_dir }}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    access_log off;
+    error_log /var/log/nginx/stellytics-error.log crit;
+    return 301 https://{{ portal_host }}$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name {{ portal_host }};
+    ssl_certificate {{ nginx_tls_dir }}/fullchain.pem;
+    ssl_certificate_key {{ nginx_tls_dir }}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header X-Frame-Options "DENY" always;
+    access_log off;
+    error_log /var/log/nginx/stellytics-error.log crit;
+    client_max_body_size 2m;
+
+    location = /_next/image { return 404; }
+    location / {
+        proxy_pass http://127.0.0.1:{{ portal_upstream_port }};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $stellytics_connection_upgrade;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name {{ ingest_host }};
+    ssl_certificate {{ nginx_tls_dir }}/fullchain.pem;
+    ssl_certificate_key {{ nginx_tls_dir }}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    access_log off;
+    error_log /var/log/nginx/stellytics-error.log crit;
+
+    location = /e {
+        proxy_pass http://127.0.0.1:{{ ingest_upstream_port }};
+        include /etc/nginx/snippets/stellytics-proxy-headers.conf;
+    }
+    location = /c {
+        proxy_pass http://127.0.0.1:{{ ingest_upstream_port }};
+        include /etc/nginx/snippets/stellytics-proxy-headers.conf;
+    }
+    location ^~ /s/ {
+        proxy_pass http://127.0.0.1:{{ ingest_upstream_port }};
+        include /etc/nginx/snippets/stellytics-proxy-headers.conf;
+    }
+    location = /healthz {
+        proxy_pass http://127.0.0.1:{{ ingest_upstream_port }};
+        include /etc/nginx/snippets/stellytics-proxy-headers.conf;
+    }
+    location / { return 404; }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name {{ api_host }};
+    ssl_certificate {{ nginx_tls_dir }}/fullchain.pem;
+    ssl_certificate_key {{ nginx_tls_dir }}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    access_log off;
+    error_log /var/log/nginx/stellytics-error.log crit;
+    client_max_body_size 16m;
+
+    location ~ ^/opentelemetry\.proto\.collector\.(trace|metrics|logs)\.v1\.(TraceService|MetricsService|LogsService)/Export$ {
+        grpc_pass grpc://127.0.0.1:{{ collector_grpc_upstream_port }};
+        grpc_set_header Host $host;
+        grpc_set_header X-Real-IP $remote_addr;
+        grpc_set_header X-Forwarded-For $remote_addr;
+        grpc_read_timeout 60s;
+        grpc_send_timeout 60s;
+    }
+
+    location = /v1/traces {
+        proxy_pass http://127.0.0.1:{{ collector_http_upstream_port }};
+        include /etc/nginx/snippets/stellytics-proxy-headers.conf;
+    }
+    location = /v1/metrics {
+        proxy_pass http://127.0.0.1:{{ collector_http_upstream_port }};
+        include /etc/nginx/snippets/stellytics-proxy-headers.conf;
+    }
+    location = /v1/logs {
+        proxy_pass http://127.0.0.1:{{ collector_http_upstream_port }};
+        include /etc/nginx/snippets/stellytics-proxy-headers.conf;
+    }
+    location / { return 404; }
+}

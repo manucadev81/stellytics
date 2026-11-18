@@ -1,6 +1,6 @@
 # Guia de onboarding de tenant
 
-Para quem vai medir um projeto do ecossistema Stellar na plataforma: do cadastro até ler os painéis, cobrindo analytics **web** (script de rastreamento) e de **API** (OpenTelemetry). Escrito para a issue [#43](https://github.com/romulospl/notify/issues/43) (critério do piloto pendente).
+Para quem vai medir um projeto do ecossistema Stellar na plataforma: do cadastro até ler os painéis, cobrindo analytics **web** (script de rastreamento) e de **API** (OpenTelemetry). Escrito para a issue [#43](https://github.com/romulospl/stellytics/issues/43) (critério do piloto pendente).
 
 > **Estado da validação.** Os trechos deste guia foram conferidos contra os exemplos do repositório e contra o código das telas (ver o PR #108). A validação com um **piloto real** (critério de aceite 2 da #43) **ainda não aconteceu**: depende dos pilotos das issues #45 e #46. Até lá, trate o guia como não validado por um projeto externo.
 

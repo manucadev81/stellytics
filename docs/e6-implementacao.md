@@ -1,13 +1,13 @@
 # E6: o que foi implementado
 
-Registro da implementação do épico [E6 (#6)](https://github.com/romulospl/notify/issues/6), painéis de analytics de API, iniciado em **14/11/2026**. O E6 não tem spec próprio: ele roda dentro do portal e lê as tabelas que o [spec do E5](specs/e5-pipeline-de-api.md) fixou (seções 4 e 5), com o isolamento do [ADR 0003](adr/0003-isolamento-no-portal.md) e da seção 4 do [spec do E2](specs/e2-tenants-e-controle-de-acesso.md).
+Registro da implementação do épico [E6 (#6)](https://github.com/romulospl/stellytics/issues/6), painéis de analytics de API, iniciado em **14/11/2026**. O E6 não tem spec próprio: ele roda dentro do portal e lê as tabelas que o [spec do E5](specs/e5-pipeline-de-api.md) fixou (seções 4 e 5), com o isolamento do [ADR 0003](adr/0003-isolamento-no-portal.md) e da seção 4 do [spec do E2](specs/e2-tenants-e-controle-de-acesso.md).
 
 ## 1. Situação
 
 | Issue | O que é | PR | Commit |
 |---|---|---|---|
-| [#37 (6.1)](https://github.com/romulospl/notify/issues/37) | Painel de API do tenant | [#103](https://github.com/romulospl/notify/pull/103) | `55857e0`, `5497c27` |
-| [#38 (6.2)](https://github.com/romulospl/notify/issues/38) | Painel de API global do SCF | — | Em revisão |
+| [#37 (6.1)](https://github.com/romulospl/stellytics/issues/37) | Painel de API do tenant | [#103](https://github.com/romulospl/stellytics/pull/103) | `55857e0`, `5497c27` |
+| [#38 (6.2)](https://github.com/romulospl/stellytics/issues/38) | Painel de API global do SCF | — | Em revisão |
 
 ## 2. #37: painel de API do tenant
 

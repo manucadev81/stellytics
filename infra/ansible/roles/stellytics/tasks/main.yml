@@ -1,5 +1,27 @@
 # Aplicação: arquivos do Compose, .env com os segredos, imagens conferidas com
 # cosign e a pilha no ar.
+- name: Instala Nginx e Certbot na VM principal
+  ansible.builtin.apt:
+    name: [nginx, certbot, python3-certbot-nginx]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Confere os arquivos do certificado TLS antes de configurar o vhost
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ nginx_tls_dir }}/fullchain.pem"
+    - "{{ nginx_tls_dir }}/privkey.pem"
+  register: stellytics_tls_files
+
+- name: Exige que o Certbot tenha emitido o certificado antes do deploy
+  ansible.builtin.assert:
+    that: item.stat.exists
+    fail_msg: "Certificado TLS ausente em {{ nginx_tls_dir }}; emita-o conforme docs/deploy.md antes do playbook."
+    quiet: true
+  loop: "{{ stellytics_tls_files.results }}"
+
 - name: Pastas da aplicação
   ansible.builtin.file:
     path: "{{ item }}"
@@ -7,10 +29,11 @@
     mode: "0755"
   loop:
     - "{{ stellytics_root }}/infra/compose/postgres/init"
-    - "{{ stellytics_root }}/infra/caddy"
     - "{{ stellytics_root }}/infra/scripts"
+    - /etc/nginx/snippets
+    - /etc/letsencrypt/renewal-hooks/deploy
 
-- name: Copia o Compose, o Postgres com WAL-G, o Caddyfile e os scripts de migração do repositório
+- name: Copia o Compose, o Postgres com WAL-G e os scripts de migração do repositório
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../{{ item.src }}"
     dest: "{{ stellytics_root }}/infra/{{ item.src }}"
@@ -22,12 +45,50 @@
     - { src: compose/postgres/restore.sh, mode: "0755" }
     - { src: compose/postgres/init/01-databases.sh, mode: "0755" }
     - { src: compose/postgres/init/02-ingest-roles.sh, mode: "0755" }
-    - { src: caddy/Caddyfile }
     # Migração de dados entre operadores (docs/transferencia.md, #54).
     - { src: scripts/db-export.sh, mode: "0755" }
     - { src: scripts/db-import.sh, mode: "0755" }
     - { src: scripts/db-fingerprint.sh, mode: "0755" }
   register: stellytics_files
+
+- name: Configuração Nginx para os domínios da aplicação
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: "0644"
+  loop:
+    - { src: nginx.conf.j2, dest: /etc/nginx/conf.d/stellytics.conf }
+    - { src: nginx-proxy-headers.conf.j2, dest: /etc/nginx/snippets/stellytics-proxy-headers.conf }
+  register: stellytics_nginx_files
+
+- name: Recarrega Nginx após renovação do certificado
+  ansible.builtin.copy:
+    src: reload-nginx-after-certbot
+    dest: /etc/letsencrypt/renewal-hooks/deploy/stellytics-reload-nginx
+    mode: "0755"
+
+- name: Garante que o Nginx esteja habilitado
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: true
+
+- name: Remove o vhost padrão do Debian
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  register: stellytics_nginx_default
+
+- name: Valida a configuração Nginx se o vhost mudou
+  ansible.builtin.command: nginx -t
+  when: stellytics_nginx_files.changed or stellytics_nginx_default.changed
+  changed_when: false
+
+- name: Recarrega o Nginx se o vhost mudou
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded
+  when: stellytics_nginx_files.changed or stellytics_nginx_default.changed
 
 # Alta disponibilidade (#52, ADR 0009): só quando ha_replication é true. Com o
 # padrão (false) nenhum arquivo, variável nem comando abaixo muda.
@@ -136,13 +197,4 @@
   # O script imprime "03-replication: changed" só quando alterou o pg_hba.conf.
   changed_when: "'03-replication: changed' in stellytics_ha_prepare.stdout"
   no_log: true
-  tags: [images]
-
-# O Caddy não relê o Caddyfile sozinho; recarrega sem derrubar conexões.
-- name: Recarrega o Caddy se o Caddyfile mudou
-  ansible.builtin.command:
-    cmd: "docker compose {{ stellytics_compose_files }} exec -T caddy caddy reload --config /etc/caddy/Caddyfile"
-    chdir: "{{ stellytics_root }}/infra/compose"
-  when: stellytics_files.results | selectattr('item.src', 'equalto', 'caddy/Caddyfile') | selectattr('changed') | list | length > 0
-  changed_when: true
   tags: [images]

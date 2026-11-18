@@ -21,7 +21,8 @@ O stellytics oferece uma plataforma compartilhada e gratuita em que:
 - referenciadores;
 - duração da sessão e taxa de rejeição;
 - país, dispositivo e navegador;
-- eventos customizados opcionais (`window.stellytics.event`), sem endereço de carteira, hash ou valor.
+- eventos customizados opcionais (`window.stellytics.event`), sem endereço de carteira, hash ou valor;
+- adaptador opt-in para o Stellar Wallets Kit (`window.stellytics.wallets`), que reporta só a carteira escolhida e a desconexão, nunca o endereço ([ADR 0010](docs/adr/0010-adaptador-opt-in-do-wallets-kit.md)).
 
 **API**, a partir do OpenTelemetry que o projeto já envia ao próprio APM (dual-export):
 
@@ -64,14 +65,15 @@ flowchart LR
 |---|---|---|
 | Portal | Next.js | Cadastro self-service (com aprovação prévia opcional), painéis do tenant, painéis globais do SCF e API somente leitura para o SCF (`/api/v1`) |
 | Script de rastreamento | TypeScript | Versão fixa e imutável (`/s/vX.Y.Z/n.js`), com SRI e nome que ad blockers não bloqueiam |
-| Gateway de ingestão web | Go | Anti-bot (limite de taxa, prova de execução de JS, limite de fingerprints por IP) e truncamento do IP |
+| Gateway de ingestão web | Go | Anti-bot (limite de taxa, prova de execução de JS, limite de fingerprints por IP), truncamento do IP e teto de repasses ao Umami para conter saturação ([ADR 0011](docs/adr/0011-limite-de-repasses-ao-umami.md)) |
 | [Umami](https://umami.is) v3.4.1 | Next.js | Motor de analytics web, usado sem fork |
 | Coletor de API | OpenTelemetry Collector + componentes Go | Autenticação por chave, normalização de rotas e gravação das métricas |
 | Rollup | Go | Consolida as métricas de API de 1 minuto em 1 hora e 1 dia e aplica a retenção |
 | Banco | PostgreSQL 17 | Bancos separados `umami` (analytics web) e `stellytics` (tenants, chaves e métricas de API, com 24 meses de agregados) |
-| Infra | OpenTofu, Ansible, Docker Compose, Caddy | Hospedagem na União Europeia (Hetzner), backup contínuo cifrado, recriável a partir deste repositório |
+| Infra | OpenTofu, Ansible, Docker Compose, Nginx | Hospedagem na União Europeia (Hetzner), backup contínuo cifrado, recriável a partir deste repositório |
+| Monitoramento | Prometheus, blackbox exporter, Alertmanager e replication-monitor (Go) | VM separada: disponibilidade de portal, ingestão web e ingestão de API medida de fora, alerta por e-mail e alertas de atraso de replicação e de WAL retido do Postgres ([ADR 0005](docs/adr/0005-monitoramento-externo.md)) |
 
-Em produção, o Caddy é a única porta de entrada, com três hosts na 443: portal, ingestão web e ingestão de API (OTLP por HTTP e gRPC). O Umami nunca é exposto.
+Em produção, o Nginx no host é a única porta pública. Ele termina TLS e encaminha os três hosts para os upstreams Docker publicados só em loopback: portal, ingestão web e ingestão de API (OTLP por HTTP e gRPC). O Umami nunca é exposto.
 
 A visão completa, com os dois fluxos, está em [`docs/arquitetura.md`](docs/arquitetura.md). As decisões e as alternativas descartadas estão nos ADRs ([índice](docs/adr/README.md)); os de base são:
 
@@ -79,6 +81,7 @@ A visão completa, com os dois fluxos, está em [`docs/arquitetura.md`](docs/arq
 - [0002 — Arquitetura e stack](docs/adr/0002-arquitetura-e-stack.md)
 - [0003 — Isolamento entre tenants é responsabilidade do portal](docs/adr/0003-isolamento-no-portal.md)
 - [0004 — Hospedagem na Hetzner, OpenTofu e backup com WAL-G](docs/adr/0004-hospedagem-e-backup.md)
+- [0013 — Nginx no host como proxy da produção](docs/adr/0013-nginx-no-host.md)
 
 ## Documentação
 
@@ -103,9 +106,10 @@ services/            Módulo Go único (go.mod)
   collector/         Coletor OpenTelemetry (manifesto do OCB)
     components/      Autenticação por chave, normalização de rotas, exporter Postgres
   rollup/            Consolidação e retenção das métricas de API
+  replication-monitor/ Métricas de replicação do Postgres para os alertas
   loadtest/          Ferramenta de carga (web e API)
   internal/          Código compartilhado dos testes Go (banco com as migrações do portal)
-infra/               OpenTofu, Ansible, Docker Compose, Caddy, monitoramento e scripts de operação
+infra/               OpenTofu, Ansible, Docker Compose, Nginx, monitoramento e scripts de operação
 examples/            Integrações de referência (HTML, SPA, SSR, backend com OTel)
 scripts/             Checagem de licenças e de vulnerabilidades das dependências
 docs/                ADRs, specs, guias, runbooks e registro de andamento
@@ -154,42 +158,43 @@ Ponha a chave impressa em `UMAMI_API_KEY`, no `.env` da raiz, e recrie o portal 
 
 - Portas e senhas: copie `.env.example` para `.env`.
 - O Umami não publica porta por padrão; o override `infra/compose/umami-port.yaml` (usado acima) abre a interface dele em http://127.0.0.1:3001. Detalhes em [`docs/umami.md`](docs/umami.md).
+- Contas locais de teste (dois donos de projeto e um operador) já vêm do seed de desenvolvimento (`SEED_DEV_DATA`); contas e senha no [`apps/portal/README.md`](apps/portal/README.md).
 - `docker compose down -v` apaga os dados e a próxima subida recomeça do zero.
 - Testes: `pnpm lint`, `pnpm typecheck` e `pnpm test` na raiz; para o Go, `go test -race ./...` de dentro de `services/`.
 
 ## Deploy em produção
 
-Uma VM na Hetzner (UE) com o Caddy como única porta de entrada. Tudo sai deste repositório, em cinco passos:
+Uma VM na Hetzner (UE) com Nginx no host como proxy público. O deploy exige emitir o certificado Certbot antes de aplicar o Ansible. O passo a passo completo está em [`docs/deploy.md`](docs/deploy.md).
 
 | Passo | O que fazer | Ferramenta |
 |---|---|---|
 | 1. Infraestrutura | Criar a VM, o firewall, o volume e o bucket de backup | `tofu -chdir=infra/opentofu apply` |
-| 2. DNS | Apontar três nomes para a VM: portal, ingestão web e ingestão de API | seu provedor de DNS |
+| 2. DNS e TLS | Apontar quatro nomes para a VM e emitir o certificado Certbot antes do Ansible | DNS e Certbot |
 | 3. Imagens | Publicar uma release no GitHub; as imagens saem assinadas | workflow `release.yml` |
 | 4. Deploy | Preencher o inventário, os segredos e os digests das imagens e aplicar | `ansible-playbook site.yml -e @secrets.yml` |
 | 5. Primeira subida | Trocar a senha do Umami, gerar a chave da conta de serviço, criar o primeiro operador do SCF e disparar o primeiro backup | túnel `infra/scripts/admin-tunnel.sh` |
 
 O playbook é idempotente: atualizar a aplicação é trocar os digests e rodar o passo 4 de novo. Ele só sobe imagens por digest e com a assinatura conferida.
 
-O que vem junto: TLS automático, backup contínuo e cifrado do Postgres com restauração testada no CI, e monitoramento externo com alerta por e-mail numa VM separada.
+O que vem junto: TLS automático, backup contínuo e cifrado do Postgres com restauração testada no CI, e monitoramento externo com alerta por e-mail numa VM separada (playbook `monitoring.yml`), incluindo atraso de replicação e WAL retido.
 
 O passo a passo completo, com segredos, restauração e o que ainda não foi testado numa conta real, está em [`docs/deploy.md`](docs/deploy.md); os procedimentos de operação, nos [runbooks](docs/runbooks/README.md).
 
 ## CI e cadeia de suprimentos
 
-Todo PR roda o [`ci.yml`](.github/workflows/ci.yml): lint, tipos e testes de TypeScript e Go, os testes ponta a ponta no Compose local, a pilha de produção inteira com um S3 local (rotas do Caddy, backup e restauração) e a pilha de monitoramento. O check a exigir é o agregador `ci`.
+Todo PR roda o [`ci.yml`](.github/workflows/ci.yml): lint, tipos e testes de TypeScript e Go, os testes ponta a ponta no Compose local, a pilha de produção inteira com um S3 local (upstreams locais, backup e restauração), a replicação do Postgres com failover e a pilha de monitoramento. O check a exigir é o agregador `ci`.
 
 - **Dependências travadas** por lockfile, e só releases com pelo menos 14 dias (pnpm e [Renovate](renovate.json)).
-- **Licenças e vulnerabilidades** conferidas pelo [`dependencies.yml`](.github/workflows/dependencies.yml); só licenças aprovadas pela OSI.
+- **Licenças e vulnerabilidades** conferidas pelo [`dependencies.yml`](.github/workflows/dependencies.yml); só licenças aprovadas pela OSI, com exceções temporárias e datadas (`scripts/licenses/allowed.json`) e a atribuição de terceiros em [`docs/avisos-de-terceiros.md`](docs/avisos-de-terceiros.md). Para não distribuir sharp/libvips (LGPL-3.0), o otimizador de imagens do portal fica desligado e `/_next/image` responde 404.
 - **Ad blockers:** o [`adblock.yml`](.github/workflows/adblock.yml) confere todo dia se as listas de bloqueio mais usadas deixam passar o script e as rotas de ingestão.
 - Esses dois workflows ficam fora do agregador `ci`, porque o resultado deles muda sem mudança no código.
-- **Release:** cada imagem vai para `ghcr.io/romulospl/notify/<nome>`, assinada com cosign e com SBOM atestado.
+- **Release:** cada imagem vai para `ghcr.io/romulospl/stellytics/<nome>`, assinada com cosign e com SBOM atestado.
 
 Para verificar uma imagem publicada:
 
 ```bash
-cosign verify ghcr.io/romulospl/notify/<nome>:<versão> \
-  --certificate-identity-regexp '^https://github.com/romulospl/notify/\.github/workflows/release\.yml@refs/tags/v' \
+cosign verify ghcr.io/romulospl/stellytics/<nome>:<versão> \
+  --certificate-identity-regexp '^https://github.com/romulospl/stellytics/\.github/workflows/release\.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
@@ -209,24 +214,24 @@ O detalhe, com retenção e lacunas conhecidas, está em [`docs/privacidade.md`]
 
 ## Roadmap
 
-O código de E1 a E6 está implementado; os guias do E7 estão escritos, à espera de teste por alguém de fora; o E8 (pilotos) não começou e o E9 está parcial. O backlog está nas [issues](https://github.com/romulospl/notify/issues), organizado em épicos, e no [quadro do projeto](https://github.com/users/romulospl/projects/1).
+O código de E1 a E6 está implementado; os guias do E7 estão escritos, à espera de teste por alguém de fora; o E8 (pilotos) não começou e o E9 está parcial. O backlog está nas [issues](https://github.com/romulospl/stellytics/issues), organizado em épicos, e no [quadro do projeto](https://github.com/users/romulospl/projects/1).
 
 | Épico | Escopo |
 |---|---|
-| [E1](https://github.com/romulospl/notify/issues/1) | Fundação do monorepo e infraestrutura |
-| [E2](https://github.com/romulospl/notify/issues/2) | Multi-tenant, cadastro e controle de acesso |
-| [E3](https://github.com/romulospl/notify/issues/3) | Coleta de analytics web |
-| [E4](https://github.com/romulospl/notify/issues/4) | Painéis de analytics web |
-| [E5](https://github.com/romulospl/notify/issues/5) | Pipeline de analytics de API (OpenTelemetry) |
-| [E6](https://github.com/romulospl/notify/issues/6) | Painéis de analytics de API |
-| [E7](https://github.com/romulospl/notify/issues/7) | Documentação, privacidade e conformidade |
-| [E8](https://github.com/romulospl/notify/issues/8) | Pilotos com projetos reais do SCF |
-| [E9](https://github.com/romulospl/notify/issues/9) | Pós-MVP: SLA, escala, chaves de API e transferência |
-| [E10](https://github.com/romulospl/notify/issues/63) | Proposta e submissão ao SCF |
+| [E1](https://github.com/romulospl/stellytics/issues/1) | Fundação do monorepo e infraestrutura |
+| [E2](https://github.com/romulospl/stellytics/issues/2) | Multi-tenant, cadastro e controle de acesso |
+| [E3](https://github.com/romulospl/stellytics/issues/3) | Coleta de analytics web |
+| [E4](https://github.com/romulospl/stellytics/issues/4) | Painéis de analytics web |
+| [E5](https://github.com/romulospl/stellytics/issues/5) | Pipeline de analytics de API (OpenTelemetry) |
+| [E6](https://github.com/romulospl/stellytics/issues/6) | Painéis de analytics de API |
+| [E7](https://github.com/romulospl/stellytics/issues/7) | Documentação, privacidade e conformidade |
+| [E8](https://github.com/romulospl/stellytics/issues/8) | Pilotos com projetos reais do SCF |
+| [E9](https://github.com/romulospl/stellytics/issues/9) | Pós-MVP: SLA, escala, chaves de API e transferência |
+| [E10](https://github.com/romulospl/stellytics/issues/63) | Proposta e submissão ao SCF |
 
 ## Contribuindo
 
-O guia completo está no [`CONTRIBUTING.md`](CONTRIBUTING.md), e vulnerabilidades são relatadas como descrito no [`SECURITY.md`](SECURITY.md). Dúvidas e bugs vão para as [issues](https://github.com/romulospl/notify/issues/new/choose), que são o canal público de suporte.
+O guia completo está no [`CONTRIBUTING.md`](CONTRIBUTING.md), e vulnerabilidades são relatadas como descrito no [`SECURITY.md`](SECURITY.md). Dúvidas e bugs vão para as [issues](https://github.com/romulospl/stellytics/issues/new/choose), que são o canal público de suporte.
 
 - Commits seguem o [Conventional Commits 1.0.0-beta.4](https://www.conventionalcommits.org/pt-br/v1.0.0-beta.4/), por exemplo `feat(collector): add Stellar address normalization`.
 - Decisões de arquitetura novas viram um ADR em [`docs/adr/`](docs/adr/README.md), a partir do [template](docs/adr/template.md).

@@ -1,6 +1,6 @@
 # services/ingest-web
 
-Gateway de ingestão web em Go (`net/http`). Fica entre o script de rastreamento (`packages/tracker`) e o Umami, que só deve ser acessível pela rede interna. Criado na [#61](https://github.com/romulospl/notify/issues/61).
+Gateway de ingestão web em Go (`net/http`). Fica entre o script de rastreamento (`packages/tracker`) e o Umami, que só deve ser acessível pela rede interna. Criado na [#61](https://github.com/romulospl/stellytics/issues/61).
 
 Já faz:
 
@@ -98,7 +98,7 @@ O gateway conecta no banco `stellytics` com o usuário `stellytics_ingest` e só
 
 ## IP do cliente
 
-Vem do `RemoteAddr`. O `X-Forwarded-For` só é lido quando a conexão chega de um CIDR de `TRUSTED_PROXIES` (o Caddy, em produção); nesse caso o cliente é o primeiro endereço, da direita para a esquerda, que não é de um proxy confiável. O IP completo só existe na memória do request: o limite de taxa e o repasse usam o IP truncado.
+Vem do `RemoteAddr`. O `X-Forwarded-For` só é lido quando a conexão chega de um CIDR de `TRUSTED_PROXIES` (o gateway Docker alcançado pelo Nginx no host, em produção); nesse caso o cliente é o primeiro endereço, da direita para a esquerda, que não é de um proxy confiável. O IP completo só existe na memória do request: o limite de taxa e o repasse usam o IP truncado.
 
 ## Privacidade (#24)
 

@@ -104,11 +104,11 @@ flowchart LR
 | Coletor OTel oficial (contrib) sem código próprio | Não tem exporter para PostgreSQL, autenticação que defina o tenant pela chave nem as regras de normalização do RFP |
 | Fork do Umami com painéis de API e cadastro | Dificulta atualizações de segurança (ver ADR 0001) |
 | TimescaleDB ou ClickHouse para métricas | Timescale tem recursos sob licença não OSI; ClickHouse adiciona outro banco, e o RFP exige PostgreSQL |
-| Kubernetes | Pesado para a carga do MVP e para a transferência a uma equipe da comunidade. Pode ser reavaliado no plano de alta disponibilidade (issue [#52](https://github.com/romulospl/notify/issues/52)) |
+| Kubernetes | Pesado para a carga do MVP e para a transferência a uma equipe da comunidade. Pode ser reavaliado no plano de alta disponibilidade (issue [#52](https://github.com/romulospl/stellytics/issues/52)) |
 
 ## Consequências
 
 - A equipe precisa saber TypeScript e Go. O Go fica restrito a `services/`.
 - O portal precisa de uma conta de serviço no Umami para criar usuários, equipes e sites e para ler as estatísticas.
 - O backlog ganha duas peças que ainda não têm issue própria: o **portal** e o **gateway de ingestão web**.
-- A carga do MVP cabe em uma VM. Alta disponibilidade e as metas de SLA ficam para o pós-MVP (issue [#52](https://github.com/romulospl/notify/issues/52)).
+- A carga do MVP cabe em uma VM. Alta disponibilidade e as metas de SLA ficam para o pós-MVP (issue [#52](https://github.com/romulospl/stellytics/issues/52)).

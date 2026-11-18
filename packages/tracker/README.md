@@ -1,6 +1,6 @@
 # packages/tracker
 
-Script de rastreamento em TypeScript, empacotado com esbuild. Criado na [#22](https://github.com/romulospl/notify/issues/22).
+Script de rastreamento em TypeScript, empacotado com esbuild. Criado na [#22](https://github.com/romulospl/stellytics/issues/22).
 
 - Publicado em caminho com versão (`/s/vX.Y.Z/n.js`), imutável depois de publicado e com hash SRI.
 - Envia um payload compatível com o `/api/send` do Umami, sempre pelo gateway (`services/ingest-web`), em `POST /e` na mesma origem do script.

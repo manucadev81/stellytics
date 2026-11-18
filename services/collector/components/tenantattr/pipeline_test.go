@@ -30,8 +30,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/romulospl/notify/services/collector/components/ingestkeyauth"
-	"github.com/romulospl/notify/services/collector/components/tenantattr"
+	"github.com/romulospl/stellytics/services/collector/components/ingestkeyauth"
+	"github.com/romulospl/stellytics/services/collector/components/tenantattr"
 )
 
 const (

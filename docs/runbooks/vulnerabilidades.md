@@ -95,7 +95,7 @@ Depois da correção publicada, publique o advisory do GitHub e dê crédito a q
 ## Quando escalar
 
 - Severidade crítica ou exposição de dados entre tenants: trate como incidente aberto de imediato; prazo de correção de 14 dias corridos, na prática o mais rápido possível.
-- Prazo do `SECURITY.md` em risco, ou vulnerabilidade na própria infraestrutura do provedor, no Umami, no Caddy ou no Postgres: reporte ao projeto de origem e ao suporte do provedor, e avalie desligar o componente afetado (`docker compose -f prod.yaml stop <serviço>`; parar o `ingest-web` descarta os eventos recebidos nesse intervalo).
+- Prazo do `SECURITY.md` em risco, ou vulnerabilidade na própria infraestrutura do provedor, no Umami, no Nginx, no Caddy das VMs extras ou no Postgres: reporte ao projeto de origem e ao suporte do provedor. Para parar o proxy principal use `systemctl stop nginx`; para serviços em contêiner use `docker compose -f prod.yaml stop <serviço>`. Parar o `ingest-web` descarta os eventos recebidos nesse intervalo.
 
 ## Não testado
 

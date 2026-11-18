@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/romulospl/notify/services/ingest-web/internal/proof"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/proof"
 )
 
 func TestChallenge(t *testing.T) {

@@ -27,7 +27,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/romulospl/notify/services/ingest-web/internal/proof"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/proof"
 )
 
 const browserUA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"

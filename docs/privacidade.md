@@ -1,6 +1,6 @@
 # Privacidade e GDPR
 
-Este documento descreve o que a plataforma faz com dados pessoais, lendo o código da `main`, e lista o que ainda não existe. Ele **não é parecer jurídico**: os papéis (controlador e operador) e os pontos de atenção por jurisdição são uma **proposta para validar com assessoria jurídica**, e o que não foi conferido está marcado como tal. Atende à issue [#40](https://github.com/romulospl/notify/issues/40).
+Este documento descreve o que a plataforma faz com dados pessoais, lendo o código da `main`, e lista o que ainda não existe. Ele **não é parecer jurídico**: os papéis (controlador e operador) e os pontos de atenção por jurisdição são uma **proposta para validar com assessoria jurídica**, e o que não foi conferido está marcado como tal. Atende à issue [#40](https://github.com/romulospl/stellytics/issues/40).
 
 Convenções: "verificado" quer dizer que a afirmação foi conferida no código ou na configuração citados ao lado. "Não verificado" quer dizer que depende de comportamento de terceiros (Umami, provedor de SMTP, Hetzner) ou de algo que o repositório ainda não tem.
 
@@ -65,20 +65,20 @@ O portal envia por SMTP (`apps/portal/src/lib/mail.ts`, variável `SMTP_URL`) s�
 ### 3.6 Logs e memória
 
 - **Gateway:** nenhum log leva IP, `X-Forwarded-For` ou `User-Agent`; um panic é registrado com `path` e `fmt.Sprint(v)` (`handler.go`, `recoverPanic`), onde `v` é um valor arbitrário do panic: não leva IP por desenho, mas o conteúdo não é controlado. O nível do log é o padrão do `slog` (Info), então os logs `Debug` de "evento descartado" ficam desligados. Nenhuma resposta grava cookie. O limite de requisições por IP e a contagem de fingerprints (hash de User-Agent, `Accept-Language`, idioma e tela) usam o IP **truncado**, só em memória e por janela curta (`internal/limit`, `internal/fingerprint`).
-- **Caddy:** o log de erro padrão apaga IP, porta, cabeçalhos, URI e TLS do pedido (`infra/caddy/Caddyfile`). Não há access log configurado.
+- **Nginx:** o vhost não configura access log e grava apenas erros críticos em arquivo dedicado (`infra/ansible/roles/stellytics/templates/nginx.conf.j2`). Logs globais do host podem seguir a configuração padrão do sistema.
 - **Coletor:** quando a consulta à `ingest_key_active` falha, o log leva o prefixo da chave (`ingestkeyauth/auth.go`), que é a parte pública e não é dado pessoal; a chave completa não. Uma leitura de todos os logs do coletor **não foi feita**.
 - **Portal:** o logger do Better Auth está em `warn` (`auth.ts`), e o envio de e-mail loga só o tipo do erro.
 - **Contêineres:** em produção usam `json-file` com 20 MB por arquivo e 5 arquivos (`x-logging` em `infra/compose/prod.yaml`). A rotação é por tamanho, não por tempo, então não há prazo fixo de retenção dos logs. O conteúdo dos logs do Umami e do Postgres **não foi verificado**.
 
 ## 4. Truncamento de IP
 
-`services/ingest-web/internal/clientip/clientip.go`, função `Truncate`: zera o último octeto do IPv4 (`203.0.113.77` vira `203.0.113.0`) e tudo depois do `/48` do IPv6; IPv4 mapeado em IPv6 é tratado como IPv4. Testado em `clientip_test.go`. O IP completo existe só na memória do request. O `X-Forwarded-For` só vale vindo de `TRUSTED_PROXIES` (o Caddy em produção). Limite honesto: um IPv4 truncado ainda identifica uma rede de até 256 endereços, e o `User-Agent` completo continua indo ao Umami. Se esse conjunto é "dado pessoal" depende da avaliação jurídica e do que o Umami grava (não verificado).
+`services/ingest-web/internal/clientip/clientip.go`, função `Truncate`: zera o último octeto do IPv4 (`203.0.113.77` vira `203.0.113.0`) e tudo depois do `/48` do IPv6; IPv4 mapeado em IPv6 é tratado como IPv4. Testado em `clientip_test.go`. O IP completo existe só na memória do request. O `X-Forwarded-For` só vale vindo de `TRUSTED_PROXIES` (o gateway Docker do host Nginx em produção). Limite honesto: um IPv4 truncado ainda identifica uma rede de até 256 endereços, e o `User-Agent` completo continua indo ao Umami. Se esse conjunto é "dado pessoal" depende da avaliação jurídica e do que o Umami grava (não verificado).
 
 ## 5. Quem acessa
 
 - Cada tenant vê só os próprios dados; o tenant vem sempre da sessão (ADR 0003, suíte `apps/portal/test/isolation.test.ts`).
 - O operador do SCF tem leitura global (painéis `/operator`, `/operator/web`, `/operator/api`) e hoje só escreve para remover e reativar projeto. Operadores nascem só por comando de administração, que grava no `audit_log`.
-- O Umami fica só na rede interna: sem porta publicada e sem rota no Caddy (`docs/umami.md`, #62). Gravação de sessão e heatmaps estão desligados, e há teste (`TestRecorderRecordsNothing`).
+- O Umami fica só na rede interna: sem porta publicada e sem rota no Nginx (`docs/umami.md`, #62). Gravação de sessão e heatmaps estão desligados, e há teste (`TestRecorderRecordsNothing`).
 - Quem administra a VM e o banco por SSH também acessa tudo. Não há controle de acesso documentado além do túnel de administração (`docs/deploy.md`); processo de acesso e registro **não verificados**.
 
 ## 6. Residência dos dados e retenção
@@ -96,7 +96,7 @@ O portal envia por SMTP (`apps/portal/src/lib/mail.ts`, variável `SMTP_URL`) s�
 | `audit_log` | Para sempre (só inserção) | esquema |
 | Backups | Os 7 backups base mais recentes mais WAL contínuo (ADR 0004). Dados apagados continuam nos backups até saírem da janela | ADR 0004 |
 
-O serviço de consolidação (`services/rollup`) e o coletor estão no `infra/compose/prod.yaml` desde 16/11/2026 (ADR 0012). A retenção de API descrita acima está implementada e testada, mas nenhuma produção real foi aplicada ainda. O log do Caddy não guarda cabeçalhos, então a chave de ingestão (`Authorization`) não vai para log.
+O serviço de consolidação (`services/rollup`) e o coletor estão no `infra/compose/prod.yaml` desde 16/11/2026 (ADR 0012). A retenção de API descrita acima está implementada e testada, mas nenhuma produção real foi aplicada ainda. O vhost Nginx não configura access log e registra apenas erros críticos; assim, os cabeçalhos, inclusive a chave de ingestão (`Authorization`), não são escritos pelo proxy.
 
 ## 7. Direito ao apagamento e outros direitos: lacunas
 
@@ -152,6 +152,6 @@ Não há transferência para fora da UE por parte do código: o gateway só fala
 
 ## 10. Arquivos conferidos
 
-`services/ingest-web/internal/clientip/clientip.go`, `services/ingest-web/internal/relay/relay.go`, `services/ingest-web/internal/fingerprint/fingerprint.go`, `services/ingest-web/handler.go`, `services/ingest-web/main.go` (logs), `services/ingest-web/e2e/privacy_test.go` (lido o cabeçalho e o teste de IP), `packages/tracker/src/tracker.ts`, `apps/portal/src/lib/auth.ts`, `apps/portal/src/lib/mail.ts`, `apps/portal/src/lib/db/schema.ts`, `apps/portal/src/lib/data/operator/tenants.ts`, `infra/caddy/Caddyfile`, `infra/compose/prod.yaml` (lista de serviços), `docs/adr/0004-hospedagem-e-backup.md`, `docs/umami.md`, `docs/specs/e5-pipeline-de-api.md` e `docs/specs/e2-tenants-e-controle-de-acesso.md` (trechos sobre retenção e remoção).
+`services/ingest-web/internal/clientip/clientip.go`, `services/ingest-web/internal/relay/relay.go`, `services/ingest-web/internal/fingerprint/fingerprint.go`, `services/ingest-web/handler.go`, `services/ingest-web/main.go` (logs), `services/ingest-web/e2e/privacy_test.go` (lido o cabeçalho e o teste de IP), `packages/tracker/src/tracker.ts`, `apps/portal/src/lib/auth.ts`, `apps/portal/src/lib/mail.ts`, `apps/portal/src/lib/db/schema.ts`, `apps/portal/src/lib/data/operator/tenants.ts`, `infra/ansible/roles/stellytics/templates/nginx.conf.j2`, `infra/compose/prod.yaml` (lista de serviços), `docs/adr/0004-hospedagem-e-backup.md`, `docs/umami.md`, `docs/specs/e5-pipeline-de-api.md` e `docs/specs/e2-tenants-e-controle-de-acesso.md` (trechos sobre retenção e remoção).
 
 **Não lidos nem testados:** o código do Umami (campos gravados na sessão), as migrações `0002` e `0005` em SQL (só os resumos do `CLAUDE.md` e dos specs), o código completo do coletor e do exporter, logs reais de execução, a configuração real do SMTP e do monitoramento.

@@ -26,7 +26,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/zap"
 
-	"github.com/romulospl/notify/services/collector/components/httpmetrics"
+	"github.com/romulospl/stellytics/services/collector/components/httpmetrics"
 )
 
 // Type é o nome do exporter na configuração do coletor.

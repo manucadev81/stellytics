@@ -12,8 +12,8 @@ import (
 	"go.opentelemetry.io/collector/consumer/consumererror"
 	"go.uber.org/zap"
 
-	"github.com/romulospl/notify/services/collector/components/httpmetrics"
-	"github.com/romulospl/notify/services/internal/pgtest"
+	"github.com/romulospl/stellytics/services/collector/components/httpmetrics"
+	"github.com/romulospl/stellytics/services/internal/pgtest"
 )
 
 // flaky falha nas primeiras n gravações e guarda os lotes recebidos.

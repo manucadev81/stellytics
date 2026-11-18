@@ -27,7 +27,7 @@ O Umami é a ferramenta base ([ADR 0001](../adr/0001-ferramenta-base.md)) e roda
 ## Verificação
 
 - `docker compose -f prod.yaml ps` com `umami` `healthy` (o healthcheck chama `/api/heartbeat`); `docker compose -f prod.yaml logs --tail 100 umami` sem erro de migração.
-- O Umami continua fechado: o passo 6 de `docs/deploy.md` (`/api/send` com 404 de fora; só o Caddy publica porta).
+- O Umami continua fechado: o passo 6 de `docs/deploy.md` (`/api/send` com 404 de fora; o Nginx não tem rota para o Umami).
 - Um evento de teste chega pelo gateway e aparece no painel do site; o painel do SCF (`/operator/web`) carrega.
 - Isolamento: o tenant A não vê site de B (a suíte `isolation.test.ts` passou no CI da versão nova).
 - `docs/umami.md`, o `CLAUDE.md` e os demais textos de versão (resultado do `grep`) refletem a versão nova. **Não reescreva o ADR 0001 só por causa da versão**; um ADR novo só se a decisão mudar (por exemplo, troca de ferramenta ou patch).

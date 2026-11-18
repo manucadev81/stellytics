@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 
-	"github.com/romulospl/notify/services/internal/pgtest"
+	"github.com/romulospl/stellytics/services/internal/pgtest"
 )
 
 // Teste de integração do Store com a visão real ingest_key_active, como o

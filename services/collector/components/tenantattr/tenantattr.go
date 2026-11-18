@@ -22,7 +22,7 @@ import (
 	"go.opentelemetry.io/collector/processor"
 	"go.opentelemetry.io/collector/processor/processorhelper"
 
-	"github.com/romulospl/notify/services/collector/components/ingestkeyauth"
+	"github.com/romulospl/stellytics/services/collector/components/ingestkeyauth"
 )
 
 // Atributos de recurso que o processor define. Os componentes seguintes (o

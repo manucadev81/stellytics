@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/romulospl/notify/services/ingest-web/internal/fingerprint"
-	"github.com/romulospl/notify/services/ingest-web/internal/relay"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/fingerprint"
+	"github.com/romulospl/stellytics/services/ingest-web/internal/relay"
 )
 
 // slowUmami segura cada /api/send até release fechar.

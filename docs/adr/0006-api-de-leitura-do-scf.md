@@ -2,7 +2,7 @@
 
 - **Status:** Aceito
 - **Data:** 15/11/2026
-- **Issue:** [#48](https://github.com/romulospl/notify/issues/48)
+- **Issue:** [#48](https://github.com/romulospl/stellytics/issues/48)
 
 ## Contexto
 

@@ -45,8 +45,8 @@ resource "hcloud_ssh_key" "admin" {
   labels     = local.labels
 }
 
-# Só o Caddy (80 e 443) fica aberto para a internet. Postgres, Umami, portal e
-# gateway não têm porta pública (infra/README.md, #62).
+# Só o Nginx do host (80 e 443) fica aberto para a internet. Postgres, Umami,
+# portal, gateway e coletor não têm porta pública (infra/README.md, #62).
 resource "hcloud_firewall" "stellytics" {
   name   = "notify"
   labels = local.labels
@@ -91,7 +91,7 @@ resource "hcloud_firewall" "stellytics" {
   }
 }
 
-# Dados do Postgres e do Caddy num volume separado: sobrevivem se a VM for
+# Dados do Postgres num volume separado: sobrevivem se a VM for
 # recriada. O Ansible monta em /srv/stellytics.
 resource "hcloud_volume" "data" {
   name              = "notify-data"

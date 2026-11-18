@@ -7,7 +7,8 @@
 # com o portal, o gateway e o Umami parados (senão os dois bancos podem ficar
 # em instantes diferentes):
 #
-#   docker compose -f prod.yaml stop caddy portal ingest-web umami
+#   systemctl stop nginx
+#   docker compose -f prod.yaml stop portal ingest-web collector rollup umami
 #   infra/scripts/db-export.sh /root/migracao
 #
 # Os dumps têm hashes de senha e sessões do portal: ficam com permissão 600 e

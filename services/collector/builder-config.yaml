@@ -10,8 +10,8 @@ dist:
   version: 0.1.0
 
 extensions:
-  - gomod: github.com/romulospl/notify/services v0.0.0
-    import: github.com/romulospl/notify/services/collector/components/ingestkeyauth
+  - gomod: github.com/romulospl/stellytics/services v0.0.0
+    import: github.com/romulospl/stellytics/services/collector/components/ingestkeyauth
     name: ingestkeyauth
 
 receivers:
@@ -20,14 +20,14 @@ receivers:
 processors:
   - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.164.0
   - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.164.0
-  - gomod: github.com/romulospl/notify/services v0.0.0
-    import: github.com/romulospl/notify/services/collector/components/tenantattr
+  - gomod: github.com/romulospl/stellytics/services v0.0.0
+    import: github.com/romulospl/stellytics/services/collector/components/tenantattr
     name: tenantattr
 
 exporters:
   # Contadores e histogramas para o Postgres (#31).
-  - gomod: github.com/romulospl/notify/services v0.0.0
-    import: github.com/romulospl/notify/services/collector/components/pgexporter
+  - gomod: github.com/romulospl/stellytics/services v0.0.0
+    import: github.com/romulospl/stellytics/services/collector/components/pgexporter
     name: pgexporter
   # Logs são descartados (spec do E5, seção 2).
   - gomod: go.opentelemetry.io/collector/exporter/nopexporter v0.164.0
