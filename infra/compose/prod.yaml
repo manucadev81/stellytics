@@ -199,7 +199,8 @@ services:
     logging: *logging
     networks: [internal]
 
-  # Consolidação 1m -> 1h -> 1d e retenção das métricas de API (#34).
+  # Consolidação 1m -> 1h -> 1d e retenção das métricas de API (#34) e dos
+  # eventos web no Umami (#154).
   rollup:
     image: ${ROLLUP_IMAGE:?}
     environment:
@@ -207,6 +208,11 @@ services:
       DATABASE_URL: postgresql://stellytics:${STELLYTICS_DB_PASSWORD:?}@postgres:5432/stellytics
       ROLLUP_INTERVAL: ${ROLLUP_INTERVAL:-15m}
       ROLLUP_LOOKBACK: ${ROLLUP_LOOKBACK:-48h}
+      # Retenção dos eventos web no Umami (#154): o mesmo job apaga eventos e
+      # sessões mais antigos que UMAMI_RETENTION_DAYS (padrão, cerca de seis
+      # meses; docs/umami.md). O mesmo usuário do banco umami, dono das tabelas.
+      UMAMI_DATABASE_URL: postgresql://umami:${UMAMI_DB_PASSWORD:?}@postgres:5432/umami
+      UMAMI_RETENTION_DAYS: ${UMAMI_RETENTION_DAYS:-183}
     depends_on:
       postgres:
         condition: service_healthy

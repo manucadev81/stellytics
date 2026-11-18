@@ -64,6 +64,13 @@
       "when": 1794770324668,
       "tag": "0008_ingest_key_last_used",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794946341597,
+      "tag": "0009_erasure",
+      "breakpoints": true
     }
   ]
 }

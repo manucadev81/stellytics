@@ -46,6 +46,9 @@ export default async function PrivateLayout({ children }: { children: React.Reac
             )}
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
+            <Link href="/settings" className="hover:underline">
+              Account
+            </Link>
             <span className="text-zinc-500">{user.email}</span>
             <SignOutButton />
           </div>

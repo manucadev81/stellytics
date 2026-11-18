@@ -68,7 +68,7 @@ flowchart LR
 | Gateway de ingestão web | Go | Anti-bot (limite de taxa, prova de execução de JS, limite de fingerprints por IP), truncamento do IP e teto de repasses ao Umami para conter saturação ([ADR 0011](docs/adr/0011-limite-de-repasses-ao-umami.md)) |
 | [Umami](https://umami.is) v3.4.1 | Next.js | Motor de analytics web, usado sem fork |
 | Coletor de API | OpenTelemetry Collector + componentes Go | Autenticação por chave, normalização de rotas e gravação das métricas |
-| Rollup | Go | Consolida as métricas de API de 1 minuto em 1 hora e 1 dia e aplica a retenção |
+| Rollup | Go | Consolida as métricas de API de 1 minuto em 1 hora e 1 dia e aplica as retenções (métricas de API e eventos web do Umami) |
 | Banco | PostgreSQL 17 | Bancos separados `umami` (analytics web) e `stellytics` (tenants, chaves e métricas de API, com 24 meses de agregados) |
 | Infra | OpenTofu, Ansible, Docker Compose, Caddy | Hospedagem na União Europeia (Hetzner), backup contínuo cifrado, recriável a partir deste repositório |
 | Monitoramento | Prometheus, blackbox exporter, Alertmanager e replication-monitor (Go) | VM separada: disponibilidade de portal, ingestão web e ingestão de API medida de fora, alerta por e-mail e alertas de atraso de replicação e de WAL retido do Postgres ([ADR 0005](docs/adr/0005-monitoramento-externo.md)) |
@@ -208,9 +208,12 @@ A meta é conformidade com a GDPR **sem banner de consentimento**:
 - **Navegador:** nenhum cookie, `localStorage` ou identificador persistente.
 - **Umami:** gravação de sessão e heatmaps ficam desligados.
 - **API:** traces, spans e logs são descartados no coletor; ficam só contadores e histogramas por rota normalizada.
-- **Dados:** ficam armazenados na União Europeia.
+- **Retenção:** eventos web no Umami ficam cerca de seis meses (183 dias, aplicada pelo job de consolidação); métricas de API, 35 dias no detalhe e 25 meses nos agregados.
+- **Apagamento (direito à erasure):** quem tem conta no portal exclui a própria conta em `/settings`, com e-mail de confirmação — isso apaga o projeto do usuário, os sites no Umami e as métricas de API, e anonimiza as ações da pessoa no histórico de auditoria. O operador SCF pode apagar os dados de um projeto removido. O mesmo job aplica a retenção automática dos eventos web.
+- **Residência:** todos os dados ficam na União Europeia — a infraestrutura fixa Hetzner Nuremberg (`nbg1`), Alemanha, e backups na mesma região, cifrados.
+- **Jurisdições:** a lista provisória de jurisdições onde pode ser exigido opt-in (UE/EEE, Alemanha, França, Reino Unido) está em [`docs/privacidade.md`](docs/privacidade.md), seção 8, à espera de assessoria jurídica.
 
-O detalhe, com retenção e lacunas conhecidas, está em [`docs/privacidade.md`](docs/privacidade.md).
+O detalhe, com retenção, fluxos de apagamento e lacunas conhecidas, está em [`docs/privacidade.md`](docs/privacidade.md).
 
 ## Roadmap
 

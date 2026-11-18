@@ -127,6 +127,7 @@ Duas linguagens: **TypeScript** para interface e script do navegador; **Go** só
 - **O IP completo nunca é persistido.** O gateway trunca (último octeto do IPv4, /48 no IPv6) antes da geolocalização e entrega ao Umami pelo header de `CLIENT_IP_HEADER`. Sem cookies nem storage no navegador; gravação de sessão e heatmaps do Umami ficam desligados.
 - **O `tenant.id` vem sempre da chave de ingestão**, nunca de atributo enviado pelo cliente.
 - **Isolamento entre tenants** precisa estar coberto por testes automatizados, na web e na API (issue #21).
+- **Apagamento de dados (#154):** o `audit_log` só aceita a troca de `actor_user_id` pelo marcador `[apagado]` (migração `0009_erasure.sql`), nunca DELETE. A exclusão de conta apaga o projeto do dono (sites no Umami, métricas, linhas) e anonimiza o histórico; a retenção dos eventos web do Umami (183 dias) é do `services/rollup`, com `UMAMI_DATABASE_URL`.
 - **Script de rastreamento imutável por versão** (`/s/vX.Y.Z/<nome>.js`, com SRI). Nomes de script e endpoints não podem conter termos bloqueados por ad blockers (`umami`, `analytics`, `track`, `collect`).
 - **Normalização de rotas** com regras fixas no código: IDs numéricos, endereços Stellar G-/C-/M-, UUIDs, hashes hex e barra final. Um `http.route` enviado pelo cliente tem prioridade.
 - **O coletor descarta traces, spans e logs**: nada disso pode ser persistido.

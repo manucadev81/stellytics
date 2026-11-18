@@ -192,6 +192,11 @@ services:
       DATABASE_URL: postgresql://stellytics:${STELLYTICS_DB_PASSWORD:-stellytics}@postgres:5432/stellytics
       ROLLUP_INTERVAL: ${ROLLUP_INTERVAL:-15m}
       ROLLUP_LOOKBACK: ${ROLLUP_LOOKBACK:-48h}
+      # Retenção dos eventos web no Umami (#154): o mesmo job apaga eventos e
+      # sessões mais antigos que UMAMI_RETENTION_DAYS (padrão, cerca de seis
+      # meses). Sem UMAMI_DATABASE_URL a poda fica desligada.
+      UMAMI_DATABASE_URL: postgresql://umami:${UMAMI_DB_PASSWORD:-umami}@postgres:5432/umami
+      UMAMI_RETENTION_DAYS: ${UMAMI_RETENTION_DAYS:-183}
     depends_on:
       postgres:
         condition: service_healthy
