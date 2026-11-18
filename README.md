@@ -178,7 +178,7 @@ O playbook é idempotente: atualizar a aplicação é trocar os digests e rodar 
 
 O que vem junto: TLS automático, backup contínuo e cifrado do Postgres com restauração testada no CI, e monitoramento externo com alerta por e-mail numa VM separada (playbook `monitoring.yml`), incluindo atraso de replicação e WAL retido.
 
-O passo a passo completo, com segredos, restauração e o que ainda não foi testado numa conta real, está em [`docs/deploy.md`](docs/deploy.md); os procedimentos de operação, nos [runbooks](docs/runbooks/README.md).
+O passo a passo completo, com segredos, restauração e o que ainda não foi testado numa conta real, está em [`docs/deploy.md`](docs/deploy.md); os procedimentos de operação, nos [runbooks](docs/runbooks/README.md). Em Debian/Ubuntu, `sudo ./init.sh` prepara a máquina de controle para executar `./deploy.sh`.
 
 ## CI e cadeia de suprimentos
 
