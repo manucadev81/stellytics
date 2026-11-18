@@ -1,6 +1,6 @@
 # 0013. Nginx no host como proxy da produção
 
-- **Status:** Aceito
+- **Status:** Substituído por 0014
 - **Data:** 18/11/2026
 - **Issue:** —
 

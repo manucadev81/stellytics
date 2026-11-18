@@ -7,7 +7,7 @@
 # nelas), restaura os dumps, reaplica o 02-ingest-roles.sh e confere a
 # impressão digital contra a da origem. Só depois disso suba a aplicação.
 #
-#   docker compose -f prod.yaml stop portal ingest-web collector rollup umami   # antes
+#   docker compose -f prod.yaml stop caddy portal ingest-web collector rollup umami   # antes
 #   infra/scripts/db-import.sh --yes [--force-nonempty] /root/migracao
 #
 # Proteções, todas ANTES de apagar qualquer coisa: o sha256sums tem de listar

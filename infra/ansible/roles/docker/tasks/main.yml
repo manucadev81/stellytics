@@ -40,8 +40,8 @@
     state: present
     update_cache: true
 
-# userland-proxy desligado: o Nginx do host chega aos upstreams locais via
-# Docker NAT; o gateway confia apenas no endereço do bridge Docker.
+# userland-proxy desligado para o Caddy em contêiner receber o IP real do
+# cliente também em IPv6; o gateway confia no IP fixo do Caddy.
 - name: Configuração do Docker
   ansible.builtin.copy:
     dest: /etc/docker/daemon.json

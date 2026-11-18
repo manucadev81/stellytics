@@ -70,10 +70,10 @@ flowchart LR
 | Coletor de API | OpenTelemetry Collector + componentes Go | Autenticação por chave, normalização de rotas e gravação das métricas |
 | Rollup | Go | Consolida as métricas de API de 1 minuto em 1 hora e 1 dia e aplica a retenção |
 | Banco | PostgreSQL 17 | Bancos separados `umami` (analytics web) e `stellytics` (tenants, chaves e métricas de API, com 24 meses de agregados) |
-| Infra | OpenTofu, Ansible, Docker Compose, Nginx | Hospedagem na União Europeia (Hetzner), backup contínuo cifrado, recriável a partir deste repositório |
+| Infra | OpenTofu, Ansible, Docker Compose, Caddy | Hospedagem na União Europeia (Hetzner), backup contínuo cifrado, recriável a partir deste repositório |
 | Monitoramento | Prometheus, blackbox exporter, Alertmanager e replication-monitor (Go) | VM separada: disponibilidade de portal, ingestão web e ingestão de API medida de fora, alerta por e-mail e alertas de atraso de replicação e de WAL retido do Postgres ([ADR 0005](docs/adr/0005-monitoramento-externo.md)) |
 
-Em produção, o Nginx no host é a única porta pública. Ele termina TLS e encaminha os três hosts para os upstreams Docker publicados só em loopback: portal, ingestão web e ingestão de API (OTLP por HTTP e gRPC). O Umami nunca é exposto.
+Em produção, todos os serviços rodam em Docker Compose. O Caddy é o único serviço com portas públicas: termina TLS automaticamente e encaminha portal, ingestão web e ingestão de API (OTLP por HTTP e gRPC) pela rede Docker. O Umami nunca é exposto.
 
 A visão completa, com os dois fluxos, está em [`docs/arquitetura.md`](docs/arquitetura.md). As decisões e as alternativas descartadas estão nos ADRs ([índice](docs/adr/README.md)); os de base são:
 
@@ -81,7 +81,7 @@ A visão completa, com os dois fluxos, está em [`docs/arquitetura.md`](docs/arq
 - [0002 — Arquitetura e stack](docs/adr/0002-arquitetura-e-stack.md)
 - [0003 — Isolamento entre tenants é responsabilidade do portal](docs/adr/0003-isolamento-no-portal.md)
 - [0004 — Hospedagem na Hetzner, OpenTofu e backup com WAL-G](docs/adr/0004-hospedagem-e-backup.md)
-- [0013 — Nginx no host como proxy da produção](docs/adr/0013-nginx-no-host.md)
+- [0014 — Infraestrutura de produção em Docker Compose](docs/adr/0014-infra-em-docker-compose.md)
 
 ## Documentação
 
@@ -109,7 +109,7 @@ services/            Módulo Go único (go.mod)
   replication-monitor/ Métricas de replicação do Postgres para os alertas
   loadtest/          Ferramenta de carga (web e API)
   internal/          Código compartilhado dos testes Go (banco com as migrações do portal)
-infra/               OpenTofu, Ansible, Docker Compose, Nginx, monitoramento e scripts de operação
+infra/               OpenTofu, Ansible, Docker Compose, Caddy, monitoramento e scripts de operação
 examples/            Integrações de referência (HTML, SPA, SSR, backend com OTel)
 scripts/             Checagem de licenças e de vulnerabilidades das dependências
 docs/                ADRs, specs, guias, runbooks e registro de andamento
@@ -164,12 +164,12 @@ Ponha a chave impressa em `UMAMI_API_KEY`, no `.env` da raiz, e recrie o portal 
 
 ## Deploy em produção
 
-Uma VM na Hetzner (UE) com Nginx no host como proxy público. O deploy exige emitir o certificado Certbot antes de aplicar o Ansible. O passo a passo completo está em [`docs/deploy.md`](docs/deploy.md).
+Uma VM na Hetzner (UE) com todos os serviços da aplicação em Docker Compose. O Caddy obtém e renova os certificados TLS automaticamente. O passo a passo está em [`docs/deploy.md`](docs/deploy.md).
 
 | Passo | O que fazer | Ferramenta |
 |---|---|---|
 | 1. Infraestrutura | Criar a VM, o firewall, o volume e o bucket de backup | `tofu -chdir=infra/opentofu apply` |
-| 2. DNS e TLS | Apontar quatro nomes para a VM e emitir o certificado Certbot antes do Ansible | DNS e Certbot |
+| 2. DNS | Apontar quatro nomes para a VM; o Caddy emite os certificados automaticamente | seu provedor de DNS |
 | 3. Imagens | Publicar uma release no GitHub; as imagens saem assinadas | workflow `release.yml` |
 | 4. Deploy | Preencher o inventário, os segredos e os digests das imagens e aplicar | `ansible-playbook site.yml -e @secrets.yml` |
 | 5. Primeira subida | Trocar a senha do Umami, gerar a chave da conta de serviço, criar o primeiro operador do SCF e disparar o primeiro backup | túnel `infra/scripts/admin-tunnel.sh` |
@@ -182,7 +182,7 @@ O passo a passo completo, com segredos, restauração e o que ainda não foi tes
 
 ## CI e cadeia de suprimentos
 
-Todo PR roda o [`ci.yml`](.github/workflows/ci.yml): lint, tipos e testes de TypeScript e Go, os testes ponta a ponta no Compose local, a pilha de produção inteira com um S3 local (upstreams locais, backup e restauração), a replicação do Postgres com failover e a pilha de monitoramento. O check a exigir é o agregador `ci`.
+Todo PR roda o [`ci.yml`](.github/workflows/ci.yml): lint, tipos e testes de TypeScript e Go, os testes ponta a ponta no Compose local, a pilha de produção inteira com um S3 local (rotas do Caddy, backup e restauração), a replicação do Postgres com failover e a pilha de monitoramento. O check a exigir é o agregador `ci`.
 
 - **Dependências travadas** por lockfile, e só releases com pelo menos 14 dias (pnpm e [Renovate](renovate.json)).
 - **Licenças e vulnerabilidades** conferidas pelo [`dependencies.yml`](.github/workflows/dependencies.yml); só licenças aprovadas pela OSI, com exceções temporárias e datadas (`scripts/licenses/allowed.json`) e a atribuição de terceiros em [`docs/avisos-de-terceiros.md`](docs/avisos-de-terceiros.md). Para não distribuir sharp/libvips (LGPL-3.0), o otimizador de imagens do portal fica desligado e `/_next/image` responde 404.

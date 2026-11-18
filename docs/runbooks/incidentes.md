@@ -28,9 +28,9 @@ Serve para os quatro alertas reais do monitoramento externo ([`alerts.yml`](../.
 
 **Diagnóstico.**
 
-- Qual componente? Está no rótulo `component` do e-mail. Se só um caiu, o problema é do serviço dele; se todos caíram, é a VM, o Nginx ou a rede.
+- Qual componente? Está no rótulo `component` do e-mail. Se só um caiu, o problema é do serviço dele; se todos caíram, é a VM, o Caddy ou a rede.
 - Na VM: `docker compose -f prod.yaml ps` (procure `unhealthy`, `restarting` ou ausente) e `docker compose -f prod.yaml logs --tail 200 <serviço>`.
-- O proxy é o Nginx do host; ele encaminha para as portas de loopback de `portal`, `ingest-web` e `collector`. No Compose, `ingest-web` depende de `postgres`, `umami` e `portal`; `collector` e `rollup` dependem de `postgres` e `portal`; `portal` e `umami` dependem de `postgres`. Comece pelo mais fundo que esteja ruim (normalmente `postgres`: `df -h /srv/stellytics`, disco cheio derruba tudo).
+- O proxy é o serviço Caddy do Compose; ele encaminha pela rede Docker para `portal`, `ingest-web` e `collector`. No Compose, `ingest-web` depende de `postgres`, `umami` e `portal`; `collector` e `rollup` dependem de `postgres` e `portal`; `portal` e `umami` dependem de `postgres`. Comece pelo mais fundo que esteja ruim (normalmente `postgres`: `df -h /srv/stellytics`, disco cheio derruba tudo).
 - Pelo Prometheus da VM de monitoramento (túnel `ssh -N -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 root@<monitor_ipv4>`, depois `http://127.0.0.1:9090`): a consulta `probe_success` e a página *Status → Targets* mostram qual alvo falha.
 
 **Ação.**
@@ -49,17 +49,17 @@ Serve para os quatro alertas reais do monitoramento externo ([`alerts.yml`](../.
 
 ## TLSCertificateExpiringSoon
 
-**Sintomas.** O certificado de um alvo vence em menos de 14 dias; a renovação automática do Certbot pode estar falhando.
+**Sintomas.** O certificado de um alvo vence em menos de 14 dias; a renovação automática do Caddy pode estar falhando.
 
 **Diagnóstico.**
 
-- `certbot certificates` e `journalctl -u certbot.service --since '24 hours ago'`; detalhes em `/var/log/letsencrypt/letsencrypt.log`.
+- `docker compose -f prod.yaml logs --since=24h caddy`; o estado persistente fica em `/srv/stellytics/caddy`.
 - DNS: `dig +short <portal_host>`, `dig +short <ingest_host>` e `dig +short <api_host>` precisam apontar para a VM (A e AAAA).
 - Porta 80 aberta de fora: `nc -vz -w3 <ip-da-vm> 80` (o desafio HTTP-01 do Let's Encrypt passa por ela; o firewall da Hetzner abre 80 e 443).
 - O certificado deve estar em `/etc/letsencrypt/live/stellytics.xyz/` e cobrir o apex, portal, ingestão web e API.
-- Confira se o timer está ativo: `systemctl status certbot.timer`.
+- Confira se o contêiner está ativo: `docker compose -f prod.yaml ps caddy`.
 
-**Ação.** Corrija a causa (DNS, firewall ou configuração Certbot) e rode `certbot renew`. O hook instalado pelo Ansible recarrega o Nginx após a renovação.
+**Ação.** Corrija DNS/firewall e confirme que 80/443 chegam à VPS. Caddy tenta emitir e renovar automaticamente; acompanhe `docker compose -f prod.yaml logs -f caddy`.
 
 **Verificação.** `echo | openssl s_client -connect <portal_host>:443 -servername <portal_host> 2>/dev/null | openssl x509 -noout -enddate` mostra data nova; o alerta se resolve (tem `for: 1h`).
 

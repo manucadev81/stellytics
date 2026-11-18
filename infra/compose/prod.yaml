@@ -1,5 +1,5 @@
-# Produção (#14, ADR 0004): Nginx no host é o proxy público. Só os upstreams
-# necessários ficam publicados no loopback; Postgres, Umami e rollup ficam
+# Produção (#14, ADR 0004): todos os serviços rodam em Docker Compose. O Caddy
+# é o único serviço com portas públicas; Postgres, Umami e rollup ficam
 # apenas na rede Docker. O Ansible copia este arquivo e o .env para a VM e sobe
 # tudo com `docker compose -f prod.yaml up -d`.
 #
@@ -9,12 +9,11 @@
 #   INGEST_WEB_IMAGE, COLLECTOR_IMAGE e ROLLUP_IMAGE);
 # - o Postgres é a variante Debian com WAL-G (postgres/Dockerfile), com o
 #   arquivamento contínuo de WAL no Object Storage;
-# - portal, gateway e coletor escutam apenas no loopback da VM, para o Nginx;
-#   Postgres também fica no loopback, para o túnel SSH de administração;
+# - Caddy termina TLS e encaminha para portal, gateway e coletor pela rede
+#   Docker; Postgres publica só no loopback para o túnel SSH de administração;
 # - sem Mailpit: o SMTP vem de SMTP_URL;
 # - todas as senhas e chaves são obrigatórias (sem valor padrão);
-# - Nginx encaminha OTLP/HTTP e OTLP/gRPC para o coletor na rede local
-#   (ADR 0012).
+# - Caddy encaminha OTLP/HTTP e OTLP/gRPC para o coletor (ADR 0012).
 
 # Nome fixo do projeto: contêineres stellytics-<serviço>-1 e rede stellytics_internal.
 name: stellytics
@@ -137,8 +136,6 @@ services:
       start_period: 30s
     restart: unless-stopped
     logging: *logging
-    ports:
-      - "127.0.0.1:${PORTAL_UPSTREAM_PORT:-13000}:3000"
     networks: [internal]
 
   ingest-web:
@@ -147,9 +144,8 @@ services:
       DATABASE_URL: postgresql://stellytics_ingest:${STELLYTICS_INGEST_DB_PASSWORD:?}@postgres:5432/stellytics
       UMAMI_URL: http://umami:3000
       CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-x-stellytics-client-ip}
-      # Só confia no gateway da rede Docker, por onde o Nginx do host chega
-      # aos ports publicados em loopback.
-      TRUSTED_PROXIES: 172.30.0.1
+      # Só confia no Caddy, que tem IP fixo na rede Docker.
+      TRUSTED_PROXIES: 172.30.0.10,fd30:6e6f:7466::10
       PROOF_SECRET: ${INGEST_PROOF_SECRET:?}
       RATE_LIMIT: ${INGEST_RATE_LIMIT:-20}
       RATE_BURST: ${INGEST_RATE_BURST:-40}
@@ -175,8 +171,6 @@ services:
       start_period: 5s
     restart: unless-stopped
     logging: *logging
-    ports:
-      - "127.0.0.1:${INGEST_UPSTREAM_PORT:-13002}:8080"
     networks: [internal]
 
   collector:
@@ -203,9 +197,6 @@ services:
       start_period: 5s
     restart: unless-stopped
     logging: *logging
-    ports:
-      - "127.0.0.1:${COLLECTOR_GRPC_UPSTREAM_PORT:-14317}:4317"
-      - "127.0.0.1:${COLLECTOR_HTTP_UPSTREAM_PORT:-14318}:4318"
     networks: [internal]
 
   # Consolidação 1m -> 1h -> 1d e retenção das métricas de API (#34).
@@ -232,7 +223,37 @@ services:
     logging: *logging
     networks: [internal]
 
-# Rede isolada dos serviços internos.
+  caddy:
+    # Caddy com TLS automático. Só ele publica portas públicas.
+    image: caddy:2.11.7-alpine@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5
+    environment:
+      PORTAL_HOST: ${PORTAL_HOST:?}
+      PORTAL_ALIAS_HOST: ${PORTAL_ALIAS_HOST:?}
+      INGEST_HOST: ${INGEST_HOST:?}
+      API_HOST: ${API_HOST:?}
+      ACME_EMAIL: ${ACME_EMAIL:?}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ../caddy:/etc/caddy:ro
+      - ${STELLYTICS_DATA_DIR:-/srv/stellytics}/caddy:/data
+    depends_on:
+      portal:
+        condition: service_healthy
+      ingest-web:
+        condition: service_healthy
+      collector:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
+    networks:
+      internal:
+        ipv4_address: 172.30.0.10
+        ipv6_address: fd30:6e6f:7466::10
+
+# Rede isolada dos serviços internos; somente Caddy publica portas públicas.
 networks:
   internal:
     enable_ipv6: true

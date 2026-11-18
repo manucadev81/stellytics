@@ -19,7 +19,7 @@ Fonte: RFP `scf-web-api-analytics` ("Web and API Analytics for Stellar Ecosystem
 | Item | Meta do RFP | Compromisso do projeto hoje | O que a arquitetura de hoje sustenta | O que exigiria (ADR 0009) |
 |---|---|---|---|---|
 | Ingestão web | 99,99% | **Nenhum número comprometido.** Melhor esforço, medido e relatado (seção 3) | Uma VM e um banco únicos: não sustenta 99,99%, e a 99,9% só depois de medir | Degrau 1 (ingestão replicada) para 99,9%; 99,99% exige banco com failover (três nós), deploy sem interrupção, medição e ensaios; não prometido |
-| Ingestão de API | 99,99% | Coletor e `rollup` no `prod.yaml`, numa VM só, atrás do Nginx (ADR 0013); nunca aplicado numa conta real | Teste externo do host OTLP (`monitor_api_url`) | Réplica do coletor e medição numa produção real |
+| Ingestão de API | 99,99% | Coletor e `rollup` no `prod.yaml`, numa VM só, atrás do Caddy (ADR 0013); nunca aplicado numa conta real | Teste externo do host OTLP (`monitor_api_url`) | Réplica do coletor e medição numa produção real |
 | Painéis (portal e API de leitura) | 99,90% | **Nenhum número comprometido**, relato de medição | Uma VM: orçamento de 43 min/mês é consumido por um deploy ruim ou uma queda de VM | Degrau 2 (réplica e failover do banco, portal replicado) |
 | Vulnerabilidades críticas e altas | 24 h | **14 dias (crítica) e 30 dias (alta)** desde o recebimento ou identificação interna (`SECURITY.md`). As 24 h são meta do RFP, não compromisso; ver seção 5 | O processo técnico (release assinada, deploy por digest) pode ser rápido; o prazo de 24 h depende de uma pessoa disponível | Segunda pessoa de plantão, ensaios e uma decisão futura de alterar `SECURITY.md` |
 
@@ -56,7 +56,7 @@ Esta expressão e o rótulo `component` (usado em `alerts.yml`) **não foram exe
 ### 3.3 Janela e exclusões
 
 - **Janela:** mês-calendário em UTC.
-- **Exclusões propostas** (precisam ser registradas no relato, com horário e motivo): manutenção avisada com pelo menos 72 h de antecedência no portal ou em issue pública, limitada a um total de 60 min por mês; falha do cliente ou da rede do tenant; indisponibilidade comprovada do provedor de hospedagem (registro do status da Hetzner); queda causada por abuso (ataque de volume) enquanto o Nginx não tem limite por IP (ADR 0006). Falha de deploy, de migração ou de renovação de certificado **não** é exclusão.
+- **Exclusões propostas** (precisam ser registradas no relato, com horário e motivo): manutenção avisada com pelo menos 72 h de antecedência no portal ou em issue pública, limitada a um total de 60 min por mês; falha do cliente ou da rede do tenant; indisponibilidade comprovada do provedor de hospedagem (registro do status da Hetzner); queda causada por abuso (ataque de volume) enquanto o Caddy não tem limite por IP (ADR 0006). Falha de deploy, de migração ou de renovação de certificado **não** é exclusão.
 - Queda da própria VM de monitoramento: o período sem dados é contado como desconhecido e declarado no relato, não como disponível.
 
 ### 3.4 Relato mensal

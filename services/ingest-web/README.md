@@ -98,7 +98,7 @@ O gateway conecta no banco `stellytics` com o usuário `stellytics_ingest` e só
 
 ## IP do cliente
 
-Vem do `RemoteAddr`. O `X-Forwarded-For` só é lido quando a conexão chega de um CIDR de `TRUSTED_PROXIES` (o gateway Docker alcançado pelo Nginx no host, em produção); nesse caso o cliente é o primeiro endereço, da direita para a esquerda, que não é de um proxy confiável. O IP completo só existe na memória do request: o limite de taxa e o repasse usam o IP truncado.
+Vem do `RemoteAddr`. O `X-Forwarded-For` só é lido quando a conexão chega de um CIDR de `TRUSTED_PROXIES` (o Caddy na rede Docker, em produção); nesse caso o cliente é o primeiro endereço, da direita para a esquerda, que não é de um proxy confiável. O IP completo só existe na memória do request: o limite de taxa e o repasse usam o IP truncado.
 
 ## Privacidade (#24)
 

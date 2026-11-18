@@ -48,6 +48,11 @@
 	reverse_proxy portal:3000
 }
 
+{$PORTAL_ALIAS_HOST} {
+	import security_headers
+	redir https://{$PORTAL_HOST}{uri} permanent
+}
+
 {$INGEST_HOST} {
 	import security_headers
 	@gateway path /e /c /s/* /healthz

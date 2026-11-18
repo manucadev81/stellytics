@@ -53,7 +53,7 @@ O script de rastreamento é instalado em sites de terceiros com `src="https://<h
 | **B. O domínio fica com o operador antigo** | Ele só repõe os registros A e AAAA para o IP novo | **Só como fase transitória.** Contradiz o critério "o novo operador roda sozinho": se o dono do domínio some, a ingestão cai |
 | **C. Domínio novo** | Redirecionamento permanente do portal e transição longa da ingestão | Último recurso. O **redirecionamento** serve ao portal (navegadores em `GET`), **não** à ingestão: um `POST` de `fetch` entre origens não deve depender de redirecionamento. O host antigo precisa **continuar servindo o gateway por muito tempo** |
 
-**A opção C exige uma mudança que o repositório ainda não tem.** O vhost Nginx (`infra/ansible/roles/stellytics/templates/nginx.conf.j2`) conhece um host de ingestão e não mantém um alias legado para ele. Para a transição seria preciso servir o gateway nos dois nomes por tempo suficiente, redirecionar o portal antigo e atualizar certificados, DNS e configuração Ansible. **Isso é uma proposta, não está implementado nem testado**; se a opção C for a escolhida, abra uma issue e implemente antes da janela. Mudar o host do portal também derruba as sessões (o cookie é do host) e muda a `BETTER_AUTH_URL`.
+**A opção C exige uma mudança que o repositório ainda não tem.** O Caddyfile (`infra/caddy/Caddyfile`) conhece um host de ingestão e não mantém um alias legado para ele. Para a transição seria preciso servir o gateway nos dois nomes por tempo suficiente, redirecionar o portal antigo e atualizar certificados, DNS e configuração Ansible. **Isso é uma proposta, não está implementado nem testado**; se a opção C for a escolhida, abra uma issue e implemente antes da janela. Mudar o host do portal também derruba as sessões (o cookie é do host) e muda a `BETTER_AUTH_URL`.
 
 **Host neutro** ([`packages/tracker/docs/ad-blockers.md`](../packages/tracker/docs/ad-blockers.md)): o host da ingestão deve ser curto e neutro (`e.<domínio>` ou `gw.<domínio>`), sem `analytics`, `track`, `tracking`, `collect`, `umami`, `stats`, `metrics` nem `telemetry`, e o check do bloqueio deve rodar com ele (`pnpm --filter @stellytics/tracker check:adblock <host>`). Como o host é praticamente permanente, **decida o domínio e o dono final antes do primeiro deploy**: se a produção ainda não foi aplicada, registre o domínio já na conta do projeto ou da entidade que vai operar, e a opção A deixa de ser uma transferência e vira só uma troca de contato administrativo.
 
@@ -77,7 +77,7 @@ O script de rastreamento é instalado em sites de terceiros com `src="https://<h
 4. [`docs/privacidade.md`](privacidade.md) e [`docs/umami.md`](umami.md): o IP completo nunca é persistido; o Umami nunca é exposto; qualquer patch no Umami fica documentado;
 5. as restrições do `CLAUDE.md` ("Restrições que não são óbvias"): Umami fixado, licenças aprovadas pela OSI, o `tenant.id` vem sempre da chave de ingestão, script imutável por versão.
 
-**Pendências conhecidas que o novo operador herda** (`docs/deploy.md`, "O que o guia ainda não cobre"): o coletor de API e o `rollup` ainda **não estão em produção**; a API de leitura do SCF não tem limite por IP no Nginx; é uma VM só, sem alta disponibilidade; a restauração contra o bucket real nunca foi ensaiada.
+**Pendências conhecidas que o novo operador herda** (`docs/deploy.md`, "O que o guia ainda não cobre"): o coletor de API e o `rollup` ainda **não estão em produção**; a API de leitura do SCF não tem limite por IP no Caddy; é uma VM só, sem alta disponibilidade; a restauração contra o bucket real nunca foi ensaiada.
 
 ## Ordem e janela de manutenção
 
@@ -109,7 +109,7 @@ Antes de tocar nos dados, porque tudo o que sobe no destino precisa de imagens d
 
 ### Fase 2: infraestrutura nova e ensaio (T-14 a T-1)
 
-1. No projeto novo da Hetzner: `docs/deploy.md`, passos 1 a 4 (OpenTofu, DNS **de ensaio** em domínio do novo operador, emissão do certificado Certbot, release e Ansible) e o monitoramento. O certificado TLS precisa cobrir todos os nomes antes de o vhost Nginx ser aplicado; para testar o procedimento com os nomes definitivos, eles precisam apontar para a VM nova durante o ensaio.
+1. No projeto novo da Hetzner: `docs/deploy.md`, passos 1 a 4 (OpenTofu, DNS **de ensaio** em domínio do novo operador, release e Ansible; o Caddy obtém o certificado após a virada do DNS) e o monitoramento. O DNS precisa apontar para a VM nova e as portas 80/443 estar acessíveis para o Caddy emitir os certificados; para testar com os nomes definitivos, eles precisam apontar para a VM nova durante o ensaio.
 2. **Ensaio de migração**, para medir o tempo e conferir o procedimento com dados reais antes da janela: restaure o backup mais recente do operador antigo numa VM descartável (`docs/deploy.md`, "Restaurar o banco"; é também o primeiro ensaio de restauração que o `backup-e-restauracao.md` marca como "nunca realizado"), e rode nela e na VM nova o procedimento da [Migração de dados](#migração-de-dados-testada) do começo ao fim. Anote o tempo.
 3. **Baixe o TTL** dos registros do portal e da ingestão para 300 s pelo menos um TTL antigo antes da janela (T-2 se o TTL for 24 h).
 
@@ -117,13 +117,13 @@ Antes de tocar nos dados, porque tudo o que sobe no destino precisa de imagens d
 
 Janela sugerida: o horário de menor tráfego dos sites dos tenants, **longe do backup base das 03:15 UTC** e do timer do operador antigo (desligue o timer antigo no passo 2). Tamanho: o dos tempos do ensaio, mais a propagação do DNS e a emissão do certificado. Com os volumes do teste local (pequenos, ver os tempos abaixo) o trabalho de dados leva segundos, mas **com dados reais o tempo não foi medido**; reserve uma folga.
 
-**Decisão registrada: janela longa, ingestão parada do passo 1 à virada do DNS.** O gateway antigo é parado no passo 1 e o novo só atende depois da virada; tudo o que chegar no intervalo se perde. Escolhido pela simplicidade e porque o dump consistente exige o Umami parado. **Alternativa não testada:** virar o DNS **antes** do backup (o gateway novo, ainda sem sites, descarta com `204` do mesmo jeito, mas o intervalo de perda passa a ser só o tempo de dump, transferência e restore, e o tráfego já chega ao Nginx novo com certificado válido). Ela só vale se o gateway novo estiver saudável e a perda for aceita; não foi ensaiada.
+**Decisão registrada: janela longa, ingestão parada do passo 1 à virada do DNS.** O gateway antigo é parado no passo 1 e o novo só atende depois da virada; tudo o que chegar no intervalo se perde. Escolhido pela simplicidade e porque o dump consistente exige o Umami parado. **Alternativa não testada:** virar o DNS **antes** do backup (o gateway novo, ainda sem sites, descarta com `204` do mesmo jeito, mas o intervalo de perda passa a ser só o tempo de dump, transferência e restore, e o tráfego já chega ao Caddy novo com certificado válido). Ela só vale se o gateway novo estiver saudável e a perda for aceita; não foi ensaiada.
 
 Durante a janela, o portal fica fora do ar (ninguém entra nem cria nada) e **a ingestão web para: os eventos que chegarem entre a parada do gateway antigo e o gateway novo atender são descartados** (o `fetch` do script falha em silêncio) e **não são recuperados**. Os painéis terão um buraco desse tamanho. Avise isso aos tenants.
 
 Na VM **antiga**, como root (`cd /opt/stellytics/infra/compose`; os scripts estão em `../scripts/` depois de um `site.yml` com esta versão do repositório):
 
-1. `systemctl stop nginx` e `docker compose -f prod.yaml stop portal ingest-web collector rollup umami` (a ingestão para aqui).
+1. `docker compose -f prod.yaml stop caddy portal ingest-web collector rollup umami` (a ingestão para aqui).
 2. `systemctl stop stellytics-backup.timer`.
 3. `../scripts/db-export.sh /root/migracao`. Gera `stellytics.dump`, `umami.dump`, `fingerprint.txt` e `sha256sums` (permissão 600).
 4. Copie a pasta para a VM nova sem passar por disco intermediário, pela máquina de quem administra:
@@ -140,7 +140,7 @@ Na VM **nova**, como root (`cd /opt/stellytics/infra/compose`), com o Postgres n
 8. `systemctl start stellytics-backup` (o primeiro backup base da linha nova, no bucket novo) e confira com `backup-list`.
 **Virada do DNS** (com o gateway novo já saudável por IP):
 
-10. Aponte os quatro nomes (portal/alias, ingestão web e API; A e AAAA) para os IPs da VM nova. Com TTL de 300 s a virada leva alguns minutos; emita o certificado Certbot antes de aplicar o vhost Nginx.
+10. Aponte os quatro nomes (portal/alias, ingestão web e API; A e AAAA) para os IPs da VM nova. Com TTL de 300 s a virada leva alguns minutos; emita o certificado Caddy antes de aplicar o Caddyfile.
 11. Conferir de fora, com os comandos do passo 6 do `docs/deploy.md`; entrar no portal com uma conta de tenant e abrir o painel de um site; abrir `/operator`; instalar o script num site de teste e ver a visita no painel.
 12. Se o portal receber 401 do Umami, gere a chave de serviço de novo (`docs/deploy.md`, passo 5) e atualize `umami_api_key`.
 13. **Só depois de validar** (passos 11 e 12), apague os **dumps** (`stellytics.dump`, `umami.dump`; contêm hashes de senha e sessões) da VM nova e da antiga: `rm -f /root/migracao/*.dump`. Deixe o `fingerprint.txt` e o `sha256sums` até o fim do período de reversão. Até lá os dumps são a forma mais rápida de refazer a migração: guarde-os só se a decisão for explícita, e apague no fim.
@@ -218,7 +218,7 @@ Os scripts vão para a VM pelo `site.yml` (`/opt/stellytics/infra/scripts/`).
 
 **Passos do caminho B** (os que o teste executou, na ordem), com a pilha de destino **sem o Postgres iniciado** e o `.env` do destino com a `walg_libsodium_key` da origem e o `walg_s3_prefix` do bucket novo:
 
-1. Origem, janela aberta: `systemctl stop nginx`; `docker compose -f prod.yaml stop portal ingest-web collector rollup umami`; `docker compose -f prod.yaml exec -T -u postgres postgres stellytics-backup`; troque o segmento de WAL (`select pg_switch_wal()`) e espere o `pg_stat_archiver` arquivá-lo.
+1. Origem, janela aberta: `docker compose -f prod.yaml stop caddy portal ingest-web collector rollup umami`; `docker compose -f prod.yaml exec -T -u postgres postgres stellytics-backup`; troque o segmento de WAL (`select pg_switch_wal()`) e espere o `pg_stat_archiver` arquivá-lo.
 2. Copie o prefixo do bucket antigo para o novo (o teste usou `rclone sync --checksum` entre dois endpoints S3 e conferiu a contagem e o tamanho dos objetos).
 3. Destino: `docs/deploy.md`, "Restaurar o banco", com a pasta de dados vazia (`stellytics-restore LATEST`), e suba o Postgres.
 4. Alinhe as senhas dos papéis ao `.env` do destino (achado 4 abaixo) e reaplique o `02-ingest-roles.sh`.
@@ -280,7 +280,7 @@ Depois, com a aplicação rodando no destino:
    - **extensões:** vão no dump (`pgcrypto` do Umami) e o restore as recria como superusuário (`postgres`); funcionou;
    - **sequências:** só a do Drizzle existe nos dois bancos (os IDs são `uuid`), e o valor migrou;
    - **o diário do Drizzle** (`drizzle.__drizzle_migrations`, 8 linhas) vem no dump do `stellytics`: o portal novo não reaplica migração (o log do portal diz só "migrações aplicadas" na subida);
-   - **certificados TLS** (`/etc/letsencrypt`): não se migram; o novo operador emite os certificados Certbot para os domínios dele;
+   - **certificados TLS** (`/srv/stellytics/caddy`): não se migram; o Caddy no novo VPS emite certificados automaticamente após a virada do DNS;
    - **histórico de backup do WAL-G e dados do Prometheus:** não migram; o destino começa linhas novas (`systemctl start stellytics-backup` depois da migração).
 6. **Versão do destino.** O `db-import.sh` confere a impressão digital **antes** de a aplicação subir, então ela só bate se o destino restaurou exatamente o que a origem tinha. Se as imagens do destino forem **mais novas** e trouxerem migração, o portal as aplica na subida (comportamento normal do `RUN_MIGRATIONS`; **não foi testado na migração**). Nunca suba uma versão **mais antiga** que a da origem sobre os dados: as migrações só andam para frente (`docs/deploy.md`, "Atualizar a aplicação").
 7. **O destino precisa estar vazio de dados, não de estrutura.** Se o `site.yml` já subiu o portal e o Umami, eles criaram tabelas vazias, e o restore bateria nelas (não tentado). O `db-import.sh` por isso exige a aplicação parada, restaura em bancos temporários e troca pelos de verdade (é o caminho testado). Ele **recusa** um destino com tenants (a origem, por exemplo) sem `--force-nonempty`; com a opção, apaga esses dados: confira o host antes.
@@ -309,8 +309,8 @@ O critério "procedimento de migração de dados testado" vale **só para o que 
 - **Volume real de dados.** O Umami teve **60 eventos** e as métricas de API 34.567 linhas. Tempo de dump, de restore, de cópia e uso de disco com milhões de eventos **não foram medidos**, e o `db-fingerprint.sh` agrega o texto das linhas de cada tabela dentro do Postgres, o que pode ficar pesado em tabelas grandes (o hash é por linha, mas ele percorre tudo).
 - **Mudar `portal_auth_secret` ou `umami_app_secret` no destino.** O teste usou os mesmos valores (a sessão antiga continuar válida depende disso). O efeito de trocá-los, inclusive nos IDs de visitante do Umami, **não foi medido**.
 - **A chave de API do Umami** (`umami_api_key`): o teste não criou a conta de serviço, então não se sabe se a chave sobrevive à migração.
-- **Nginx no host e os serviços gateway `ingest-web` e coletor/`rollup`** como serviços. O gateway não subiu; o que ele lê (a visão `ingest_site`, como `stellytics_ingest`) foi conferido por SQL. O coletor e o `rollup` não estão em produção; as tabelas e funções deles migraram (partições, `api_metric_ensure_partitions`, GRANT de `stellytics_collector`).
-- **A reversão** (`db-export.sh` na pilha nova e `db-import.sh` na antiga), a opção C do domínio e os aliases Nginx que ela exige.
+- **Caddy no host e os serviços gateway `ingest-web` e coletor/`rollup`** como serviços. O gateway não subiu; o que ele lê (a visão `ingest_site`, como `stellytics_ingest`) foi conferido por SQL. O coletor e o `rollup` não estão em produção; as tabelas e funções deles migraram (partições, `api_metric_ensure_partitions`, GRANT de `stellytics_collector`).
+- **A reversão** (`db-export.sh` na pilha nova e `db-import.sh` na antiga), a opção C do domínio e os aliases Caddy que ela exige.
 - **Versão maior do Postgres** entre origem e destino (o teste usa a 17.11 nos dois lados).
 - **O tempo e as perdas reais da janela**, e a propagação do DNS.
 - **A comunicação aos tenants** e os aspectos jurídicos (DPA, entidade legal, suboperadores): é texto proposto, não validado.

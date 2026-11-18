@@ -2,17 +2,17 @@
 
 Como recriar a produção do stellytics do zero, só com este repositório e os segredos ([#14](https://github.com/romulospl/stellytics/issues/14)). As decisões estão no [ADR 0004](adr/0004-hospedagem-e-backup.md); os arquivos, em [`infra/`](../infra/README.md).
 
-> **Escopo.** Este guia sobe o que está em [`infra/compose/prod.yaml`](../infra/compose/prod.yaml): portal, gateway de ingestão web, coletor de API, job de consolidação, Umami e Postgres com backup, mais o monitoramento externo. O Nginx já instalado na VPS termina TLS e encaminha os três hosts para portas de loopback. O coletor e o job de consolidação entraram em 16/11/2026 ([ADR 0012](adr/0012-ingestao-de-api-pelo-caddy.md)). **A [#42](https://github.com/romulospl/stellytics/issues/42) ainda não está cumprida:** o critério de aceite (alguém de fora faz o deploy seguindo só o guia) só será cumprido quando alguém de fora seguir o guia numa conta real.
+> **Escopo.** Este guia sobe toda a infraestrutura da aplicação em [`infra/compose/prod.yaml`](../infra/compose/prod.yaml): Caddy, portal, gateway de ingestão web, coletor de API, job de consolidação, Umami e Postgres com backup, mais o monitoramento externo. O Caddy termina TLS automaticamente e encaminha os hosts pela rede Docker. O coletor e o job de consolidação entraram em 16/11/2026 ([ADR 0012](adr/0012-ingestao-de-api-pelo-caddy.md)). **A [#42](https://github.com/romulospl/stellytics/issues/42) ainda não está cumprida:** o critério de aceite (alguém de fora faz o deploy seguindo só o guia) só será cumprido quando alguém de fora seguir o guia numa conta real.
 
 ## Visão geral
 
 ```mermaid
 flowchart LR
-  internet((Internet)) -->|80, 443| nginx[Nginx no host]
+  internet((Internet)) -->|80, 443| caddy[Caddy em Docker]
   subgraph vm["VM na Hetzner (nbg1, Alemanha)"]
-    nginx -->|127.0.0.1:13000| portal[Portal]
-    nginx -->|127.0.0.1:13002| gw[Gateway ingest-web]
-    nginx -->|127.0.0.1:14317 / 14318| collector[Coletor OTLP]
+    caddy --> portal[Portal]
+    caddy --> gw[Gateway ingest-web]
+    caddy --> collector[Coletor OTLP]
     portal --> umami[Umami]
     gw --> umami
     portal --> pg[(Postgres + WAL-G)]
@@ -22,9 +22,9 @@ flowchart LR
   pg -->|WAL contínuo e backup diário, cifrados| s3[(Object Storage nbg1)]
 ```
 
-- O Nginx ocupa 80 e 443 no host. O Docker publica portal, gateway, coletor e Postgres apenas em `127.0.0.1`; o Umami e o rollup não publicam portas.
-- Os dados do Postgres ficam no volume da Hetzner em `/srv/stellytics`. O certificado TLS é gerenciado pelo Certbot no host, fora do volume de dados.
-- O vhost desliga access logs e restringe error logs a `crit`; os logs globais do Nginx continuam sujeitos à configuração local da VPS.
+- Todos os serviços da aplicação, inclusive o proxy, rodam no Docker Compose. Só o Caddy publica 80/443; Postgres publica apenas no loopback para o túnel SSH e os demais serviços ficam na rede interna.
+- Os dados do Postgres e o estado/certificados TLS do Caddy ficam no volume da Hetzner em `/srv/stellytics`.
+- Caddy não grava access logs; erros são enviados ao log do contêiner sem cabeçalhos ou URLs sensíveis.
 
 ## Onde ficam os dados (data residency)
 
@@ -44,7 +44,7 @@ O local é a variável `location` do OpenTofu. Se mudar, mude também `walg_s3_e
 | Projeto na Hetzner Cloud, com o Object Storage habilitado | VMs, volume, firewall e o bucket do backup |
 | Um domínio com controle do DNS (qualquer provedor) | Três nomes: portal, ingestão web e ingestão de API (passo 2) |
 | Um provedor de SMTP (envio autenticado) | Confirmação de e-mail no cadastro e recuperação de senha do portal. **Sem ele ninguém consegue se cadastrar**, porque o e-mail confirmado é obrigatório. Formato da URL: `smtps://usuario:senha@host:465` |
-| Um e-mail para o Let's Encrypt (`acme_email`) | Avisos de certificado |
+| Um e-mail para o Let's Encrypt (`acme_email`) | Avisos de certificado TLS automático do Caddy |
 | Uma conta no GitHub com permissão para publicar releases do repositório (ou o seu fork) | Gerar as imagens assinadas (passo 3) |
 | Opcional: um serviço de sinal de vida (healthchecks.io ou similar) | Avisa se a própria VM de monitoramento cair |
 
@@ -104,17 +104,7 @@ Crie registros A (e AAAA, com o IPv6) apontando para a VM:
 - `e.stellytics.xyz` (ingestão web; não contém termos bloqueados por ad blockers);
 - `otlp.stellytics.xyz` (OTLP/HTTP e gRPC na 443).
 
-Use os IPs `server_ipv4` (A) e `server_ipv6` (AAAA). Antes do deploy, instale o Nginx e o Certbot no host, emita um certificado que cubra os quatro nomes e confirme que ele está em `/etc/letsencrypt/live/stellytics.xyz/`. O Nginx e o vhost gerenciado pelo Ansible dependem desse certificado.
-
-Com o DNS já resolvendo para a VPS e as portas 80/443 liberadas, conecte por SSH e rode:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y nginx certbot python3-certbot-nginx
-sudo certbot certonly --nginx \
-  -d stellytics.xyz -d app.stellytics.xyz \
-  -d e.stellytics.xyz -d otlp.stellytics.xyz
-```
+Use os IPs `server_ipv4` (A) e `server_ipv6` (AAAA). O Caddy no Compose solicita e renova certificados automaticamente depois que os quatro nomes resolverem para a VPS e as portas 80/443 estiverem liberadas. Não é necessário instalar proxy ou cliente ACME no host.
 
 ## 3. Publicar as imagens
 
@@ -135,7 +125,7 @@ O deploy só aceita imagens publicadas pelo workflow de release, assinadas com c
    - copie `inventory/production.example.yml` para `inventory/production.yml` e preencha com as saídas do OpenTofu (`server_ipv4` e `data_volume_device` no host `stellytics`; `monitor_ipv4` no host `monitor`, usado só no passo de monitoramento);
    - copie `secrets.example.yml` para `secrets.yml` e preencha.
 2. Em `group_vars/all.yml`, preencha:
-   - os hosts (`portal_host`, `portal_alias_host`, `ingest_host`, `api_host`), `nginx_tls_dir`, `acme_email` e `mail_from` (remetente dos e-mails do portal; o domínio dele precisa estar autorizado no seu SMTP). `nginx_tls_dir` deve apontar para o diretório do certificado criado no passo 2;
+   - os hosts (`portal_host`, `portal_alias_host`, `ingest_host`, `api_host`), `acme_email` e `mail_from` (remetente dos e-mails do portal; o domínio dele precisa estar autorizado no seu SMTP);
    - `signup_approval` (`false` por padrão): com `true`, todo projeto novo fica `pending` até um operador aprovar em `/operator/approvals` ([ADR 0007](adr/0007-cadastro-com-aprovacao.md)). Ligar ou desligar vale só para cadastros novos e exige reaplicar o playbook (reinicia o portal); projetos já pendentes continuam na fila;
    - `portal_image`, `ingest_web_image`, `collector_image` e `rollup_image`, no formato `ghcr.io/romulospl/stellytics/portal@sha256:<digest>` (o playbook recusa imagem sem digest);
    - `walg_s3_prefix`, com a saída `backup_s3_prefix`. O `walg_s3_endpoint` e o `walg_s3_region` já vêm certos para `nbg1`.
@@ -152,9 +142,9 @@ O deploy só aceita imagens publicadas pelo workflow de release, assinadas com c
 Na primeira vez leva alguns minutos (atualizações, Docker, build da imagem do Postgres com WAL-G). O playbook prepara a VM e sobe a aplicação:
 
 - atualiza a VM e liga as atualizações automáticas de segurança;
-- instala Nginx, Certbot, Docker (com a chave do repositório conferida) e cosign;
+- instala Docker (com a chave do repositório conferida) e cosign;
 - monta o volume;
-- copia o Compose e o `.env` (permissão 600) para `/opt/stellytics`, instala o vhost Nginx e valida/recarrega o Nginx;
+- copia o Compose, o Caddyfile e o `.env` (permissão 600) para `/opt/stellytics`;
 - confere a assinatura das imagens;
 - sobe a pilha (as migrações do portal rodam nessa subida) e liga o timer do backup diário.
 
@@ -232,7 +222,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/j
 De fora da VM (o Docker da VM roda com `userland-proxy` desligado, então `ss` não mostra processo escutando nessas portas; confira pelo lado de fora e pelas regras do Docker):
 
 ```bash
-nc -vz -w3 <ip-da-vm> 443    # deve abrir (Nginx)
+nc -vz -w3 <ip-da-vm> 443    # deve abrir (Caddy em Docker)
 nc -vz -w3 <ip-da-vm> 5432   # deve falhar (o Postgres só escuta no loopback e o firewall não abre a porta)
 ```
 
@@ -240,9 +230,10 @@ Na VM (`ssh root@<ip-da-vm>`):
 
 ```bash
 cd /opt/stellytics/infra/compose
-docker compose -f prod.yaml ps            # todos healthy; upstreams Docker só em 127.0.0.1
-ss -lntp | grep -E ':(80|443|13000|13002|14317|14318|5432)\b' # Nginx público; upstreams e Postgres no loopback
-nginx -t
+docker compose -f prod.yaml ps            # serviços em execução; upstreams só na rede interna Docker
+docker compose -f prod.yaml port caddy 80     # porta HTTP pública
+docker compose -f prod.yaml port caddy 443    # porta HTTPS pública
+docker compose -f prod.yaml port postgres 5432 # deve mostrar 127.0.0.1
 systemctl list-timers stellytics-backup.timer
 ```
 
@@ -253,7 +244,7 @@ No navegador, o teste que prova o conjunto:
 3. Entre com a conta de operador em `/operator` e confira que o projeto aparece.
 4. Em `/services`, crie um serviço e uma chave de ingestão, aponte um backend para `https://<api_host>` (OTLP/HTTP; guia em [`examples/api-backend/README.md`](../examples/api-backend/README.md)) e veja as requisições no painel do serviço em um ou dois minutos.
 
-Se algo falhar, os logs de cada serviço estão em `docker compose -f prod.yaml logs <serviço>` (portal, ingest-web, collector, rollup, umami, postgres); o vhost grava erros críticos em `/var/log/nginx/stellytics-error.log`.
+Se algo falhar, os logs de cada serviço estão em `docker compose -f prod.yaml logs <serviço>` (caddy, portal, ingest-web, collector, rollup, umami, postgres). O estado de certificados fica em `/srv/stellytics/caddy`.
 
 ## Atualizar a aplicação
 
@@ -437,14 +428,14 @@ Limites e cuidados:
 
 ## O que o guia ainda não cobre
 
-- **Coletor de API:** está no `prod.yaml` e no Nginx ([ADR 0013](adr/0013-nginx-no-host.md)), mas nunca rodou numa conta real. O Nginx não limita requisições por IP e o coletor não limita por chave; o teto de memória do contêiner é `collector_mem_limit` (padrão `512m`). As VMs extras de ingestão (`prod-ingest.yaml`) só têm o gateway web: a ingestão de API continua numa VM só.
-- **API de leitura do SCF (`/api/v1`, [#48](https://github.com/romulospl/stellytics/issues/48)):** é servida pelo portal, no host `app.stellytics.xyz`. O Nginx não aplica limite por IP. O limite existente é do portal, em memória e por instância ([ADR 0006](adr/0006-api-de-leitura-do-scf.md)); um ataque distribuído não é contido.
+- **Coletor de API:** está no `prod.yaml` e no Caddy ([ADR 0014](adr/0014-infra-em-docker-compose.md)), mas nunca rodou numa conta real. O Caddy não limita requisições por IP e o coletor não limita por chave; o teto de memória do contêiner é `collector_mem_limit` (padrão `512m`). As VMs extras de ingestão (`prod-ingest.yaml`) só têm o gateway web: a ingestão de API continua numa VM só.
+- **API de leitura do SCF (`/api/v1`, [#48](https://github.com/romulospl/stellytics/issues/48)):** é servida pelo portal, no host `app.stellytics.xyz`. O Caddy não aplica limite por IP. O limite existente é do portal, em memória e por instância ([ADR 0006](adr/0006-api-de-leitura-do-scf.md)); um ataque distribuído não é contido.
 - **Domínio e DNS na IaC:** hoje os registros são criados à mão (ADR 0004).
 - **SMTP de produção:** o guia exige um provedor, mas não escolhe nem configura nenhum (SPF, DKIM e DMARC do domínio do `mail_from` ficam com você).
 - **Transferir a operação para outra equipe:** plano, ordem, janela, migração de dados testada localmente (`infra/scripts/db-export.sh` e `db-import.sh`) e critérios de aceite em [`docs/transferencia.md`](transferencia.md) ([#54](https://github.com/romulospl/stellytics/issues/54)).
 - **Alta disponibilidade:** por padrão é uma VM só; se ela cair, o serviço cai até a recriação (restauração do backup em VM nova, seção "Restaurar o banco"). A seção "Alta disponibilidade" acima configura réplica do Postgres e ingestão extra, mas o failover é manual, não há balanceador nem IP flutuante configurado e nada foi aplicado numa conta real.
 - **Teste de restauração em produção:** a restauração é testada no CI com S3 local, não contra o bucket real. Faça um ensaio numa VM descartável antes de precisar dela.
-- **Atualização do Umami e do Postgres:** só por PR (imagens por digest no `prod.yaml`); não há guia de migração de versão maior do Postgres. A configuração do Nginx é entregue pelo Ansible.
+- **Atualização do Umami e do Postgres:** só por PR (imagens por digest no `prod.yaml`); não há guia de migração de versão maior do Postgres. A configuração do Caddy é entregue pelo Ansible e executada em contêiner.
 
 ## Como este guia foi conferido
 
@@ -454,7 +445,7 @@ Sem credenciais da Hetzner, de DNS ou de SMTP, foi possível conferir:
 - `tofu validate` (contêiner `ghcr.io/opentofu/opentofu:1.13.2`) em `infra/opentofu/`;
 - `ansible-playbook --syntax-check` de `site.yml`, `monitoring.yml`, `ingest.yml` e `standby.yml` (ansible-core 2.21) com os arquivos de exemplo;
 - os nomes de variáveis, saídas do OpenTofu, scripts (`pnpm umami:service-account`, `operator:create`) e caminhos citados, contra os arquivos do repositório;
-- os upstreams locais do portal, gateway e OTLP, uma métrica de API gravada, o backup cifrado e a restauração, pelo job `infra` do CI (`infra/compose/test/prod-stack-test.sh`); a configuração Nginx do host é verificada na VPS com `nginx -t`;
+- as rotas TLS do Caddy, os serviços internos, uma métrica de API gravada, o backup cifrado e a restauração, pelo job `infra` do CI (`infra/compose/test/prod-stack-test.sh`);
 - a replicação, a promoção e a ingestão replicada, em Docker local, por `infra/compose/test/ha-replication-test.sh` (job `infra`).
 
 **Não foi possível conferir** sem credenciais: o `tofu apply` e o `ansible-playbook` de verdade, a emissão do certificado, o envio de e-mail, o `cosign verify` contra imagens reais (ainda não há release publicada) a visibilidade dos pacotes no GHCR e o bloco `backend "s3"` do estado do OpenTofu (`region = "nbg1"` e os `skip_*`). Os passos do console da Hetzner e do GitHub seguem a documentação dessas ferramentas e podem ter mudado de nome na interface.

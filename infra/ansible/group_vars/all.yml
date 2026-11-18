@@ -14,13 +14,6 @@ ingest_host: e.stellytics.xyz
 # os tenants põem no exportador OTLP.
 api_host: otlp.stellytics.xyz
 acme_email: ops@example.org
-# Nginx host proxy: Certbot must provision a certificate covering the apex and
-# all three service hosts before the Ansible deployment installs this vhost.
-nginx_tls_dir: /etc/letsencrypt/live/stellytics.xyz
-portal_upstream_port: 13000
-ingest_upstream_port: 13002
-collector_grpc_upstream_port: 14317
-collector_http_upstream_port: 14318
 mail_from: "stellytics <no-reply@example.org>"
 # Cadastro com aprovação prévia (#49): true deixa projetos novos pendentes até
 # um operador SCF aprovar em /operator/approvals.

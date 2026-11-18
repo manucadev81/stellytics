@@ -45,7 +45,7 @@ resource "hcloud_ssh_key" "admin" {
   labels     = local.labels
 }
 
-# Só o Nginx do host (80 e 443) fica aberto para a internet. Postgres, Umami,
+# Só o Caddy em Docker (80 e 443) fica aberto para a internet. Postgres, Umami,
 # portal, gateway e coletor não têm porta pública (infra/README.md, #62).
 resource "hcloud_firewall" "stellytics" {
   name   = "notify"

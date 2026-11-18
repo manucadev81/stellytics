@@ -127,7 +127,7 @@ Quem ainda não tem projeto e abre uma página do tenant é levado a `/onboardin
 - O link de confirmação abre a sessão e leva a `/dashboard`. Link vencido ou inválido leva a `/email-verified`, que explica o que fazer.
 - `/forgot-password` envia um link de redefinição que vale 30 minutos e uma vez só. Trocar a senha encerra todas as sessões.
 - Cadastro com e-mail já existente e pedido de redefinição para e-mail sem conta recebem a mesma resposta dos casos normais, sem revelar quem tem conta.
-- Limites por IP (em memória, por instância): entrar, 3 a cada 10 segundos; cadastrar, 10 por hora; pedir redefinição ou novo link de confirmação, 5 por hora. Atrás do proxy, o IP vem de `X-Forwarded-For`, então o portal não deve ficar exposto sem o Nginx na frente.
+- Limites por IP (em memória, por instância): entrar, 3 a cada 10 segundos; cadastrar, 10 por hora; pedir redefinição ou novo link de confirmação, 5 por hora. Atrás do proxy, o IP vem de `X-Forwarded-For`, então o portal não deve ficar exposto sem o Caddy na frente.
 - Os e-mails são só texto (`src/lib/mail.ts`), sem HTML, e nem o destinatário nem o link vão para o log.
 - No Compose, os e-mails vão para o Mailpit: caixa de entrada em http://127.0.0.1:8025 e SMTP em `127.0.0.1:1025` (para o `next dev`, use `SMTP_URL=smtp://127.0.0.1:1025`). Em produção, o SMTP vem da IaC ([#14](https://github.com/romulospl/stellytics/issues/14)).
 
