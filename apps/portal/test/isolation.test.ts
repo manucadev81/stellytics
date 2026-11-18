@@ -19,6 +19,7 @@ import { loadTenantContext, type TenantContext } from "@/lib/access";
 import { auth } from "@/lib/auth";
 import { createApiService, createIngestKey, getApiService, listIngestKeys, revokeIngestKey } from "@/lib/data/api-services";
 import { createReadKey, listReadKeys } from "@/lib/data/operator/api-keys";
+import { ANONYMIZED_ACTOR } from "@/lib/data/erasure";
 import { resetRateLimits } from "@/lib/rate-limit";
 import OperatorKeysPage from "@/app/(private)/operator/keys/page";
 import { createReadKeyAction, revokeReadKeyAction } from "@/app/(private)/operator/keys/actions";
@@ -38,6 +39,7 @@ import SitesPage from "@/app/(private)/sites/page";
 import ServicesPage from "@/app/(private)/services/page";
 import {
   approveTenantAction,
+  purgeTenantAction,
   rejectTenantAction,
   reactivateTenantAction,
   removeTenantAction,
@@ -53,6 +55,7 @@ import { resolvePeriod } from "@/lib/period";
 import SitePage from "@/app/(private)/sites/[siteId]/page";
 import { createKeyAction, createServiceAction, revokeKeyAction } from "@/app/(private)/services/actions";
 import { createSiteAction } from "@/app/(private)/sites/actions";
+import { deleteAccountAction } from "@/app/(private)/settings/actions";
 import { startFakeUmami, type FakeUmami } from "./fake-umami";
 import { asRole } from "./helpers/as-role";
 
@@ -757,5 +760,163 @@ describe("cadastro com aprovação (#49)", () => {
     asOperator();
     await expect(approveTenantAction(randomUUID(), idle, form({}))).rejects.toMatchObject(NOT_FOUND);
     await expect(rejectTenantAction(randomUUID(), idle, form({ reason: "Spam" }))).rejects.toMatchObject(NOT_FOUND);
+  });
+});
+
+describe("apagamento (#154)", () => {
+  // Ponto de métrica de API, para conferir que o apagamento o remove.
+  async function insertMetric(f: Fixture, at = new Date().toISOString()) {
+    await sql`
+      INSERT INTO api_metric_1m (bucket_start, tenant_id, api_service_id, route, method, status_code,
+                                 request_count, duration_sum, duration_buckets)
+      VALUES (${at}, ${f.tenantId}, ${f.serviceId}, '/r', 'GET', 200, 3, 0.3,
+              '{0,0,0,3,0,0,0,0,0,0,0,0,0,0,0}'::bigint[])`;
+  }
+
+  async function metricRows(tenantId: string, table: "api_metric_1m" | "api_metric_1h" | "api_metric_1d") {
+    return sql<{ n: number }[]>`SELECT count(*)::int AS n FROM ${sql(table)} WHERE tenant_id = ${tenantId}`;
+  }
+
+  async function tenantRow(tenantId: string) {
+    const [row] = await db
+      .select({ status: tenant.status, slug: tenant.slug, statusChangedBy: tenant.statusChangedBy })
+      .from(tenant)
+      .where(eq(tenant.id, tenantId));
+    return row!;
+  }
+
+  it("o marcador do código é o mesmo que o do gatilho", async () => {
+    // O gatilho aponta para a função; o corpo dela é que tem o marcador.
+    const [fn] = await sql<{ prosrc: string }[]>`
+      SELECT prosrc FROM pg_proc WHERE proname = 'audit_log_erasure_guard'`;
+    expect(fn!.prosrc).toContain(`'[apagado]'`);
+    expect(fn!.prosrc).toContain(ANONYMIZED_ACTOR);
+  });
+
+  it("o operador apaga os dados de um projeto removido; a linha dele fica", async () => {
+    const C = await createFixture("tenant-erasure");
+    await insertMetric(C);
+    asOperator();
+    expect(await removeTenantAction(C.tenantId, idle, form({ reason: "Erasure request" }))).toEqual({ status: "done" });
+
+    // Confirmação errada: erro e nada apagado.
+    expect(await purgeTenantAction(C.tenantId, idle, form({ confirm: "wrong-slug" }))).toMatchObject({ status: "error" });
+    expect(umami.requests).toEqual([]);
+
+    const { slug } = await tenantRow(C.tenantId);
+    expect(await purgeTenantAction(C.tenantId, idle, form({ confirm: slug }))).toEqual({ status: "done" });
+
+    // O site saiu do Umami e as linhas saíram do banco.
+    expect(umami.websites.has(C.umamiWebsiteId)).toBe(false);
+    expect(umami.requests.some((r) => r.method === "DELETE" && r.path === `/api/websites/${C.umamiWebsiteId}`)).toBe(
+      true,
+    );
+    expect((await metricRows(C.tenantId, "api_metric_1m"))[0]!.n).toBe(0);
+    expect((await metricRows(C.tenantId, "api_metric_1h"))[0]!.n).toBe(0);
+    expect((await metricRows(C.tenantId, "api_metric_1d"))[0]!.n).toBe(0);
+    expect(await db.select().from(site).where(eq(site.tenantId, C.tenantId))).toEqual([]);
+    expect(await db.select().from(apiService).where(eq(apiService.tenantId, C.tenantId))).toEqual([]);
+    expect(await db.select().from(ingestKey).where(eq(ingestKey.tenantId, C.tenantId))).toEqual([]);
+
+    // A linha do tenant fica, com o histórico legível no audit_log.
+    expect(await tenantStatus(C.tenantId)).toBe("removed");
+    const actions = await db
+      .select({ action: auditLog.action, actor: auditLog.actorUserId })
+      .from(auditLog)
+      .where(and(eq(auditLog.tenantId, C.tenantId), like(auditLog.action, "tenant.%")))
+      .orderBy(auditLog.at);
+    expect(actions).toEqual([
+      { action: "tenant.removed", actor: operatorId },
+      { action: "tenant.purged", actor: operatorId },
+    ]);
+
+    // Ingestão continua recusada depois do apagamento (site apagado).
+    expect(await acceptsWeb(C.umamiWebsiteId)).toBe(false);
+  });
+
+  it("apagar projeto que não está removido: unchanged e nada sai", async () => {
+    asOperator();
+    expect(await purgeTenantAction(A.tenantId, idle, form({ confirm: "anything" }))).toEqual({ status: "done" });
+    expect(umami.requests).toEqual([]);
+    expect(await tenantStatus(A.tenantId)).toBe("active");
+  });
+
+  it("a exclusão da própria conta apaga o projeto do dono e anonimiza o audit_log", async () => {
+    const D = await createFixture("tenant-account-erasure");
+    await insertMetric(D);
+
+    asMember(D);
+    expect(await deleteAccountAction({ status: "idle" }, form({ confirm: "wrong@example.invalid" }))).toMatchObject({
+      status: "error",
+    });
+    // Confirmação errada não mexeu em nada.
+    expect(umami.requests).toEqual([]);
+    expect(await db.select({ id: user.id }).from(user).where(eq(user.id, D.userId))).toHaveLength(1);
+
+    // A ação responde com redirecionamento para /sign-in (o e-mail da sessão
+    // simulada é o fixo do mock).
+    await expect(deleteAccountAction({ status: "idle" }, form({ confirm: "test@example.invalid" }))).rejects.toMatchObject({
+      digest: expect.stringContaining("sign-in"),
+    });
+
+    // A conta saiu com as dependentes em cascata: sessão e senha.
+    expect(await db.select().from(user).where(eq(user.id, D.userId))).toEqual([]);
+    expect(await db.select().from(account).where(eq(account.userId, D.userId))).toEqual([]);
+    expect((await sql`SELECT count(*)::int AS n FROM session WHERE user_id = ${D.userId}`)[0]!.n).toBe(0);
+
+    // O projeto saiu: status removido, dados apagados, site fora do Umami.
+    expect(umami.websites.has(D.umamiWebsiteId)).toBe(false);
+    expect(umami.requests.some((r) => r.method === "DELETE" && r.path === `/api/websites/${D.umamiWebsiteId}`)).toBe(
+      true,
+    );
+    expect((await metricRows(D.tenantId, "api_metric_1m"))[0]!.n).toBe(0);
+    expect(await db.select().from(site).where(eq(site.tenantId, D.tenantId))).toEqual([]);
+    expect(await db.select().from(ingestKey).where(eq(ingestKey.tenantId, D.tenantId))).toEqual([]);
+    const row = await tenantRow(D.tenantId);
+    expect(row.status).toBe("removed");
+    // A referência ao usuário vira nula em cascata (set null).
+    expect(row.statusChangedBy).toBeNull();
+
+    // Todas as ações do usuário ficam no audit_log, anonimizadas — inclusive a
+    // própria exclusão. Nenhuma linha guarda mais o ID dele.
+    const audit = await db
+      .select({ action: auditLog.action, actor: auditLog.actorUserId })
+      .from(auditLog)
+      .where(eq(auditLog.tenantId, D.tenantId))
+      .orderBy(auditLog.at);
+    expect(audit.map((a) => a.action)).toContain("account.deleted");
+    for (const a of audit) expect(a.actor).toBe(ANONYMIZED_ACTOR);
+  });
+
+  it("exclusão de conta sem projeto: só o usuário sai", async () => {
+    const alone = (await createUser()).id;
+    signIn({ id: alone, role: "tenant" });
+    await expect(deleteAccountAction({ status: "idle" }, form({ confirm: "test@example.invalid" }))).rejects.toMatchObject({
+      digest: expect.stringContaining("sign-in"),
+    });
+    expect(await db.select().from(user).where(eq(user.id, alone))).toEqual([]);
+  });
+
+  it("o gatilho recusa qualquer mudança fora do marcador", async () => {
+    const [entry] = await db
+      .insert(auditLog)
+      .values({ actorUserId: "trigger-test", action: "trigger.test", details: {} })
+      .returning();
+    const id = entry!.id;
+
+    // UPDATE de outra coluna: recusado.
+    await expect(sql`UPDATE audit_log SET action = 'trigger.other' WHERE id = ${id}`).rejects.toThrow(
+      /audit_log só recebe inserções/,
+    );
+    // DELETE: recusado.
+    await expect(sql`DELETE FROM audit_log WHERE id = ${id}`).rejects.toThrow(/audit_log só recebe inserções/);
+    // Trocar o ator por outro valor que não o marcador: recusado.
+    await expect(sql`UPDATE audit_log SET actor_user_id = 'anon' WHERE id = ${id}`).rejects.toThrow(
+      /audit_log só recebe inserções/,
+    );
+    // Só o marcador passa.
+    await expect(sql`UPDATE audit_log SET actor_user_id = ${ANONYMIZED_ACTOR} WHERE id = ${id}`).resolves.toBeTruthy();
+    const [after] = await db.select({ actor: auditLog.actorUserId }).from(auditLog).where(eq(auditLog.id, id));
+    expect(after!.actor).toBe(ANONYMIZED_ACTOR);
   });
 });

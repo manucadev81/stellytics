@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { requireOperatorContext } from "@/lib/access";
 import { getTenantDetail, REASON_MAX } from "@/lib/data/operator/tenants";
 import { ApprovalForm } from "./approval-form";
+import { PurgeForm } from "./purge-form";
 import { TenantStatusForm } from "./status-form";
 
 export const metadata: Metadata = { title: "Project details" };
@@ -17,11 +18,14 @@ const HISTORY_LABEL: Record<string, string> = {
   "tenant.reactivated": "Reactivated",
   "tenant.approved": "Approved",
   "tenant.rejected": "Rejected",
+  "tenant.purged": "Data erased",
+  "account.deleted": "Account deleted",
 };
 
 // Detalhe de um projeto para o operador SCF (#19). Das chaves de ingestão
-// aparecem só o prefixo e as datas. A única escrita é remover ou reativar o
-// projeto (#20).
+// aparecem só o prefixo e as datas. As escritas são mudar o status (#20),
+// aprovar ou rejeitar o cadastro (#49) e apagar os dados de um projeto
+// removido (#154).
 export default async function OperatorTenantPage({ params }: { params: Promise<{ tenantId: string }> }) {
   const { tenantId } = await params;
   const ctx = await requireOperatorContext();
@@ -53,6 +57,14 @@ export default async function OperatorTenantPage({ params }: { params: Promise<{
           <h2 className="mt-8 text-lg font-semibold">{tenant.status === "removed" ? "Reactivate" : "Remove"} project</h2>
           {/* key: o formulário recomeça vazio depois de mudar o status. */}
           <TenantStatusForm key={tenant.status} tenantId={tenant.id} status={tenant.status} reasonMax={REASON_MAX} />
+        </>
+      )}
+
+      {tenant.status === "removed" && (
+        <>
+          <h2 className="mt-8 text-lg font-semibold">Erase project data</h2>
+          {/* key: o formulário recomeça depois do apagamento. */}
+          <PurgeForm key={sites.length} tenantId={tenant.id} slug={tenant.slug} />
         </>
       )}
 

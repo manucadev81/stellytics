@@ -6,6 +6,11 @@
 // seção 5). Toda a lógica fica na migração 0005 do portal; este processo só
 // agenda. Expõe GET /healthz, que responde 200 enquanto a última execução
 // bem-sucedida tiver no máximo dois intervalos.
+//
+// Com UMAMI_DATABASE_URL definida, a mesma execução também aplica a retenção
+// dos eventos web no banco umami (#154): apaga eventos e sessões mais antigos
+// que UMAMI_RETENTION_DAYS (padrão 183, cerca de seis meses). O Umami 3.4.1
+// não tem configuração de retenção própria; quem poda é este job.
 package main
 
 import (
@@ -18,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -30,14 +36,24 @@ type config struct {
 	ListenAddr  string
 	Interval    time.Duration
 	Lookback    time.Duration
+	// Banco e retenção do Umami. Sem UMAMI_DATABASE_URL a poda fica desligada
+	// (o resto do job segue normal).
+	UmamiDatabaseURL   string
+	UmamiRetentionDays int
 }
+
+// Padrão da retenção dos eventos do Umami, em dias: cerca de seis meses.
+// Valor e justificativa em docs/umami.md e docs/privacidade.md (seção 6).
+const defaultUmamiRetentionDays = 183
 
 func loadConfig(getenv func(string) string) (config, error) {
 	c := config{
-		DatabaseURL: getenv("DATABASE_URL"),
-		ListenAddr:  getenv("LISTEN_ADDR"),
-		Interval:    15 * time.Minute,
-		Lookback:    48 * time.Hour,
+		DatabaseURL:        getenv("DATABASE_URL"),
+		ListenAddr:         getenv("LISTEN_ADDR"),
+		Interval:           15 * time.Minute,
+		Lookback:           48 * time.Hour,
+		UmamiDatabaseURL:   getenv("UMAMI_DATABASE_URL"),
+		UmamiRetentionDays: defaultUmamiRetentionDays,
 	}
 	if c.DatabaseURL == "" {
 		return c, errors.New("DATABASE_URL vazia")
@@ -56,6 +72,16 @@ func loadConfig(getenv func(string) string) (config, error) {
 	}
 	if c.Lookback < 2*time.Hour {
 		return c, errors.New("ROLLUP_LOOKBACK precisa ser de pelo menos 2h")
+	}
+	if v := getenv("UMAMI_RETENTION_DAYS"); v != "" {
+		d, err := strconv.Atoi(v)
+		if err != nil || d < 0 {
+			return c, fmt.Errorf("UMAMI_RETENTION_DAYS inválida: %q", v)
+		}
+		c.UmamiRetentionDays = d
+	}
+	if c.UmamiDatabaseURL == "" && getenv("UMAMI_RETENTION_DAYS") != "" {
+		return c, errors.New("UMAMI_RETENTION_DAYS sem UMAMI_DATABASE_URL não tem efeito")
 	}
 	return c, nil
 }
@@ -80,6 +106,28 @@ func maintain(ctx context.Context, pool *pgxpool.Pool, lookback time.Duration) e
 	return err
 }
 
+// pruneUmami aplica a retenção dos eventos web (#154): apaga os eventos mais
+// antigos que a retenção e depois as sessões da mesma idade que não sustentam
+// mais nenhum evento — a sessão de um visitante que continua voltando fica,
+// para que os eventos recentes dela continuem com navegador, sistema e
+// localização. O schema do Umami 3.4.1 não tem chaves estrangeiras, então a
+// ordem é só uma escolha; duas execuções no mesmo instante são idempotentes.
+// Devolve eventos e sessões apagados.
+func pruneUmami(ctx context.Context, pool *pgxpool.Pool, days int) (events, sessions int64, err error) {
+	tag, err := pool.Exec(ctx, "DELETE FROM website_event WHERE created_at < now() - make_interval(days => $1)", days)
+	if err != nil {
+		return 0, 0, fmt.Errorf("website_event: %w", err)
+	}
+	events = tag.RowsAffected()
+	tag, err = pool.Exec(ctx, `DELETE FROM session s
+		WHERE s.created_at < now() - make_interval(days => $1)
+		  AND NOT EXISTS (SELECT 1 FROM website_event e WHERE e.session_id = s.session_id)`, days)
+	if err != nil {
+		return events, 0, fmt.Errorf("session: %w", err)
+	}
+	return events, tag.RowsAffected(), nil
+}
+
 func run(log *slog.Logger) error {
 	cfg, err := loadConfig(os.Getenv)
 	if err != nil {
@@ -93,6 +141,19 @@ func run(log *slog.Logger) error {
 		return fmt.Errorf("DATABASE_URL: %w", err)
 	}
 	defer pool.Close()
+
+	// Pool do banco umami, só quando a retenção está ligada.
+	var umamiPool *pgxpool.Pool
+	if cfg.UmamiDatabaseURL != "" && cfg.UmamiRetentionDays > 0 {
+		umamiPool, err = pgxpool.New(ctx, cfg.UmamiDatabaseURL)
+		if err != nil {
+			return fmt.Errorf("UMAMI_DATABASE_URL: %w", err)
+		}
+		defer umamiPool.Close()
+		log.Info("retenção do Umami no ar", "days", cfg.UmamiRetentionDays)
+	} else {
+		log.Info("retenção do Umami desligada")
+	}
 
 	var lastOK atomic.Int64
 	mux := http.NewServeMux()
@@ -119,6 +180,16 @@ func run(log *slog.Logger) error {
 		} else {
 			lastOK.Store(time.Now().UnixNano())
 			log.Info("execução concluída", "duration", time.Since(start).String())
+			if umamiPool != nil {
+				umamiCtx, umamiCancel := context.WithTimeout(ctx, cfg.Interval)
+				events, sessions, umamiErr := pruneUmami(umamiCtx, umamiPool, cfg.UmamiRetentionDays)
+				umamiCancel()
+				if umamiErr != nil {
+					log.Error("retenção do Umami falhou", "err", umamiErr)
+				} else {
+					log.Info("retenção do Umami concluída", "events", events, "sessions", sessions)
+				}
+			}
 		}
 		next := time.NewTimer(nextRun(cfg.Interval, err != nil))
 		select {

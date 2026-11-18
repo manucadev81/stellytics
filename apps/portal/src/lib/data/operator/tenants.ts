@@ -3,6 +3,7 @@ import { and, asc, count, desc, eq, isNull, like, sql } from "drizzle-orm";
 import type { OperatorContext } from "../../access";
 import { db } from "../../db";
 import { apiService, auditLog, ingestKey, site, tenant, tenantMember, user } from "../../db/schema";
+import { purgeTenantData } from "../erasure";
 
 // Visão global do operador SCF (#19, spec do E2, seção 2): leitura de todos os
 // tenants. Das chaves de ingestão, só prefixo e datas; nunca o hash.
@@ -164,7 +165,7 @@ export const REASON_MAX = 500;
 
 export class TenantStatusError extends Error {
   constructor(
-    readonly code: "invalid_reason",
+    readonly code: "invalid_reason" | "invalid_confirm",
     message: string,
   ) {
     super(message);
@@ -294,6 +295,35 @@ export async function rejectTenant(
     { to: "removed", from: ["pending"], action: "tenant.rejected" },
     cleanReason(input.reason, true),
   );
+}
+
+// Apaga os dados de um tenant já removido (#154, ação separada da remoção,
+// como o spec do E2 pede). Nulo quando o tenant não existe; "unchanged" quando
+// ainda não está `removed` — o painel só mostra o formulário para removido.
+export async function purgeRemovedTenant(
+  ctx: OperatorContext,
+  tenantId: string,
+  input: { confirmSlug: string },
+): Promise<StatusChangeResult> {
+  if (!UUID_REGEX.test(tenantId)) return null;
+  const [current] = await db
+    .select({ status: tenant.status, slug: tenant.slug })
+    .from(tenant)
+    .where(eq(tenant.id, tenantId))
+    .limit(1);
+  if (!current) return null;
+  if (current.status !== "removed") return "unchanged";
+  // Confirmação digitada no formulário: o slug do projeto, para não apagar
+  // por engano (o clique do mouse não basta).
+  if (input.confirmSlug.trim() !== current.slug) {
+    throw new TenantStatusError("invalid_confirm", "Type the project slug to confirm erasure.");
+  }
+  await purgeTenantData({
+    tenantId,
+    actorUserId: ctx.userId,
+    statusReason: "Project data erased by operator.",
+  });
+  return "changed";
 }
 
 // Projetos à espera de aprovação, do mais antigo para o mais novo, com quem
