@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { inputClass } from "@/components/auth-card";
+import { inputClass } from "@/components/ui/field";
 import { purgeTenantAction, type StatusActionState } from "./actions";
 
 const idle: StatusActionState = { status: "idle" };

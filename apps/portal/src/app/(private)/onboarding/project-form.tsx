@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { buttonClass, inputClass } from "@/components/auth-card";
+import { buttonClass } from "@/components/ui/button";
+import { inputClass } from "@/components/ui/field";
 import { createProjectAction, type ProjectActionState } from "./actions";
 
 const initial: ProjectActionState = { error: null };

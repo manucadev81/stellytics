@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect } from "react";
-import { inputClass } from "@/components/auth-card";
+import { inputClass } from "@/components/ui/field";
 import { createSiteAction, type SiteActionState } from "./actions";
 
 const initial: SiteActionState = { status: "idle" };
