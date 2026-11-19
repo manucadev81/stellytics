@@ -56,11 +56,11 @@ export default async function SitePage({
 
   const header = (
     <>
-      <Link href="/sites" className="text-sm text-zinc-500 hover:underline">
+      <Link href="/sites" className="text-sm text-muted hover:underline">
         ← Websites
       </Link>
-      <h1 className="mt-2 text-2xl font-semibold">{site.name}</h1>
-      <p className="mt-1 text-sm text-zinc-500">{site.domain}</p>
+      <h1 className="mt-2 text-2xl font-semibold tracking-tight">{site.name}</h1>
+      <p className="mt-1 text-sm text-muted">{site.domain}</p>
     </>
   );
 
@@ -69,8 +69,8 @@ export default async function SitePage({
     return (
       <section>
         {header}
-        <p className="mt-6 text-zinc-500">This project was removed by the SCF operators.</p>
-        {project.statusReason && <p className="mt-2 text-sm text-zinc-500">Reason: {project.statusReason}</p>}
+        <p className="mt-6 text-muted">This project was removed by the SCF operators.</p>
+        {project.statusReason && <p className="mt-2 text-sm text-muted">Reason: {project.statusReason}</p>}
       </section>
     );
   }
@@ -96,7 +96,7 @@ export default async function SitePage({
       <section>
         {header}
         <PeriodPicker current={period.key} href={(key) => `/sites/${site.id}?period=${key}`} />
-        <p role="alert" className="mt-6 text-zinc-500">
+        <p role="alert" className="mt-6 text-muted">
           Web analytics is unavailable right now. Try again in a few minutes.
         </p>
         {install(true)}

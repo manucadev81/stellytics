@@ -43,10 +43,10 @@ export default async function ServicePage({
 
   const header = (
     <>
-      <Link href="/services" className="text-sm text-zinc-500 hover:underline">
+      <Link href="/services" className="text-sm text-muted hover:underline">
         ← API services
       </Link>
-      <h1 className="mt-2 text-2xl font-semibold">{service.name}</h1>
+      <h1 className="mt-2 text-2xl font-semibold tracking-tight">{service.name}</h1>
       <ServiceTabs serviceId={service.id} current="overview" />
     </>
   );
@@ -56,8 +56,8 @@ export default async function ServicePage({
     return (
       <section>
         {header}
-        <p className="mt-6 text-zinc-500">This project was removed by the SCF operators.</p>
-        {project.statusReason && <p className="mt-2 text-sm text-zinc-500">Reason: {project.statusReason}</p>}
+        <p className="mt-6 text-muted">This project was removed by the SCF operators.</p>
+        {project.statusReason && <p className="mt-2 text-sm text-muted">Reason: {project.statusReason}</p>}
       </section>
     );
   }
@@ -83,7 +83,7 @@ export default async function ServicePage({
       <PeriodPicker current={period.key} href={(key) => `/services/${service.id}?period=${key}`} />
 
       {totals.requests === 0 && (
-        <p className="mt-6 rounded-lg border border-dashed border-zinc-300 p-4 text-sm text-zinc-500 dark:border-zinc-700">
+        <p className="mt-6 rounded-card border border-dashed border-border-strong p-4 text-sm text-muted">
           No requests in this period yet. Send OpenTelemetry HTTP server metrics or traces with an{" "}
           <Link href={`/services/${service.id}/keys`} className="underline">
             ingest key
@@ -107,7 +107,7 @@ export default async function ServicePage({
       <div className="mt-4 grid gap-4 xl:grid-cols-2">
         <div className={card}>
           <h2 className="font-medium">Requests</h2>
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-muted">
             {period.label}, per {period.unit} (UTC), including the current {period.unit}
           </p>
           <div className="mt-4">
@@ -130,7 +130,7 @@ export default async function ServicePage({
         </div>
         <div className={card}>
           <h2 className="font-medium">Latency</h2>
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-muted">
             {period.label}, per {period.unit} (UTC). Gaps are periods without requests.
           </p>
           <div className="mt-4">
@@ -174,7 +174,7 @@ export default async function ServicePage({
         <summary className="cursor-pointer text-muted">Show charts as a table</summary>
         <div className="mt-2 max-h-72 overflow-auto">
           <table className="w-full text-left tabular-nums">
-            <thead className="text-zinc-500">
+            <thead className="text-muted">
               <tr>
                 <th className="py-1 font-medium">{unitName}</th>
                 <th className="py-1 text-right font-medium">Requests</th>
@@ -184,7 +184,7 @@ export default async function ServicePage({
                 <th className="py-1 text-right font-medium">p95</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+            <tbody className="divide-y divide-border">
               {points.map((p) => (
                 <tr key={p.longLabel}>
                   <td className="whitespace-nowrap py-1 pr-3">{p.longLabel}</td>
@@ -204,18 +204,18 @@ export default async function ServicePage({
         <div className={`${card} min-w-0`}>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="font-medium">Endpoints</h2>
-            <span className="text-xs text-zinc-500">
+            <span className="text-xs text-muted">
               {endpointCount > ENDPOINT_LIMIT
                 ? `Top ${ENDPOINT_LIMIT} of ${full.format(endpointCount)} by requests`
                 : `${plural(endpointCount, "endpoint", "endpoints")}, by requests`}
             </span>
           </div>
           {endpoints.length === 0 ? (
-            <p className="mt-3 text-sm text-zinc-500">No data in this period.</p>
+            <p className="mt-3 text-sm text-muted">No data in this period.</p>
           ) : (
             <div className="mt-3 overflow-x-auto">
               <table className="w-full text-left text-sm tabular-nums">
-                <thead className="border-b border-zinc-200 text-zinc-500 dark:border-zinc-800">
+                <thead className="border-b border-border text-muted">
                   <tr>
                     <th className="py-1.5 pr-3 font-medium">Endpoint</th>
                     <th className="py-1.5 pl-3 text-right font-medium">Requests</th>
@@ -225,11 +225,11 @@ export default async function ServicePage({
                     <th className="py-1.5 pl-3 text-right font-medium">p95</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                <tbody className="divide-y divide-border">
                   {endpoints.map((e) => (
                     <tr key={`${e.method} ${e.route}`}>
                       <td className="min-w-44 max-w-80 py-1.5 pr-3">
-                        <span className="block font-mono text-xs text-zinc-500 sm:mr-2 sm:inline-block sm:w-14">{e.method}</span>
+                        <span className="block font-mono text-xs text-muted sm:mr-2 sm:inline-block sm:w-14">{e.method}</span>
                         <span className="break-all font-mono text-xs">{e.route}</span>
                       </td>
                       <td className="py-1.5 pl-3 text-right">{formatCount(e.requests)}</td>
@@ -243,7 +243,7 @@ export default async function ServicePage({
               </table>
             </div>
           )}
-          <p className="mt-3 text-xs text-zinc-500">
+          <p className="mt-3 text-xs text-muted">
             Paths are grouped: IDs, Stellar addresses, UUIDs and hashes become placeholders such as {"{id}"}.
           </p>
         </div>

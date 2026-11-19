@@ -21,12 +21,12 @@ export function ProjectForm() {
           placeholder="Soroban Explorer"
           className={inputClass}
         />
-        <span className="mt-1 block text-xs text-zinc-500">
+        <span className="mt-1 block text-xs text-muted">
           The name of your Stellar project, as the SCF should see it.
         </span>
       </label>
       {state.error && (
-        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+        <p role="alert" className="text-sm text-bad">
           {state.error}
         </p>
       )}
