@@ -8,7 +8,7 @@ O stellytics recebe dados de uso de vários projetos (tenants). Vulnerabilidades
 
 Use o relato privado do GitHub: na aba **Security** do repositório, clique em **Report a vulnerability**. O relato fica visível só para os mantenedores até a correção ser publicada.
 
-**Situação operacional:** em 19/11/2026, o recurso de relato privado estava desativado no repositório. Um administrador precisa ativá-lo em Settings > Code security; até então, o botão não estará disponível. Não publique detalhes de vulnerabilidades em issues públicas.
+O relato privado foi ativado em 19/11/2026. Não publique detalhes de vulnerabilidades em issues públicas.
 
 Inclua, se possível:
 
@@ -21,12 +21,12 @@ Inclua, se possível:
 | Etapa | Prazo |
 |---|---|
 | Confirmação de recebimento | até 3 dias úteis |
-| Avaliação inicial e severidade | até 7 dias corridos |
-| Correção de severidade crítica | até 14 dias corridos |
-| Correção de severidade alta | até 30 dias corridos |
+| Avaliação inicial e severidade | até 72 horas corridas; priorizar imediatamente relatos potencialmente críticos ou altos |
+| Correção de severidade crítica | até 72 horas corridas |
+| Correção de severidade alta | até 72 horas corridas |
 | Correção de severidade média ou baixa | até 90 dias corridos |
 
-Os prazos de correção contam do recebimento do relato ou da identificação pelo projeto, em dias corridos. A severidade segue o CVSS 3.1. O prazo de 24 horas para críticas e altas citado no RFP é uma meta externa que a operação atual, sem plantão contínuo, não assume como compromisso. Se não houver correção de uma dependência disponível ou o prazo estiver em risco, aplicamos contenção, registramos o risco e comunicamos a pessoa que relatou; isso não transforma contenção em correção.
+Os prazos contam do recebimento do relato ou da identificação pelo projeto; as 72 horas incluem noites, fins de semana e feriados. A severidade segue o CVSS 3.1. A avaliação de relatos potencialmente críticos ou altos deve ocorrer com antecedência suficiente para cumprir o prazo de correção, que não reinicia após a classificação. O prazo de 24 horas citado no RFP permanece uma meta externa, diferente do compromisso de 72 horas. Se não houver correção de uma dependência disponível ou o prazo estiver em risco, aplicamos contenção, registramos o risco e comunicamos a pessoa que relatou; isso não transforma contenção em correção.
 
 Correções de segurança críticas ou altas podem dispensar a espera de 14 dias da dependência quando o risco de esperar superar o de atualizar. A exceção é específica à dependência e à versão, registrada e revisada no PR, com os testes e a publicação assinada descritos no [runbook](docs/runbooks/vulnerabilidades.md). Depois da correção publicada, divulgamos um advisory no GitHub e damos crédito a quem relatou, se a pessoa quiser.
 

@@ -5,7 +5,7 @@ Referência: [issue #52](https://github.com/romulospl/stellytics/issues/52). Dio
 ## Entrada e triagem
 
 - Para dúvidas e falhas sem informação sensível, usar as [issues do projeto](https://github.com/romulospl/stellytics/issues), com os modelos existentes. Não publicar credenciais, dados pessoais nem detalhes de vulnerabilidades.
-- Vulnerabilidades seguem os prazos próprios de [SECURITY.md](../SECURITY.md), não este fluxo. O canal privado do GitHub estava desativado na última verificação; um administrador precisa ativá-lo antes de ele poder ser usado.
+- Vulnerabilidades seguem os prazos próprios e o canal privado descritos em [SECURITY.md](../SECURITY.md), não este fluxo.
 - Na triagem, registrar link, solicitante, data e hora de abertura em UTC, responsável, prioridade, descrição, próximo passo e prazo. Reconhecer o pedido e pedir informações ausentes sem divulgar dados sensíveis.
 
 ## Medição proposta

@@ -1,6 +1,6 @@
 # Runbook: resposta a vulnerabilidades
 
-Política pública, prazos e escopo em [`SECURITY.md`](../../SECURITY.md): relato privado pela aba **Security** do GitHub (**Report a vulnerability**), confirmação em até 3 dias úteis, avaliação em 7 dias corridos, correção em 14 (crítica), 30 (alta) e 90 dias (média ou baixa), severidade por CVSS 3.1. Contexto de cadeia de suprimentos: [`docs/anti-bot-e-cadeia-de-suprimentos.md`](../anti-bot-e-cadeia-de-suprimentos.md).
+Política pública, prazos e escopo em [`SECURITY.md`](../../SECURITY.md): relato privado pela aba **Security** do GitHub (**Report a vulnerability**), confirmação em até 3 dias úteis, avaliação em até 72 horas e correção de críticas e altas em até 72 horas corridas desde o recebimento ou identificação; médias e baixas em até 90 dias corridos. Priorize a avaliação de possíveis críticas e altas para permitir a correção dentro do mesmo prazo. Severidade por CVSS 3.1. Contexto de cadeia de suprimentos: [`docs/anti-bot-e-cadeia-de-suprimentos.md`](../anti-bot-e-cadeia-de-suprimentos.md).
 
 ## Sintomas
 
@@ -94,7 +94,7 @@ Depois da correção publicada, publique o advisory do GitHub e dê crédito a q
 
 ## Quando escalar
 
-- Severidade crítica ou exposição de dados entre tenants: trate como incidente aberto de imediato; prazo de correção de 14 dias corridos, na prática o mais rápido possível.
+- Severidade crítica ou alta, inclusive exposição de dados entre tenants: trate como incidente de imediato; correção em até 72 horas corridas desde o recebimento ou identificação.
 - Prazo do `SECURITY.md` em risco, ou vulnerabilidade na própria infraestrutura do provedor, no Umami, no Caddy ou no Postgres: reporte ao projeto de origem e ao suporte do provedor. Para parar o proxy principal use `docker compose -f prod.yaml stop caddy`; para os demais serviços use `docker compose -f prod.yaml stop <serviço>`. Parar o `ingest-web` descarta os eventos recebidos nesse intervalo.
 
 ## Não testado
