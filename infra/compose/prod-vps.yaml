@@ -3,11 +3,18 @@
 # locais; este arquivo não configura backup externo.
 name: stellytics-vps
 
-x-logging: &logging
-  driver: json-file
-  options:
-    max-size: "20m"
-    max-file: "5"
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "20m"
+      max-file: "5"
+
+x-healthcheck: &healthcheck
+  interval: 10s
+  timeout: 5s
+  retries: 10
 
 services:
   postgres:
@@ -26,12 +33,9 @@ services:
       - "127.0.0.1:${POSTGRES_ADMIN_PORT:-5432}:5432"
     shm_size: 256mb
     healthcheck:
+      <<: *healthcheck
       test: ["CMD-SHELL", "pg_isready -U postgres -d postgres && pg_isready -U postgres -d umami"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-    logging: *logging
+    <<: *service-defaults
     networks: [internal]
 
   umami:
@@ -46,13 +50,11 @@ services:
         condition: service_healthy
     init: true
     healthcheck:
+      <<: *healthcheck
       test: ["CMD-SHELL", "curl -fsS http://localhost:3000/api/heartbeat"]
-      interval: 10s
-      timeout: 5s
       retries: 20
       start_period: 30s
-    restart: unless-stopped
-    logging: *logging
+    <<: *service-defaults
     networks:
       internal:
         ipv4_address: 172.30.0.20
@@ -76,13 +78,11 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
+      <<: *healthcheck
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/auth/ok >/dev/null"]
-      interval: 10s
-      timeout: 5s
       retries: 20
       start_period: 30s
-    restart: unless-stopped
-    logging: *logging
+    <<: *service-defaults
     networks: [internal]
 
   ingest-web:
@@ -110,13 +110,10 @@ services:
       portal:
         condition: service_healthy
     healthcheck:
+      <<: *healthcheck
       test: ["CMD", "/ingest-web", "-healthcheck"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
       start_period: 5s
-    restart: unless-stopped
-    logging: *logging
+    <<: *service-defaults
     networks: [internal]
 
   collector:
@@ -134,13 +131,10 @@ services:
       portal:
         condition: service_healthy
     healthcheck:
+      <<: *healthcheck
       test: ["CMD", "/healthcheck"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
       start_period: 5s
-    restart: unless-stopped
-    logging: *logging
+    <<: *service-defaults
     networks: [internal]
 
   rollup:
@@ -160,13 +154,10 @@ services:
       portal:
         condition: service_healthy
     healthcheck:
+      <<: *healthcheck
       test: ["CMD", "/rollup", "-healthcheck"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
       start_period: 5s
-    restart: unless-stopped
-    logging: *logging
+    <<: *service-defaults
     networks: [internal]
 
   caddy:
@@ -192,8 +183,7 @@ services:
         condition: service_healthy
       collector:
         condition: service_healthy
-    restart: unless-stopped
-    logging: *logging
+    <<: *service-defaults
     networks:
       internal:
         ipv4_address: 172.30.0.10

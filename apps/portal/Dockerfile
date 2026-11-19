@@ -4,10 +4,10 @@
 
 FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS base
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN corepack enable
-WORKDIR /repo
 
 FROM base AS deps
+WORKDIR /repo
+RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/portal/package.json apps/portal/
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
@@ -25,9 +25,8 @@ RUN find /repo/apps/portal/.next/standalone -depth \
     -path '*/node_modules/*' \( -name '@img+sharp-*' -o -name 'sharp-*' -o -name 'sharp@*' -o -name 'sharp' -o -name 'caniuse-lite' -o -name 'caniuse-lite@*' \) -exec rm -rf {} + \
     && find /repo/apps/portal/.next/standalone -depth -name '*.node' -exec rm -rf {} +
 
-FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS runner
+FROM base AS runner
 ENV NODE_ENV=production \
-    NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
     HOSTNAME=0.0.0.0
 RUN addgroup -S app && adduser -S app -G app
