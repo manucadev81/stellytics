@@ -79,7 +79,7 @@ export default async function SitePage({
   // page views, collapsed once data arrives.
   const install = (open: boolean) => (
     <details id="install" open={open} className={`mt-6 ${card}`}>
-      <summary className="cursor-pointer font-medium">Install the tracking script</summary>
+      <summary className="cursor-pointer font-semibold">Install the tracking script</summary>
       <InstallScript snippets={trackerSnippets(site.umamiWebsiteId)} domain={site.domain} />
     </details>
   );
