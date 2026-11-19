@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PeriodPicker } from "@/components/period-picker";
+import { PeriodPicker } from "@/components/metrics/period-picker";
 import { requireOperatorContext } from "@/lib/access";
 import { getApiOverview, type ProjectApiStats } from "@/lib/data/operator/api";
 import { formatCount, formatLatency, formatShare } from "@/lib/format";

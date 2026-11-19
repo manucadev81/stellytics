@@ -20,8 +20,11 @@ import {
   relativeDelta,
   walletName,
 } from "@/lib/format";
-import { DeltaText } from "@/components/delta-text";
-import { PeriodPicker } from "@/components/period-picker";
+import { DeltaBadge } from "@/components/metrics/delta-badge";
+import { MetricCard } from "@/components/metrics/metric-card";
+import { PeriodPicker } from "@/components/metrics/period-picker";
+import { RankedList, type RankedRow } from "@/components/metrics/ranked-list";
+import { cardClass } from "@/components/ui/card";
 import { parsePeriodKey, resolvePeriod } from "@/lib/period";
 import { type CountedItem, getSiteDashboard, type RankedItem, type SiteDashboard, UmamiError } from "@/lib/umami/stats";
 import { trackerSnippets } from "@/lib/tracker-snippet";
@@ -30,7 +33,7 @@ import { PageviewsChart } from "./pageviews-chart";
 
 export const metadata: Metadata = { title: "Website analytics" };
 
-const card = "rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900";
+const card = cardClass;
 
 // Tenant web dashboard (#28): the 7 minimum metrics of a site in the chosen
 // period, plus custom events and wallets (#50). Another tenant's (or an
@@ -179,10 +182,10 @@ export default async function SitePage({
       </div>
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
-        <RankedList title="Referrers" unit="Visitors" items={byVisitors(breakdowns.referrer)} name={referrerName} />
-        <RankedList title="Countries" unit="Visitors" items={byVisitors(breakdowns.country)} name={countryName} />
-        <RankedList title="Devices" unit="Visitors" items={byVisitors(breakdowns.device)} name={deviceName} />
-        <RankedList title="Browsers" unit="Visitors" items={byVisitors(breakdowns.browser)} name={browserName} />
+        <RankedList title="Referrers" unit="Visitors" rows={ranked(byVisitors(breakdowns.referrer), referrerName)} />
+        <RankedList title="Countries" unit="Visitors" rows={ranked(byVisitors(breakdowns.country), countryName)} />
+        <RankedList title="Devices" unit="Visitors" rows={ranked(byVisitors(breakdowns.device), deviceName)} />
+        <RankedList title="Browsers" unit="Visitors" rows={ranked(byVisitors(breakdowns.browser), browserName)} />
       </div>
 
       {/* Custom events and wallets (#50, ADR 0015). */}
@@ -190,15 +193,13 @@ export default async function SitePage({
         <RankedList
           title="Custom events"
           unit="Events"
-          items={byCount(events)}
-          name={(raw) => raw}
+          rows={ranked(byCount(events), (raw) => raw)}
           empty="No custom events in this period. Send them with stellytics.event()."
         />
         <RankedList
           title="Wallet connections"
           unit="Selections"
-          items={byCount(wallets.selections)}
-          name={walletName}
+          rows={ranked(byCount(wallets.selections), walletName)}
           empty="No wallet selections in this period. Track them with stellytics.wallets()."
           footer={`Disconnections: ${wallets.disconnects.toLocaleString("en")}`}
         />
@@ -221,19 +222,15 @@ function StatTile({
   upIsGood?: boolean;
 }) {
   return (
-    <div className={card}>
-      <p className="text-sm text-zinc-500">{label}</p>
-      <p className="mt-1 text-2xl font-semibold">{value}</p>
-      <p className="mt-1 text-xs">
-        {delta ? (
-          <>
-            <DeltaText delta={delta} upIsGood={upIsGood} /> <span className="text-zinc-500">{vs}</span>
-          </>
-        ) : (
-          <span className="text-zinc-500">No data for the previous period</span>
-        )}
-      </p>
-    </div>
+    <MetricCard label={label} value={value}>
+      {delta ? (
+        <>
+          <DeltaBadge delta={delta} upIsGood={upIsGood} /> <span className="text-muted">{vs}</span>
+        </>
+      ) : (
+        <span className="text-muted">No data for the previous period</span>
+      )}
+    </MetricCard>
   );
 }
 
@@ -242,48 +239,6 @@ type ListItem = { name: string; value: number };
 const byVisitors = (items: RankedItem[]): ListItem[] => items.map((i) => ({ name: i.name, value: i.visitors }));
 const byCount = (items: CountedItem[]): ListItem[] => items.map((i) => ({ name: i.name, value: i.count }));
 
-// Ranked list: name, bar and number per row, bars aligned. The bar uses the
-// chart's series color; the number is always visible.
-function RankedList({
-  title,
-  unit,
-  items,
-  name,
-  empty = "No data in this period.",
-  footer,
-}: {
-  title: string;
-  unit: string;
-  items: ListItem[];
-  name: (raw: string) => string;
-  empty?: string;
-  footer?: string;
-}) {
-  const max = Math.max(1, ...items.map((i) => i.value));
-  return (
-    <div className={`${card} [--series:#2a78d6] dark:[--series:#3987e5]`}>
-      <div className="flex items-baseline justify-between">
-        <h2 className="font-medium">{title}</h2>
-        <span className="text-xs text-zinc-500">{unit}</span>
-      </div>
-      {items.length === 0 ? (
-        <p className="mt-3 text-sm text-zinc-500">{empty}</p>
-      ) : (
-        <ol className="mt-3 space-y-2 text-sm">
-          {items.map((item) => (
-            <li key={item.name}>
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="truncate" title={name(item.name)}>
-                  {name(item.name)}
-                </span>
-                <span className="tabular-nums">{item.value.toLocaleString("en")}</span>
-              </div>
-              <div className="mt-1 h-1.5 rounded-r-[4px] bg-[var(--series)]" style={{ width: `${(item.value / max) * 100}%` }} />
-            </li>
-          ))}
-        </ol>
-      )}
-      {footer && <p className="mt-3 text-sm text-zinc-500">{footer}</p>}
-    </div>
-  );
+function ranked(items: ListItem[], name: (raw: string) => string): RankedRow[] {
+  return items.map((item) => ({ key: item.name, name: name(item.name), value: item.value, display: item.value.toLocaleString("en") }));
 }

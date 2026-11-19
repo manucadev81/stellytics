@@ -7,14 +7,17 @@ import { type ApiCounts, ENDPOINT_LIMIT, getServiceDashboard } from "@/lib/data/
 import { getProject } from "@/lib/data/tenants";
 import { bucketLabel, formatCount, formatLatency, formatShare, statusLabel } from "@/lib/format";
 import { ColumnChart } from "@/components/column-chart";
-import { PeriodPicker } from "@/components/period-picker";
+import { MetricCard } from "@/components/metrics/metric-card";
+import { PeriodPicker } from "@/components/metrics/period-picker";
+import { RankedList } from "@/components/metrics/ranked-list";
+import { cardClass } from "@/components/ui/card";
 import { parsePeriodKey, resolvePeriod } from "@/lib/period";
 import { LatencyChart } from "./latency-chart";
 import { ServiceTabs } from "./service-tabs";
 
 export const metadata: Metadata = { title: "API analytics" };
 
-const card = "rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900";
+const card = cardClass;
 const full = new Intl.NumberFormat("en");
 const plural = (n: number, one: string, many: string) => `${full.format(n)} ${n === 1 ? one : many}`;
 
@@ -207,42 +210,23 @@ export default async function ServicePage({
 }
 
 function StatTile({ label, value, note }: { label: string; value: string; note?: string }) {
-  return (
-    <div className={card}>
-      <p className="text-sm text-zinc-500">{label}</p>
-      <p className="mt-1 text-2xl font-semibold">{value}</p>
-      {note && <p className="mt-1 text-xs text-zinc-500">{note}</p>}
-    </div>
-  );
+  return <MetricCard label={label} value={value}>{note && <span className="text-muted">{note}</span>}</MetricCard>;
 }
 
 // Distribuição de status: código, barra e número por linha, como as listas do
 // painel web. A barra usa a cor da série; a classe (2xx, 4xx...) vem escrita.
 function StatusCodes({ statuses, total }: { statuses: { statusCode: number; requests: number }[]; total: ApiCounts["requests"] }) {
-  const max = Math.max(1, ...statuses.map((s) => s.requests));
   return (
-    <div className={`${card} [--series:#2a78d6] dark:[--series:#3987e5]`}>
-      <div className="flex items-baseline justify-between">
-        <h2 className="font-medium">Status codes</h2>
-        <span className="text-xs text-zinc-500">Requests</span>
-      </div>
-      {statuses.length === 0 ? (
-        <p className="mt-3 text-sm text-zinc-500">No data in this period.</p>
-      ) : (
-        <ol className="mt-3 space-y-2 text-sm">
-          {statuses.map((s) => (
-            <li key={s.statusCode}>
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="truncate">{statusLabel(s.statusCode)}</span>
-                <span className="whitespace-nowrap tabular-nums">
-                  {formatCount(s.requests)} <span className="text-zinc-500">· {formatShare(s.requests, total)}</span>
-                </span>
-              </div>
-              <div className="mt-1 h-1.5 rounded-r-[4px] bg-[var(--series)]" style={{ width: `${(s.requests / max) * 100}%` }} />
-            </li>
-          ))}
-        </ol>
-      )}
-    </div>
+    <RankedList
+      title="Status codes"
+      unit="Requests"
+      rows={statuses.map((s) => ({
+        key: String(s.statusCode),
+        name: statusLabel(s.statusCode),
+        value: s.requests,
+        display: formatCount(s.requests),
+        detail: formatShare(s.requests, total),
+      }))}
+    />
   );
 }

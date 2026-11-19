@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { DeltaText } from "@/components/delta-text";
-import { PeriodPicker } from "@/components/period-picker";
+import { DeltaBadge } from "@/components/metrics/delta-badge";
+import { PeriodPicker } from "@/components/metrics/period-picker";
 import { requireOperatorContext } from "@/lib/access";
 import {
   averageVisitSeconds,
@@ -272,7 +272,7 @@ function Change({ delta, upIsGood = true }: { delta: ReturnType<typeof relativeD
   if (!delta) return null;
   return (
     <span className="block text-xs">
-      <DeltaText delta={delta} upIsGood={upIsGood} />
+      <DeltaBadge delta={delta} upIsGood={upIsGood} />
     </span>
   );
 }
