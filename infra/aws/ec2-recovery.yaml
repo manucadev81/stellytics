@@ -1,0 +1,72 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Recovery and daily backups for the existing Stellytics Docker host
+Parameters:
+  InstanceId:
+    Type: AWS::EC2::Instance::Id
+  OperationsEmail:
+    Type: String
+Resources:
+  Operations:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref OperationsEmail
+  SystemFailure:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Recover the EC2 host after two failed system checks
+      Namespace: AWS/EC2
+      MetricName: StatusCheckFailed_System
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref InstanceId
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: missing
+      AlarmActions:
+        - !Sub arn:${AWS::Partition}:automate:${AWS::Region}:ec2:recover
+        - !Ref Operations
+      OKActions:
+        - !Ref Operations
+  Vault:
+    Type: AWS::Backup::BackupVault
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BackupVaultName: !Sub '${AWS::StackName}-ec2'
+  BackupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: backup.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup
+  BackupPlan:
+    Type: AWS::Backup::BackupPlan
+    Properties:
+      BackupPlan:
+        BackupPlanName: !Ref AWS::StackName
+        BackupPlanRule:
+          - RuleName: daily
+            TargetBackupVault: !Ref Vault
+            ScheduleExpression: cron(0 3 * * ? *)
+            Lifecycle:
+              DeleteAfterDays: 30
+  Selection:
+    Type: AWS::Backup::BackupSelection
+    Properties:
+      BackupPlanId: !Ref BackupPlan
+      BackupSelection:
+        SelectionName: stellytics-host
+        IamRoleArn: !GetAtt BackupRole.Arn
+        Resources:
+          - !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${InstanceId}

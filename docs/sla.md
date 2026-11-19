@@ -2,7 +2,7 @@
 
 Issue [#52](https://github.com/romulospl/stellytics/issues/52). Decisão de arquitetura em [ADR 0009](adr/0009-alta-disponibilidade.md).
 
-> **Leitura obrigatória.** A arquitetura de produção **de hoje não sustenta 99,99% na ingestão** (e não garante 99,90% nos painéis): é uma VM só, com Postgres único (ADR 0004, [ADR 0009](adr/0009-alta-disponibilidade.md)). Este documento separa o que é **meta** do RFP do que é **compromisso** do projeto, e não promete o primeiro como se fosse o segundo. A produção também ainda não foi implantada numa conta real (`docs/deploy.md`), então não há nenhuma medição.
+A produção informada usa EC2 com Docker. A [pilha proposta de recuperação da EC2](../infra/aws/README.md) configura recuperação de host e backup, mas não foi aplicada nem validada na conta de produção. A topologia efetiva ainda precisa ser confirmada com o DevOps. As referências a OpenTofu, Ansible e monitoramento na Hetzner abaixo descrevem a arquitetura alternativa do ADR 0009. Não há medições da conta AWS neste repositório.
 
 ## 1. As metas do RFP
 
@@ -29,13 +29,13 @@ Fonte: RFP `scf-web-api-analytics` ("Web and API Analytics for Stellar Ecosystem
 
 ### 3.1 Indicador (SLI)
 
-Disponibilidade de um endpoint = fração do tempo, na janela, em que a sondagem externa recebeu 2xx.
+Disponibilidade observada de um endpoint = fração das sondagens coletadas na janela que passaram no módulo configurado. Esse indicador aproxima a fração de tempo disponível e não inclui intervalos sem amostras; o sucesso é 2xx para web e painel e 401 para a sondagem OTLP autenticada sem credencial.
 
 | Componente | Sondagem (`infra/monitoring`) | Status |
 |---|---|---|
 | Portal / painéis | `GET /api/auth/ok` no host do portal, módulo `http_2xx` do blackbox, a cada 15 s | Existe |
 | Ingestão web | `GET /healthz` no host da ingestão | Existe |
-| Ingestão de API | `monitor_api_url` (hoje vazio, `infra/ansible/group_vars/all.yml`) | **Não existe** até o coletor entrar em produção |
+| Ingestão de API | `monitor_api_url`, módulo `otlp_401` | Configurada no repositório; implantação e funcionamento em produção não verificados |
 
 Limites honestos do indicador atual:
 
@@ -45,13 +45,13 @@ Limites honestos do indicador atual:
 
 ### 3.2 Cálculo (proposto, não executado)
 
-Com os dados do Prometheus do monitor (retenção de **30 dias**, `--storage.tsdb.retention.time=30d` em `infra/monitoring/compose.yaml`), por componente:
+Com os dados do Prometheus do monitor (retenção configurada de **45 dias** em `infra/monitoring/compose.yaml`), por componente:
 
 ```promql
 avg_over_time(probe_success{job="endpoints", component="<componente>"}[30d])
 ```
 
-Esta expressão e o rótulo `component` (usado em `alerts.yml`) **não foram executados** contra dados reais. Como a retenção é de 30 dias, um mês de 31 dias perde o primeiro dia: gere o relato no último dia do mês, ou aumente a retenção antes de assumir qualquer número. Os valores guardados no relato mensal são a evidência de longo prazo.
+Esta expressão fornece uma janela móvel de 30 dias, não um mês-calendário. Para o relatório mensal, execute uma consulta instantânea com intervalo igual à duração do mês e avaliação no início do mês seguinte em UTC; confira a cobertura antes de interpretar o resultado. O módulo OTLP considera 401 um resultado esperado, e não 2xx. As consultas ainda não foram verificadas contra dados reais. A retenção de 45 dias só passa a valer após implantação; guarde os resultados do relatório como evidência de longo prazo. Consulte [o modelo de relatório](relatorios/modelo-sla.md).
 
 ### 3.3 Janela e exclusões
 
@@ -61,7 +61,7 @@ Esta expressão e o rótulo `component` (usado em `alerts.yml`) **não foram exe
 
 ### 3.4 Relato mensal
 
-Até o 5º dia útil do mês seguinte, uma nota pública em `docs/` ou issue, com: disponibilidade por componente, minutos de indisponibilidade, cada incidente (início, fim, causa, correção), exclusões aplicadas, e as vulnerabilidades críticas e altas do mês com o tempo até a correção. Ainda **não existe** automação nem modelo; o primeiro relato exige criar ambos.
+Até o 5º dia útil do mês seguinte, o responsável designado deve publicar uma nota conforme o [modelo](relatorios/modelo-sla.md). Ainda não há automação nem responsável designado; nenhuma medição foi verificada em produção.
 
 ## 4. O que é preciso para cada meta
 
@@ -94,8 +94,9 @@ Roteiro aspiracional de 24 h para crítica ou alta, quando houver disponibilidad
 
 ## 6. Pendências e decisões em aberto
 
+- **Suporte:** Dione e Rômulo são responsáveis; o compromisso de atendimento e resolução é de até 10 dias úteis, com meta de primeira resposta em 5 dias úteis. O [processo de suporte](suporte.md) usa o fuso da Califórnia e feriados federais americanos; o horário de atendimento ainda precisa ser definido.
 - Plantão, sondagem de ponta a ponta, relato mensal. Degraus 1 e 2 do ADR 0009: a configuração das réplicas existe (desligada), faltam balanceador ou IP flutuante, portal replicado e um ensaio de failover numa conta real. Alertas de replicação existem, opcionais e não testados em produção.
 
 ## 7. O que este documento ainda não faz
 
-Nenhuma medição existe; nada aqui foi exercitado numa produção real. Não há sondagem sintética de ponta a ponta, relato mensal automatizado nem pager. Os valores de custo estão no ADR 0009 e são estimativas.
+Nenhuma medição real está registrada aqui; nada foi exercitado numa produção real. Não há sondagem sintética de ponta a ponta, relato mensal automatizado nem pager. Os valores de custo estão no ADR 0009 e são estimativas. O processo de suporte está em [suporte](suporte.md) e o ensaio de recuperação em [ensaio](runbooks/ensaio-recuperacao-aws.md). Em 19/11/2026, o canal privado de vulnerabilidades estava desativado; sua ativação requer administrador do repositório.

@@ -8,6 +8,8 @@ O stellytics recebe dados de uso de vários projetos (tenants). Vulnerabilidades
 
 Use o relato privado do GitHub: na aba **Security** do repositório, clique em **Report a vulnerability**. O relato fica visível só para os mantenedores até a correção ser publicada.
 
+**Situação operacional:** em 19/11/2026, o recurso de relato privado estava desativado no repositório. Um administrador precisa ativá-lo em Settings > Code security; até então, o botão não estará disponível. Não publique detalhes de vulnerabilidades em issues públicas.
+
 Inclua, se possível:
 
 - o componente afetado (portal, script de rastreamento, gateway, coletor, infraestrutura);
