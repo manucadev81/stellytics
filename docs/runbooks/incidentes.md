@@ -36,7 +36,7 @@ Serve para os quatro alertas reais do monitoramento externo ([`alerts.yml`](../.
 **Ação.**
 
 - Serviço parado ou `unhealthy`: `docker compose -f prod.yaml up -d --wait` (recria o que faltar) ou `docker compose -f prod.yaml restart <serviço>`.
-- Imagem nova que quebrou: rollback pelos digests anteriores em `group_vars/all.yml` e `ansible-playbook site.yml -e @secrets.yml` (seção "Voltar atrás" de `docs/deploy.md`; o rollback não desfaz migração de banco).
+- Imagem nova que quebrou: rollback pelos digests anteriores em `group_vars/all.yml` e `ansible-playbook site.yml -e @secrets.yml` (seção "Rolling back" de `docs/deploy.md`; o rollback não desfaz migração de banco).
 - Disco cheio: veja `docker system df` e `du -sh /srv/stellytics/*`; sobras de restauração e imagens antigas são os candidatos. **`postgres.antes-*` só se apaga depois de uma restauração conferida** ([backup e restauração](backup-e-restauracao.md)). `docker image prune` (sem `-a`) remove só imagens soltas; **nunca** rode `docker system prune --volumes`. Aumentar o volume é pela Hetzner.
 - Portal sobe mas o painel não mostra dados ou não cria sites: veja se o Umami responde (`docker compose -f prod.yaml ps umami`) e se a `UMAMI_API_KEY` é válida (ver [rotação de segredos](rotacao-de-segredos.md), efeito do `umami_app_secret`).
 - Gateway responde `204` mas os eventos não aparecem no painel: o `204` é a resposta também para site recusado e para prova inválida (de propósito). Confira o site na tela do projeto (ativo e não arquivado) e `docker compose -f prod.yaml logs ingest-web`.
@@ -89,7 +89,7 @@ Serve para os quatro alertas reais do monitoramento externo ([`alerts.yml`](../.
 
 **Verificação.** `probe_success` volta a `1` e `ProberDown` resolve.
 
-**Escalar** se a VM do monitor estiver perdida: a produção continua, sem vigilância; recrie com o `tofu apply` e o playbook de monitoramento (`docs/deploy.md`, "Monitoramento").
+**Escalar** se a VM do monitor estiver perdida: a produção continua, sem vigilância; recrie com o `tofu apply` e o playbook de monitoramento (`docs/deploy.md`, "Monitoring").
 
 ## Não testado
 

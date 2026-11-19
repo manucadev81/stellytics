@@ -1,6 +1,6 @@
 # Runbook: failover MANUAL do banco (réplica do Postgres)
 
-Vale só para quem ligou a replicação (`ha_replication: true` em `site.yml` e `standby.yml`, ver "Alta disponibilidade" em [`docs/deploy.md`](../deploy.md) e o [ADR 0009](../adr/0009-alta-disponibilidade.md), degrau 2). Sem réplica, o caminho é o [backup e restauração](backup-e-restauracao.md).
+Vale só para quem ligou a replicação (`ha_replication: true` em `site.yml` e `standby.yml`, ver "High availability" em [`docs/deploy.md`](../deploy.md) e o [ADR 0009](../adr/0009-alta-disponibilidade.md), degrau 2). Sem réplica, o caminho é o [backup e restauração](backup-e-restauracao.md).
 
 > **Não há failover automático.** Com dois nós e sem testemunha, promover sozinho arriscaria dois primários gravando ao mesmo tempo (split-brain). Quem decide e executa é uma pessoa. **Nenhum passo deste runbook foi ensaiado numa produção real** (rede privada e VMs da Hetzner, Caddy em Docker/TLS automático, DNS). O que foi exercitado, em Docker local, está em "O que foi testado" no fim.
 

@@ -71,7 +71,7 @@ Versões publicadas são imutáveis (`packages/tracker/published/vX.Y.Z/n.js`, h
 1. Corrija em branch privada ou num fork de segurança do GitHub (aba **Security**, advisory privado), com teste que falhava antes.
 2. PR com commit em inglês, Conventional Commits (`fix(...)`). O CI (`ci`) precisa passar.
 3. Publique uma **release** (`vX.Y.Z`): o `release.yml` gera o SBOM e publica no GHCR as imagens assinadas com cosign (keyless) com atestado do SBOM.
-4. Deploy: troque os digests em `infra/ansible/group_vars/all.yml` e rode `ansible-playbook site.yml -e @secrets.yml`; o playbook roda `cosign verify` com `cosign_identity_regexp` e `cosign_oidc_issuer` do `all.yml` e recusa imagem sem digest ou sem assinatura. Antes, `systemctl start stellytics-backup` se a versão tiver migração. Pormenores: `docs/deploy.md`, "Atualizar a aplicação".
+4. Deploy: troque os digests em `infra/ansible/group_vars/all.yml` e rode `ansible-playbook site.yml -e @secrets.yml`; o playbook roda `cosign verify` com `cosign_identity_regexp` e `cosign_oidc_issuer` do `all.yml` e recusa imagem sem digest ou sem assinatura. Antes, `systemctl start stellytics-backup` se a versão tiver migração. Pormenores: `docs/deploy.md`, "Updating the application".
 5. Dependência vulnerável: confira a correção upstream e siga a exceção abaixo quando a versão tiver menos de 14 dias. O Renovate ainda não está instalado e os alertas do GitHub precisam estar ativos; não dependa dele para detectar a vulnerabilidade. Para o Umami, ver [atualização do Umami](atualizacao-do-umami.md).
 
 ### Exceção à espera de 14 dias

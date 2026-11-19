@@ -1,6 +1,6 @@
 # Runbook: backup e restauração
 
-A descrição completa (WAL contínuo, backup diário às 03:15 UTC, retenção de 7, passo a passo da restauração e voltar a um horário) está em [`docs/deploy.md`](../deploy.md), seções "Backup" e "Restaurar o banco", e a decisão no [ADR 0004](../adr/0004-hospedagem-e-backup.md). **Não repita os blocos de comandos daqui: use os de lá.** Este runbook diz quando acionar, como diagnosticar e como conferir.
+A descrição completa (WAL contínuo, backup diário às 03:15 UTC, retenção de 7, passo a passo da restauração e voltar a um horário) está em [`docs/deploy.md`](../deploy.md), seções "Backup" e "Restoring the database", e a decisão no [ADR 0004](../adr/0004-hospedagem-e-backup.md). **Não repita os blocos de comandos daqui: use os de lá.** Este runbook diz quando acionar, como diagnosticar e como conferir.
 
 Os scripts ficam em [`infra/compose/postgres/`](../../infra/compose/postgres/): `backup.sh` vira `stellytics-backup` e `restore.sh` vira `stellytics-restore` dentro da imagem do Postgres (`Dockerfile`).
 
@@ -33,7 +33,7 @@ Causas comuns: credencial do Object Storage inválida ou expirada (`walg_s3_acce
 
 - **Backup base agora:** `systemctl start stellytics-backup` (executa `stellytics-backup`: `wal-g backup-push`, depois `wal-g delete retain FULL 7 --confirm` e `backup-list`).
 - **Credencial trocada:** siga [rotação de segredos](rotacao-de-segredos.md) e confira com `backup-list`.
-- **Restaurar:** siga "Restaurar o banco" em `docs/deploy.md`. Atenção: ela derruba portal, ingestão (eventos descartados) e Umami até terminar; exige `systemctl stop stellytics-backup.timer` antes (e `start` depois) e espaço livre para dois conjuntos de dados (`df -h /srv/stellytics`), porque os dados antigos ficam em `postgres.antes-*`. Siga também a janela de manutenção, o `mv` dos dados antigos para `postgres.antes-*` e o "voltar a um horário" (`stellytics-restore <backup> '<horário>'`). Para escolher entre restaurar o último ou um horário: um erro lógico (migração ruim, remoção indevida) pede o horário anterior ao erro, com um backup base concluído antes dele; perda de disco pede o `LATEST`.
+- **Restaurar:** siga "Restoring the database" em `docs/deploy.md`. Atenção: ela derruba portal, ingestão (eventos descartados) e Umami até terminar; exige `systemctl stop stellytics-backup.timer` antes (e `start` depois) e espaço livre para dois conjuntos de dados (`df -h /srv/stellytics`), porque os dados antigos ficam em `postgres.antes-*`. Siga também a janela de manutenção, o `mv` dos dados antigos para `postgres.antes-*` e o "voltar a um horário" (`stellytics-restore <backup> '<horário>'`). Para escolher entre restaurar o último ou um horário: um erro lógico (migração ruim, remoção indevida) pede o horário anterior ao erro, com um backup base concluído antes dele; perda de disco pede o `LATEST`.
 - **Perda de VM e de volume ao mesmo tempo:** recrie a infraestrutura (`docs/deploy.md`, passos 1 a 4) com o **mesmo** `secrets.yml` (em especial `walg_libsodium_key` e as credenciais do bucket) e restaure em seguida. O bucket de backup tem `prevent_destroy`; os backups sobrevivem.
 
 ## Chave de cifra

@@ -1,128 +1,148 @@
-# Deploy da produção
+# Production deployment
 
-Há dois caminhos: uma instalação mínima numa VPS existente, descrita abaixo, ou a infraestrutura gerenciada na Hetzner com OpenTofu e Ansible ([#14](https://github.com/romulospl/stellytics/issues/14)), detalhada nas seções seguintes.
+There are two paths: a minimal install on an existing VPS, described below, or the managed infrastructure on Hetzner with OpenTofu and Ansible ([#14](https://github.com/romulospl/stellytics/issues/14)), detailed in the following sections.
 
-## Caminho mínimo: VPS existente
+## Minimal path: existing VPS
 
-Este caminho serve para uma VPS Debian/Ubuntu. Não exige conta na Hetzner nem armazenamento S3: o Postgres e os certificados ficam em volumes Docker locais. **Não há backup externo automático**; se a VPS ou o disco forem perdidos, os dados também podem ser perdidos.
+This path is for a Debian/Ubuntu VPS. It needs no Hetzner account and no S3 storage: Postgres and the certificates live in local Docker volumes. **There is no automatic external backup**; if the VPS or its disk is lost, the data may be lost too.
 
-Pré-requisitos: acesso root à VPS; quatro nomes DNS apontando para ela (`PORTAL_HOST`, `PORTAL_ALIAS_HOST`, `INGEST_HOST` e `API_HOST`); portas 80 e 443 liberadas; e um SMTP real para confirmação de cadastro e redefinição de senha.
+Prerequisites:
 
-Na VPS, dentro do clone do repositório:
+- root access to the VPS (the admin tunnel, further below, logs in over SSH as `root`);
+- Debian or Ubuntu, `amd64` or `arm64`, with `git` installed (`sudo apt-get install -y git`);
+- four DNS names pointing to the VPS, with A records (and AAAA, if the VPS has IPv6):
+  - `PORTAL_HOST`: the portal;
+  - `PORTAL_ALIAS_HOST`: an extra name that redirects to the portal (for example, the domain without the `app.`);
+  - `INGEST_HOST`: web ingestion; the name must not contain `umami`, `analytics`, `track` or `collect`, which ad blockers block;
+  - `API_HOST`: API ingestion (OTLP);
+- ports 80 and 443 (TCP) open; 443/UDP, optional, enables HTTP/3;
+- a real SMTP server, with authenticated sending, for sign-up confirmation and password reset.
+
+On the VPS, clone the repository (or your fork) into a folder of your choice and run, from inside it:
 
 ```bash
-cd /var/www/html/stellytics
+git clone https://github.com/romulospl/stellytics.git
+cd stellytics
 sudo ./init.sh
 sudo nano .env.production
 sudo ./deploy.sh
 ```
 
-O `init.sh` instala Docker/Compose e gera senhas aleatórias no `.env.production` com permissão `0600`. Preencha nele os quatro domínios, `ACME_EMAIL`, `SMTP_URL` e `MAIL_FROM`; não troque as senhas geradas. Codifique caracteres especiais da senha SMTP como URL encoding.
+`init.sh` installs Docker/Compose and generates random passwords in `.env.production` with permission `0600`. Fill in the four domains, `ACME_EMAIL`, `SMTP_URL` and `MAIL_FROM`; do not change the generated passwords. The `SMTP_URL` format is `smtps://user:password@host:465`, with special characters of the password URL-encoded, and the domain of `MAIL_FROM` must be authorized on your SMTP server.
 
-O `deploy.sh` constrói as imagens do portal, gateway, coletor e rollup no servidor. Postgres, Umami e Caddy usam imagens fixadas. Só o Caddy publica portas; Postgres fica acessível apenas pelo loopback e Umami só na rede interna. O comando `docker compose down` preserva os volumes; **não use `down -v`**, que apaga o banco e o estado TLS.
+`deploy.sh` builds the portal, gateway, collector and rollup images on the server. Postgres, Umami and Caddy use pinned images. Only Caddy publishes ports; Postgres is reachable only through loopback and Umami only on the internal network. The `docker compose down` command keeps the volumes; **do not use `down -v`**, which deletes the database and the TLS state.
 
-Confira a pilha na VPS:
+Check the stack on the VPS, from inside the clone folder:
 
 ```bash
-cd /var/www/html/stellytics
 sudo docker compose --env-file .env.production -f infra/compose/prod-vps.yaml ps
 ```
 
-Na primeira subida, troque a senha inicial do Umami (`admin`/`umami`) pelo túnel `infra/scripts/admin-tunnel.sh <IP-da-VPS>`. Para o portal criar sites no Umami, gere a chave de conta de serviço num clone com Node 24, salve em `UMAMI_API_KEY` no `.env.production` e rode `sudo ./deploy.sh` novamente:
+On the first start, do these steps on **your own machine**, not on the VPS (you need a clone of the repository and Node 24 or newer; the script only uses Node's own modules, with no `pnpm install`):
 
-```bash
-read -rs UMAMI_ADMIN_PASSWORD && export UMAMI_ADMIN_PASSWORD
-UMAMI_URL=http://127.0.0.1:13001 node apps/portal/scripts/umami-service-account.mjs
-```
+1. Open the admin tunnel and leave it open in a terminal: `infra/scripts/admin-tunnel.sh <VPS-IP>`. It brings Umami to `http://127.0.0.1:13001` and Postgres to `127.0.0.1:15432`. The script logs in over SSH as `root`; if root SSH login is disabled on your VPS, open the tunnel by hand with your own user:
 
-O script imprime a chave uma vez. Guarde-a no `.env.production`, sem compartilhá-la.
+   ```bash
+   ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:15432:127.0.0.1:5432 -L 127.0.0.1:13001:172.30.0.20:3000 <user>@<VPS-IP>
+   ```
 
-## Caminho gerenciado: Hetzner
+2. Open `http://127.0.0.1:13001`, sign in with `admin`/`umami` and change the password.
+3. For the portal to create sites in Umami, generate the service-account key, with the tunnel open:
 
-As decisões deste caminho estão no [ADR 0004](adr/0004-hospedagem-e-backup.md); os arquivos, em [`infra/`](../infra/README.md).
+   ```bash
+   read -rs UMAMI_ADMIN_PASSWORD && export UMAMI_ADMIN_PASSWORD
+   UMAMI_URL=http://127.0.0.1:13001 node apps/portal/scripts/umami-service-account.mjs
+   ```
 
-> **Escopo.** Este guia sobe toda a infraestrutura da aplicação em [`infra/compose/prod.yaml`](../infra/compose/prod.yaml): Caddy, portal, gateway de ingestão web, coletor de API, job de consolidação, Umami e Postgres com backup, mais o monitoramento externo. O Caddy termina TLS automaticamente e encaminha os hosts pela rede Docker. O coletor e o job de consolidação entraram em 16/11/2026 ([ADR 0012](adr/0012-ingestao-de-api-pelo-caddy.md)). **A [#42](https://github.com/romulospl/stellytics/issues/42) ainda não está cumprida:** o critério de aceite (alguém de fora faz o deploy seguindo só o guia) só será cumprido quando alguém de fora seguir o guia numa conta real.
+   The script prints the key once. Store it, and do not share it.
+4. On the VPS, save the key in `UMAMI_API_KEY` in `.env.production` and run `sudo ./deploy.sh` again.
 
-## Visão geral
+To check the installation, use [section 6](#6-check-the-production-deployment): the `curl` commands and the browser test apply to this path. Instead of the Docker commands there (`prod.yaml`, in `/opt/stellytics/infra/compose`), use, from inside the clone folder, `sudo docker compose --env-file .env.production -f infra/compose/prod-vps.yaml <command>`; the service names are the same. The certificates live in the Docker volume `caddy-data`, not in `/srv/stellytics/caddy`.
+
+## Managed path: Hetzner
+
+The decisions for this path are in [ADR 0004](adr/0004-hospedagem-e-backup.md); the files are in [`infra/`](../infra/README.md).
+
+> **Scope.** This guide brings up the whole application infrastructure in [`infra/compose/prod.yaml`](../infra/compose/prod.yaml): Caddy, portal, web ingestion gateway, API collector, rollup job, Umami and Postgres with backup, plus external monitoring. Caddy terminates TLS automatically and forwards the hosts over the Docker network. The collector and the rollup job were added on 16 Nov 2026 ([ADR 0012](adr/0012-ingestao-de-api-pelo-caddy.md)). **[#42](https://github.com/romulospl/stellytics/issues/42) is not yet fulfilled:** its acceptance criterion (someone outside the project does the deployment following only the guide) will only be met when someone outside follows the guide on a real account.
+
+## Overview
 
 ```mermaid
 flowchart LR
-  internet((Internet)) -->|80, 443| caddy[Caddy em Docker]
-  subgraph vm["VM na Hetzner (nbg1, Alemanha)"]
+  internet((Internet)) -->|80, 443| caddy[Caddy in Docker]
+  subgraph vm["VM on Hetzner (nbg1, Germany)"]
     caddy --> portal[Portal]
-    caddy --> gw[Gateway ingest-web]
-    caddy --> collector[Coletor OTLP]
+    caddy --> gw[ingest-web gateway]
+    caddy --> collector[OTLP collector]
     portal --> umami[Umami]
     gw --> umami
     portal --> pg[(Postgres + WAL-G)]
     gw --> pg
     umami --> pg
   end
-  pg -->|WAL contínuo e backup diário, cifrados| s3[(Object Storage nbg1)]
+  pg -->|continuous WAL and daily backup, encrypted| s3[(Object Storage nbg1)]
 ```
 
-- Todos os serviços da aplicação, inclusive o proxy, rodam no Docker Compose. Só o Caddy publica 80/443; Postgres publica apenas no loopback para o túnel SSH e os demais serviços ficam na rede interna.
-- Os dados do Postgres e o estado/certificados TLS do Caddy ficam no volume da Hetzner em `/srv/stellytics`.
-- Caddy não grava access logs; erros são enviados ao log do contêiner sem cabeçalhos ou URLs sensíveis.
+- All the application services, including the proxy, run in Docker Compose. Only Caddy publishes 80/443; Postgres publishes only on loopback for the SSH tunnel and the other services stay on the internal network.
+- The Postgres data and the Caddy TLS state/certificates live on the Hetzner volume at `/srv/stellytics`.
+- Caddy does not write access logs; errors go to the container log without sensitive headers or URLs.
 
-## Onde ficam os dados (data residency)
+## Where the data lives (data residency)
 
-| O quê | Onde |
+| What | Where |
 |---|---|
-| VM e volume com o Postgres (bancos `stellytics` e `umami`) | Hetzner, Nuremberg (`nbg1`), Alemanha |
-| Backups do Postgres (WAL e backups base), cifrados no cliente | Hetzner Object Storage, Nuremberg (`nbg1`), Alemanha |
+| VM and volume with Postgres (`stellytics` and `umami` databases) | Hetzner, Nuremberg (`nbg1`), Germany |
+| Postgres backups (WAL and base backups), encrypted on the client | Hetzner Object Storage, Nuremberg (`nbg1`), Germany |
 
-O local é a variável `location` do OpenTofu. Se mudar, mude também `walg_s3_endpoint` e `walg_s3_region` no Ansible.
+The location is the OpenTofu variable `location`. If you change it, also change `walg_s3_endpoint` and `walg_s3_region` in Ansible.
 
-## O que você precisa
+## What you need
 
-**Contas e serviços:**
+**Accounts and services:**
 
-| O quê | Para quê |
+| What | What for |
 |---|---|
-| Projeto na Hetzner Cloud, com o Object Storage habilitado | VMs, volume, firewall e o bucket do backup |
-| Um domínio com controle do DNS (qualquer provedor) | Três nomes: portal, ingestão web e ingestão de API (passo 2) |
-| Um provedor de SMTP (envio autenticado) | Confirmação de e-mail no cadastro e recuperação de senha do portal. **Sem ele ninguém consegue se cadastrar**, porque o e-mail confirmado é obrigatório. Formato da URL: `smtps://usuario:senha@host:465` |
-| Um e-mail para o Let's Encrypt (`acme_email`) | Avisos de certificado TLS automático do Caddy |
-| Uma conta no GitHub com permissão para publicar releases do repositório (ou o seu fork) | Gerar as imagens assinadas (passo 3) |
-| Opcional: um serviço de sinal de vida (healthchecks.io ou similar) | Avisa se a própria VM de monitoramento cair |
+| A Hetzner Cloud project, with Object Storage enabled | VMs, volume, firewall and the backup bucket |
+| A domain whose DNS you control (any provider) | Four names: portal, portal alias (redirects to the portal), web ingestion and API ingestion (step 2) |
+| An SMTP provider (authenticated sending) | Email confirmation at sign-up and password recovery in the portal. **Without it nobody can sign up**, because a confirmed email is required. URL format: `smtps://user:password@host:465` |
+| An email address for Let's Encrypt (`acme_email`) | Automatic TLS certificate notices from Caddy |
+| A GitHub account allowed to publish releases of the repository (or your fork) | Build the signed images (step 3) |
+| Optional: a dead-man's-switch service (healthchecks.io or similar) | Warns if the monitoring VM itself goes down |
 
-**Ferramentas na sua máquina:**
+**Tools on your machine:**
 
-- `git`, `ssh` e `openssl`; opcionalmente a CLI `hcloud` (para `hcloud server-type list`; sem ela, veja os tipos no console da Hetzner);
-- OpenTofu 1.13.2 ou mais novo (ou o contêiner `ghcr.io/opentofu/opentofu:1.13.2`) e Ansible (ansible-core 2.21; o deploy usa só `ansible.builtin`, sem coleções extras);
-- Docker com buildx e `jq`, para ler os digests das imagens (ou pegue os digests na página do pacote no GitHub);
-- Node 24 ou mais novo e pnpm 10.34.5 (`corepack enable`), para os comandos de administração do passo 5.
+- `git`, `ssh` and `openssl`; optionally the `hcloud` CLI (for `hcloud server-type list`; without it, see the types in the Hetzner console);
+- OpenTofu 1.13.2 or newer (or the container `ghcr.io/opentofu/opentofu:1.13.2`) and Ansible (ansible-core 2.21; the deployment only uses `ansible.builtin`, with no extra collections);
+- Docker with buildx and `jq`, to read the image digests (or take the digests from the package page on GitHub);
+- Node 24 or newer and pnpm 10.34.5 (`corepack enable`), for the admin commands in step 5.
 
-Clone o repositório e instale as dependências. Todos os comandos abaixo partem da raiz do clone:
+Clone the repository and install the dependencies. All the commands below start from the root of the clone:
 
 ```bash
 git clone https://github.com/romulospl/stellytics.git && cd stellytics
 corepack enable && pnpm install
 ```
 
-Para o caminho gerenciado na Hetzner, instale OpenTofu e `ansible-core` conforme
-a lista acima. Os scripts `init.sh` e `deploy.sh` são do caminho mínimo de VPS;
-eles instalam Docker localmente e não substituem os playbooks Ansible desta seção.
+For the managed path on Hetzner, install OpenTofu and `ansible-core` as in the list above. The `init.sh` and `deploy.sh` scripts belong to the minimal VPS path; they install Docker locally and do not replace the Ansible playbooks in this section.
 
-**Segredos** (nunca no repositório):
+**Secrets** (never in the repository):
 
-| Segredo | Onde é usado | Como obter |
+| Secret | Where it is used | How to get it |
 |---|---|---|
-| `HCLOUD_TOKEN` | OpenTofu | Console da Hetzner → projeto → Security → API tokens (leitura e escrita) |
-| `TF_VAR_object_storage_access_key` e `TF_VAR_object_storage_secret_key` | OpenTofu (cria o bucket) e Ansible (`walg_s3_access_key` e `walg_s3_secret_key`) | Console da Hetzner → projeto → Object Storage → credenciais S3 |
-| `secrets.yml` | Ansible | Copie `infra/ansible/secrets.example.yml` e preencha (veja abaixo) |
+| `HCLOUD_TOKEN` | OpenTofu | Hetzner console → project → Security → API tokens (read and write) |
+| `TF_VAR_object_storage_access_key` and `TF_VAR_object_storage_secret_key` | OpenTofu (creates the bucket) and Ansible (`walg_s3_access_key` and `walg_s3_secret_key`) | Hetzner console → project → Object Storage → S3 credentials |
+| `secrets.yml` | Ansible | Copy `infra/ansible/secrets.example.yml` and fill it in (see below) |
 
-No `secrets.yml`, todos estes campos são **obrigatórios** (o playbook para se algum estiver vazio): `postgres_password`, `umami_db_password`, `stellytics_db_password`, `stellytics_ingest_db_password`, `stellytics_collector_db_password`, `umami_app_secret`, `portal_auth_secret`, `ingest_proof_secret`, `smtp_url`, `walg_s3_access_key`, `walg_s3_secret_key` e `walg_libsodium_key`. Gere cada senha ou chave com `openssl rand -hex 32` (64 caracteres; o `ingest_proof_secret` exige pelo menos 32, e a `walg_libsodium_key` exatamente 64 hexadecimais). O `umami_api_key` começa vazio e só existe depois do passo 5. O `secrets.yml` e o `inventory/production.yml` estão no `.gitignore`.
+In `secrets.yml`, all these fields are **required** (the playbook stops if any is empty): `postgres_password`, `umami_db_password`, `stellytics_db_password`, `stellytics_ingest_db_password`, `stellytics_collector_db_password`, `umami_app_secret`, `portal_auth_secret`, `ingest_proof_secret`, `smtp_url`, `walg_s3_access_key`, `walg_s3_secret_key` and `walg_libsodium_key`. Generate each password or key with `openssl rand -hex 32` (64 characters; `ingest_proof_secret` needs at least 32, and `walg_libsodium_key` exactly 64 hexadecimal characters). `umami_api_key` starts empty and only exists after step 5. `secrets.yml` and `inventory/production.yml` are in `.gitignore`.
 
-A chave `walg_libsodium_key` cifra os backups: **sem ela, nenhum backup pode ser restaurado**. Guarde uma cópia no cofre de senhas do time, fora da VM.
+The `walg_libsodium_key` key encrypts the backups: **without it, no backup can be restored**. Keep a copy in the team's password vault, outside the VM.
 
-**Se você faz um fork** (em vez de usar as imagens do `romulospl/stellytics`): troque `ghcr.io/romulospl/stellytics/...` pelas suas imagens e o `cosign_identity_regexp` pelo caminho do `release.yml` do seu fork, em `group_vars/all.yml`. O playbook recusa imagens cuja assinatura não bata com essa identidade.
+**If you use a fork** (instead of the images from `romulospl/stellytics`): replace `ghcr.io/romulospl/stellytics/...` with your own images and `cosign_identity_regexp` with the path of your fork's `release.yml`, in `group_vars/all.yml`. The playbook refuses images whose signature does not match that identity.
 
-## 1. Provisionar a infraestrutura (OpenTofu)
+## 1. Provision the infrastructure (OpenTofu)
 
-1. Copie `infra/opentofu/production.tfvars` para `infra/opentofu/production.secret.tfvars` (esse nome está no `.gitignore`) e troque todos os valores `CONFIRA`: `server_type` e `monitor_server_type` (confira com `hcloud server-type list`; escolha tipos com a mesma arquitetura, x86 ou Arm, das imagens publicadas, que são `linux/amd64`), `backup_bucket` (nome único em toda a Hetzner), `admin_ssh_public_key` e `admin_cidrs` (os IPs de onde você administra, nunca `0.0.0.0/0`). Se o seu IP mudar, atualize `admin_cidrs` e aplique de novo, ou o SSH fica fechado.
-2. Rode (com o `-var-file` que você criou):
+1. Copy `infra/opentofu/production.tfvars` to `infra/opentofu/production.secret.tfvars` (that name is in `.gitignore`) and replace every `CONFIRA` value: `server_type` and `monitor_server_type` (check with `hcloud server-type list`; pick types with the same architecture, x86 or Arm, as the published images, which are `linux/amd64`), `backup_bucket` (a name unique across all of Hetzner), `admin_ssh_public_key` and `admin_cidrs` (the IPs you administer from, never `0.0.0.0/0`). If your IP changes, update `admin_cidrs` and apply again, or SSH stays closed.
+2. Run (with the `-var-file` you created):
 
    ```bash
    export HCLOUD_TOKEN=...
@@ -133,46 +153,50 @@ A chave `walg_libsodium_key` cifra os backups: **sem ela, nenhum backup pode ser
    tofu -chdir=infra/opentofu output
    ```
 
-   As saídas trazem os IPs da VM (`server_ipv4`, `server_ipv6`) e da VM de monitoramento (`monitor_ipv4`), o dispositivo do volume (`data_volume_device`) e o endpoint e o prefixo do backup (`backup_s3_endpoint`, `backup_s3_prefix`). Guarde-as: os passos 2 e 4 usam todas.
-3. Espere um ou dois minutos: o cloud-init atualiza a VM na primeira subida. Confira que o SSH entra: `ssh root@<server_ipv4> true` (aceite a chave do host; o Ansible recusa hosts desconhecidos, `host_key_checking = True`).
+   The outputs give the IPs of the VM (`server_ipv4`, `server_ipv6`) and of the monitoring VM (`monitor_ipv4`), the volume device (`data_volume_device`) and the backup endpoint and prefix (`backup_s3_endpoint`, `backup_s3_prefix`). Keep `server_ipv4`, `server_ipv6`, `monitor_ipv4`, `data_volume_device` and `backup_s3_prefix`: steps 2 and 4 use all of them. `backup_s3_endpoint` only changes if you change the `location`.
+3. Wait a minute or two: cloud-init updates the VM on first boot. Check that SSH works: `ssh root@<server_ipv4> true` (accept the host key; Ansible refuses unknown hosts, `host_key_checking = True`).
 
-A VM, o volume e o bucket têm proteção contra remoção (`delete_protection`, `prevent_destroy`): o `tofu destroy` falha de propósito.
+The VM, the volume and the bucket have removal protection (`delete_protection`, `prevent_destroy`): `tofu destroy` fails on purpose.
 
 ## 2. DNS
 
-Crie registros A (e AAAA, com o IPv6) apontando para a VM:
+Create A records (and AAAA, with the IPv6) pointing to the VM:
 
-- `stellytics.xyz` (redireciona para o portal);
-- `app.stellytics.xyz` (portal);
-- `e.stellytics.xyz` (ingestão web; não contém termos bloqueados por ad blockers);
-- `otlp.stellytics.xyz` (OTLP/HTTP e gRPC na 443).
+- `<portal_alias_host>` (redirects to the portal);
+- `<portal_host>` (portal);
+- `<ingest_host>` (web ingestion; the name must not contain terms that ad blockers block, such as `umami`, `analytics`, `track` and `collect`);
+- `<api_host>` (OTLP/HTTP and gRPC on 443).
 
-Use os IPs `server_ipv4` (A) e `server_ipv6` (AAAA). O Caddy no Compose solicita e renova certificados automaticamente depois que os quatro nomes resolverem para a VPS e as portas 80/443 estiverem liberadas. Não é necessário instalar proxy ou cliente ACME no host.
+Choose the four names in your own domain; in step 4 you copy them to `group_vars/all.yml`. The values that file ships with (`stellytics.xyz`, `app.stellytics.xyz`, `e.stellytics.xyz`, `otlp.stellytics.xyz` and the emails under `example.org`) belong to the original project and must be replaced.
 
-## 3. Publicar as imagens
+Use the IPs `server_ipv4` (A) and `server_ipv6` (AAAA). Caddy in Compose requests and renews certificates automatically once the four names resolve to the VPS and ports 80/443 are open. There is no need to install a proxy or an ACME client on the host.
 
-O deploy só aceita imagens publicadas pelo workflow de release, assinadas com cosign e referenciadas por digest.
+## 3. Publish the images
 
-1. Publique uma release no GitHub (`vX.Y.Z`; o repositório ainda não tem nenhuma). O workflow `release.yml` gera o SBOM e publica no GHCR uma imagem para cada `Dockerfile` de `apps/*` e `services/*`, assinada com cosign. O deploy usa as quatro: `ghcr.io/romulospl/stellytics/portal`, `ingest-web`, `collector` e `rollup`, com a tag **sem o `v`** (`X.Y.Z`); cada uma vai por digest em `portal_image`, `ingest_web_image`, `collector_image` e `rollup_image`. Acompanhe o workflow em Actions até todos os jobs ficarem verdes.
-2. **Deixe os pacotes públicos.** Pacotes novos do GHCR nascem privados, e a VM baixa as imagens e confere a assinatura sem `docker login`. Em GitHub → Packages → cada pacote (`stellytics/portal`, `stellytics/ingest-web`) → Package settings → Change visibility → Public. Sem isso, o passo 4 falha em `cosign verify` ou no `docker compose up` com `unauthorized`.
-3. Pegue os digests:
+The deployment only accepts images published by the release workflow, signed with cosign and referenced by digest.
+
+1. Publish a release on GitHub (`vX.Y.Z`). The `release.yml` workflow generates the SBOM and publishes to GHCR one image for each `Dockerfile` in `apps/*` and `services/*`, signed with cosign. The deployment uses four: `ghcr.io/romulospl/stellytics/portal`, `ingest-web`, `collector` and `rollup`, with the tag **without the `v`** (`X.Y.Z`); each one goes by digest in `portal_image`, `ingest_web_image`, `collector_image` and `rollup_image`. Follow the workflow in Actions until all jobs are green.
+2. **Make the packages public.** New GHCR packages start private, and the VM pulls the images and checks the signature without `docker login`. In GitHub → Packages → each of the four packages (`stellytics/portal`, `stellytics/ingest-web`, `stellytics/collector` and `stellytics/rollup`) → Package settings → Change visibility → Public. Without this, step 4 fails at `cosign verify` or at `docker compose up` with `unauthorized`.
+3. Get the digests:
 
    ```bash
-   docker buildx imagetools inspect ghcr.io/romulospl/stellytics/portal:X.Y.Z --format '{{json .Manifest}}' | jq -r .digest
-   docker buildx imagetools inspect ghcr.io/romulospl/stellytics/ingest-web:X.Y.Z --format '{{json .Manifest}}' | jq -r .digest
+   for name in portal ingest-web collector rollup; do
+     digest=$(docker buildx imagetools inspect ghcr.io/romulospl/stellytics/$name:X.Y.Z --format '{{json .Manifest}}' | jq -r .digest)
+     echo "ghcr.io/romulospl/stellytics/$name@$digest"
+   done
    ```
 
 ## 4. Deploy (Ansible)
 
-1. Em `infra/ansible/`:
-   - copie `inventory/production.example.yml` para `inventory/production.yml` e preencha com as saídas do OpenTofu (`server_ipv4` e `data_volume_device` no host `stellytics`; `monitor_ipv4` no host `monitor`, usado só no passo de monitoramento);
-   - copie `secrets.example.yml` para `secrets.yml` e preencha.
-2. Em `group_vars/all.yml`, preencha:
-   - os hosts (`portal_host`, `portal_alias_host`, `ingest_host`, `api_host`), `acme_email` e `mail_from` (remetente dos e-mails do portal; o domínio dele precisa estar autorizado no seu SMTP);
-   - `signup_approval` (`false` por padrão): com `true`, todo projeto novo fica `pending` até um operador aprovar em `/operator/approvals` ([ADR 0007](adr/0007-cadastro-com-aprovacao.md)). Ligar ou desligar vale só para cadastros novos e exige reaplicar o playbook (reinicia o portal); projetos já pendentes continuam na fila;
-   - `portal_image`, `ingest_web_image`, `collector_image` e `rollup_image`, no formato `ghcr.io/romulospl/stellytics/portal@sha256:<digest>` (o playbook recusa imagem sem digest);
-   - `walg_s3_prefix`, com a saída `backup_s3_prefix`. O `walg_s3_endpoint` e o `walg_s3_region` já vêm certos para `nbg1`.
-3. Confira a conexão e rode, de `infra/ansible/`:
+1. In `infra/ansible/`:
+   - copy `inventory/production.example.yml` to `inventory/production.yml` and fill it in with the OpenTofu outputs (`server_ipv4` and `data_volume_device` on the `stellytics` host; `monitor_ipv4` on the `monitor` host, used only in the monitoring step);
+   - copy `secrets.example.yml` to `secrets.yml` and fill it in.
+2. In `group_vars/all.yml`, fill in:
+   - the hosts (`portal_host`, `portal_alias_host`, `ingest_host`, `api_host`), `acme_email` and `mail_from` (sender of the portal's emails; its domain must be authorized on your SMTP server);
+   - `signup_approval` (`false` by default): with `true`, every new project stays `pending` until an operator approves it at `/operator/approvals` ([ADR 0007](adr/0007-cadastro-com-aprovacao.md)). Turning it on or off only applies to new sign-ups and requires re-applying the playbook (it restarts the portal); projects already pending stay in the queue;
+   - `portal_image`, `ingest_web_image`, `collector_image` and `rollup_image`, in the format `ghcr.io/romulospl/stellytics/portal@sha256:<digest>` (the playbook refuses an image without a digest);
+   - `walg_s3_prefix`, with the `backup_s3_prefix` output. `walg_s3_endpoint` and `walg_s3_region` are already correct for `nbg1`.
+3. Check the connection and run, from `infra/ansible/`:
 
    ```bash
    ansible stellytics -m ping
@@ -182,200 +206,208 @@ O deploy só aceita imagens publicadas pelo workflow de release, assinadas com c
    ansible-playbook site.yml -e @secrets.yml
    ```
 
-Na primeira vez leva alguns minutos (atualizações, Docker, build da imagem do Postgres com WAL-G). O playbook prepara a VM e sobe a aplicação:
+The first time it takes a few minutes (updates, Docker, building the Postgres image with WAL-G). The playbook prepares the VM and brings the application up:
 
-- atualiza a VM e liga as atualizações automáticas de segurança;
-- instala Docker (com a chave do repositório conferida) e cosign;
-- monta o volume;
-- copia o Compose, o Caddyfile e o `.env` (permissão 600) para `/opt/stellytics`;
-- confere a assinatura das imagens;
-- sobe a pilha (as migrações do portal rodam nessa subida) e liga o timer do backup diário.
+- updates the VM and turns on automatic security updates;
+- installs Docker (with the repository key verified) and cosign;
+- mounts the volume;
+- copies the Compose file, the Caddyfile and the `.env` (permission 600) to `/opt/stellytics`;
+- verifies the image signatures;
+- brings the stack up (the portal migrations run during this start) and enables the daily backup timer.
 
-Nessa primeira subida, o `UMAMI_API_KEY` está vazio: o portal funciona (login, cadastro), mas ainda não cria sites no Umami. O passo 5 resolve.
+On this first start, `UMAMI_API_KEY` is empty: the portal works (sign-in, sign-up), but it cannot create sites in Umami yet. Step 5 fixes that.
 
-Ele pode rodar de novo quantas vezes for preciso; sem mudança, não altera nada.
+The playbook can run again as many times as needed; with no change, it changes nothing.
 
-## Atualizar uma produção `notify` existente
+## Updating an existing `notify` production
 
-O primeiro `ansible-playbook site.yml -e @secrets.yml` desta versão faz a
-troca de marca numa janela de manutenção. Antes de executá-lo:
+The first `ansible-playbook site.yml -e @secrets.yml` of this version performs the rename from `notify` to `stellytics` in a maintenance window. Before running it:
 
-1. renomeie no `secrets.yml` as chaves `notify_db_password`,
-   `notify_ingest_db_password` e `notify_collector_db_password` para as
-   equivalentes `stellytics_*`, preservando os valores se não pretende trocar
-   as senhas nessa janela;
-2. atualize o grupo do host no inventário de `notify` para `stellytics`;
-3. rode `tofu plan` e confira que os recursos `hcloud_server.notify` e
-   `hcloud_firewall.notify` aparecem como movidos, sem recriação da VM.
+1. in `secrets.yml`, rename the keys `notify_db_password`, `notify_ingest_db_password` and `notify_collector_db_password` to the equivalent `stellytics_*` ones, keeping the values if you do not intend to change the passwords in that window;
+2. change the host group in the inventory from `notify` to `stellytics`;
+3. run `tofu plan` and check that the resources `hcloud_server.notify` and `hcloud_firewall.notify` show up as moved, with no VM recreation.
 
-O playbook para a pilha `notify`, desliga o timer de backup antigo, desmonta o
-volume de `/srv/notify`, monta-o em `/srv/stellytics`, renomeia o banco e os
-papéis PostgreSQL e só então inicia os serviços novos. Ele interrompe o
-tráfego durante essa etapa. Se os dois bancos ou pares de papéis já existirem,
-ele para sem escolher qual conjunto de dados preservar.
+The playbook stops the `notify` stack, turns off the old backup timer, unmounts the volume from `/srv/notify`, mounts it at `/srv/stellytics`, renames the database and the PostgreSQL roles and only then starts the new services. It interrupts traffic during this stage. If both databases or role pairs already exist, it stops without choosing which data set to keep.
 
-## 5. Primeira subida (caminho gerenciado na Hetzner)
+## 5. First start (managed Hetzner path)
 
-1. **Túnel de administração** (deixe aberto num terminal):
+1. **Admin tunnel** (leave it open in a terminal):
 
    ```bash
-   infra/scripts/admin-tunnel.sh <ip-da-vm>
+   infra/scripts/admin-tunnel.sh <vm-ip>
    ```
 
-   Postgres em `127.0.0.1:15432`, Umami em `http://127.0.0.1:13001`. Nada disso fica exposto na internet.
-2. **Troque a senha do administrador do Umami.** Ele nasce com `admin`/`umami` (alcançável só pelo túnel). Entre em `http://127.0.0.1:13001` pelo túnel e troque, antes de qualquer outro passo.
-3. **Conta de serviço do Umami** (o portal usa a chave dela), da raiz do clone e com o túnel aberto:
+   Postgres at `127.0.0.1:15432`, Umami at `http://127.0.0.1:13001`. None of this is exposed to the internet.
+2. **Change the Umami administrator password.** It starts as `admin`/`umami` (reachable only through the tunnel). Open `http://127.0.0.1:13001` through the tunnel and change it, before any other step.
+3. **Umami service account** (the portal uses its key), from the clone root and with the tunnel open. The `read` line works in bash and zsh; type the new password from step 2:
 
    ```bash
-   read -rs UMAMI_ADMIN_PASSWORD && export UMAMI_ADMIN_PASSWORD   # bash ou zsh; a senha nova do passo 2
+   read -rs UMAMI_ADMIN_PASSWORD && export UMAMI_ADMIN_PASSWORD
    UMAMI_URL=http://127.0.0.1:13001 pnpm --filter @stellytics/portal umami:service-account
    ```
 
-   A chave impressa na saída padrão vai em `umami_api_key` no `secrets.yml`. Rode o playbook de novo (`ansible-playbook site.yml -e @secrets.yml`): ele recria só o portal com a chave.
-4. **Primeiro operador do SCF** (conta com visão global; nasce com e-mail já confirmado), também com o túnel aberto:
+   The key printed on standard output goes into `umami_api_key` in `secrets.yml`. Run the playbook again (`ansible-playbook site.yml -e @secrets.yml`): it recreates only the portal with the key.
+4. **First SCF operator** (SCF is the Stellar Community Fund; the account has the global view and starts with the email already confirmed), also with the tunnel open. The `read` line works in bash and zsh; the password needs at least 12 characters:
 
    ```bash
-   read -rs OPERATOR_PASSWORD && export OPERATOR_PASSWORD   # bash ou zsh; mínimo de 12 caracteres
+   read -rs OPERATOR_PASSWORD && export OPERATOR_PASSWORD
    DATABASE_URL='postgresql://stellytics:<stellytics_db_password>@127.0.0.1:15432/stellytics' \
-     pnpm --filter @stellytics/portal operator:create --email <e-mail> --name "<nome>"
+     pnpm --filter @stellytics/portal operator:create --email <email> --name "<name>"
    ```
 
-   Os outros operadores saem de `operator:promote` (conta existente que não seja de projeto) com o mesmo `DATABASE_URL`.
-5. **Primeiro backup base**, sem esperar o horário do timer:
+   Other operators come from `operator:promote` (an existing account that does not belong to a project) with the same `DATABASE_URL`.
+5. **First base backup**, without waiting for the timer:
 
    ```bash
-   ssh root@<ip-da-vm> systemctl start stellytics-backup
+   ssh root@<vm-ip> systemctl start stellytics-backup
    ```
 
-   Confira com `backup-list` (seção Backup): deve aparecer um backup.
+   Check with the command below (the same one as in the Backup section): one backup should appear.
 
-## 6. Conferir a produção
+   ```bash
+   cd /opt/stellytics/infra/compose
+   docker compose -f prod.yaml exec -u postgres postgres wal-g backup-list
+   ```
 
-Sem login, de qualquer máquina:
+## 6. Check the production deployment
 
-```bash
-curl -fsS https://<portal_host>/api/auth/ok            # portal: {"ok":true}
-curl -fsS https://<ingest_host>/healthz                # gateway: ok
-curl -fsS "https://<ingest_host>/c?s=00000000-0000-4000-8000-000000000000"  # desafio {"t":...,"d":12}
-curl -s -o /dev/null -w '%{http_code}\n' https://<ingest_host>/api/send    # 404: o Umami não tem rota pública
-curl -s -o /dev/null -w '%{http_code}\n' https://<portal_host>/api/send    # 404 também (é o portal, não o Umami)
-curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' -d '{}' https://<api_host>/v1/metrics  # 401: o coletor exige chave de ingestão
-```
-
-De fora da VM (o Docker da VM roda com `userland-proxy` desligado, então `ss` não mostra processo escutando nessas portas; confira pelo lado de fora e pelas regras do Docker):
+Without signing in, from any machine:
 
 ```bash
-nc -vz -w3 <ip-da-vm> 443    # deve abrir (Caddy em Docker)
-nc -vz -w3 <ip-da-vm> 5432   # deve falhar (o Postgres só escuta no loopback e o firewall não abre a porta)
+curl -fsS https://<portal_host>/api/auth/ok
+curl -fsS https://<ingest_host>/healthz
+curl -fsS "https://<ingest_host>/c?s=00000000-0000-4000-8000-000000000000"
+curl -s -o /dev/null -w '%{http_code}\n' https://<ingest_host>/api/send
+curl -s -o /dev/null -w '%{http_code}\n' https://<portal_host>/api/send
+curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' -d '{}' https://<api_host>/v1/metrics
 ```
 
-Na VM (`ssh root@<ip-da-vm>`):
+Expected results, in order:
+
+- the portal answers `{"ok":true}`;
+- the gateway answers `ok`;
+- the challenge request returns something like `{"t":...,"d":12}`;
+- `/api/send` on the ingestion host returns 404: Umami has no public route;
+- `/api/send` on the portal host also returns 404: this is the portal, not Umami;
+- `POST /v1/metrics` without a key on the API host returns 401: the collector requires an ingest key.
+
+From outside the VM (the VM's Docker runs with `userland-proxy` off, so `ss` does not show a process listening on these ports; check from the outside and through the Docker rules):
+
+```bash
+nc -vz -w3 <vm-ip> 443
+nc -vz -w3 <vm-ip> 5432
+```
+
+Port 443 should open (Caddy in Docker). Port 5432 should fail: Postgres only listens on loopback and the firewall does not open the port.
+
+On the VM (`ssh root@<vm-ip>`):
 
 ```bash
 cd /opt/stellytics/infra/compose
-docker compose -f prod.yaml ps            # serviços em execução; upstreams só na rede interna Docker
-docker compose -f prod.yaml port caddy 80     # porta HTTP pública
-docker compose -f prod.yaml port caddy 443    # porta HTTPS pública
-docker compose -f prod.yaml port postgres 5432 # deve mostrar 127.0.0.1
+docker compose -f prod.yaml ps
+docker compose -f prod.yaml port caddy 80
+docker compose -f prod.yaml port caddy 443
+docker compose -f prod.yaml port postgres 5432
 systemctl list-timers stellytics-backup.timer
 ```
 
-No navegador, o teste que prova o conjunto:
+`ps` should list the services running, with the upstreams only on the internal Docker network. `port caddy 80` and `port caddy 443` show the public HTTP and HTTPS ports. `port postgres 5432` should show `127.0.0.1`.
 
-1. Em `https://<portal_host>/sign-up`, crie uma conta com um e-mail seu, confirme pelo link recebido (se o e-mail não chega, o problema é o `smtp_url`/`mail_from`: `docker compose -f prod.yaml logs portal`), crie o projeto em `/onboarding` e cadastre um site em `/sites`.
-2. Instale no site o script (o gateway serve `https://<ingest_host>/s/v<versão>/n.js`; versões e hashes SRI em [`packages/tracker/published/sri.json`](../packages/tracker/published/sri.json); trechos de instalação em [`examples/README.md`](../examples/README.md)), abra uma página e, em alguns minutos, veja a visita no painel do site.
-3. Entre com a conta de operador em `/operator` e confira que o projeto aparece.
-4. Em `/services`, crie um serviço e uma chave de ingestão, aponte um backend para `https://<api_host>` (OTLP/HTTP; guia em [`examples/api-backend/README.md`](../examples/api-backend/README.md)) e veja as requisições no painel do serviço em um ou dois minutos.
+In the browser, the test that proves the whole:
 
-Se algo falhar, os logs de cada serviço estão em `docker compose -f prod.yaml logs <serviço>` (caddy, portal, ingest-web, collector, rollup, umami, postgres). O estado de certificados fica em `/srv/stellytics/caddy`.
+1. At `https://<portal_host>/sign-up`, create an account with an email of yours, confirm through the link you receive (if the email does not arrive, the problem is `smtp_url`/`mail_from`: `docker compose -f prod.yaml logs portal`), create the project at `/onboarding` and register a site at `/sites`.
+2. Install the script on the site (the gateway serves `https://<ingest_host>/s/v<version>/n.js`; versions and SRI hashes in [`packages/tracker/published/sri.json`](../packages/tracker/published/sri.json); install snippets in [`examples/README.md`](../examples/README.md)), open a page and, within a few minutes, see the visit in the site dashboard.
+3. Sign in with the operator account at `/operator` and check that the project shows up.
+4. At `/services`, create a service and an ingest key, point a backend at `https://<api_host>` (OTLP/HTTP; guide in [`examples/api-backend/README.md`](../examples/api-backend/README.md)) and see the requests in the service dashboard within a minute or two.
 
-## Atualizar a aplicação
+If something fails, each service's logs are in `docker compose -f prod.yaml logs <service>` (caddy, portal, ingest-web, collector, rollup, umami, postgres). The certificate state lives in `/srv/stellytics/caddy`.
 
-1. Publique uma release nova (passo 3) e deixe os pacotes novos públicos, se for a primeira vez de algum.
-2. Troque os digests em `group_vars/all.yml` e rode `ansible-playbook site.yml -e @secrets.yml`. O playbook confere a assinatura e recria só os contêineres cuja imagem mudou. As migrações do portal rodam na subida (`RUN_MIGRATIONS=true`).
-3. Repita a conferência do passo 6.
+## Updating the application
 
-**Antes de uma versão com migração nova**, force um backup base (`systemctl start stellytics-backup`): as migrações só andam para frente.
+1. Publish a new release (step 3) and make the new packages public, if it is the first time for any of them.
+2. Change the digests in `group_vars/all.yml` and run `ansible-playbook site.yml -e @secrets.yml`. The playbook verifies the signature and recreates only the containers whose image changed. The portal migrations run on start (`RUN_MIGRATIONS=true`).
+3. Repeat the check from step 6.
 
-**Voltar atrás (rollback).** Ponha em `group_vars/all.yml` os digests da versão anterior e rode o playbook de novo. Isso volta o código, **não o banco**: se a versão nova trouxe uma migração, o esquema continua o novo, e a versão antiga pode não funcionar com ele. Nesse caso, restaure o banco do backup anterior à atualização (seção "Restaurar o banco") antes de subir a imagem antiga. Versões do script de rastreamento já publicadas continuam disponíveis em `/s/` (são imutáveis), então páginas dos tenants não quebram.
+**Before a version with a new migration**, force a base backup (`systemctl start stellytics-backup`): migrations only move forward.
 
-**Trocar um segredo.** Mudar uma senha em `secrets.yml` só atualiza o `.env`; os usuários do banco são criados uma vez, no volume vazio, e guardam a senha antiga. Na ordem:
+**Rolling back.** Put the digests of the previous version in `group_vars/all.yml` and run the playbook again. This rolls back the code, **not the database**: if the new version brought a migration, the schema stays the new one, and the old version may not work with it. In that case, restore the database from the backup taken before the update (section "Restoring the database") before starting the old image. Versions of the tracking script already published stay available at `/s/` (they are immutable), so the tenants' pages do not break.
 
-1. Edite o valor em `secrets.yml`.
-2. Rode `ansible-playbook site.yml -e @secrets.yml`. O Compose recria os contêineres cujo ambiente mudou (o Postgres, se mudou uma senha de banco) e entrega o `.env` novo. Se o `--wait` do playbook reclamar de um serviço não saudável, é esperado até o passo 3: rode o playbook de novo no fim.
-3. Na VM, em `/opt/stellytics/infra/compose`, atualize a senha no banco:
-   - `stellytics_ingest_db_password` e `stellytics_collector_db_password`: reaplique o script (idempotente): `docker compose -f prod.yaml exec -T postgres sh < /opt/stellytics/infra/compose/postgres/init/02-ingest-roles.sh`;
-   - `stellytics_db_password` e `umami_db_password`: `docker compose -f prod.yaml exec -T postgres psql -U postgres -c "ALTER ROLE stellytics PASSWORD '<nova>'"` (e `ALTER ROLE umami ...`);
-   - `postgres_password`: `ALTER ROLE postgres PASSWORD '<nova>'` da mesma forma.
-4. Reinicie quem guarda a conexão: `docker compose -f prod.yaml restart portal umami ingest-web`.
+**Changing a secret.** Changing a password in `secrets.yml` only updates the `.env`; the database users are created once, on the empty volume, and keep the old password. In order:
 
-Entre a recriação do Postgres (passo 2) e o `ALTER ROLE` (passo 3), o portal, o Umami e o gateway ficam sem conexão com o banco: faça fora do horário de pico. O gateway descarta os eventos desse intervalo.
+1. Edit the value in `secrets.yml`.
+2. Run `ansible-playbook site.yml -e @secrets.yml`. Compose recreates the containers whose environment changed (Postgres, if a database password changed) and delivers the new `.env`. If the playbook's `--wait` complains about an unhealthy service, that is expected until step 3: run the playbook again at the end.
+3. On the VM, in `/opt/stellytics/infra/compose`, update the password in the database:
+   - `stellytics_ingest_db_password` and `stellytics_collector_db_password`: re-apply the script (idempotent): `docker compose -f prod.yaml exec -T postgres sh < /opt/stellytics/infra/compose/postgres/init/02-ingest-roles.sh`;
+   - `stellytics_db_password` and `umami_db_password`: `docker compose -f prod.yaml exec -T postgres psql -U postgres -c "ALTER ROLE stellytics PASSWORD '<new>'"` (and `ALTER ROLE umami ...`);
+   - `postgres_password`: `ALTER ROLE postgres PASSWORD '<new>'` in the same way.
+4. Restart whatever holds the connection: `docker compose -f prod.yaml restart portal umami ingest-web`.
 
-Efeito dos outros segredos: `portal_auth_secret` invalida todas as sessões do portal (todos entram de novo); `umami_app_secret` invalida as sessões do Umami (se o portal passar a receber 401 dele, gere outra chave com `pnpm --filter @stellytics/portal umami:service-account` e atualize `umami_api_key`); `ingest_proof_secret` invalida os desafios em circulação, e os navegadores pedem um novo no próximo carregamento ou em até 5 minutos, com alguns eventos descartados nesse meio tempo. A `walg_libsodium_key` não pode ser trocada: os backups antigos deixariam de abrir.
+Between recreating Postgres (step 2) and the `ALTER ROLE` (step 3), the portal, Umami and the gateway have no connection to the database: do it outside peak hours. The gateway drops the events from that interval.
+
+Effect of the other secrets: `portal_auth_secret` invalidates all portal sessions (everyone signs in again); `umami_app_secret` invalidates the Umami sessions (if the portal starts receiving 401 from it, generate another key with `pnpm --filter @stellytics/portal umami:service-account` and update `umami_api_key`); `ingest_proof_secret` invalidates the challenges in circulation, and browsers ask for a new one on the next load or within 5 minutes, with a few events dropped in the meantime. The `walg_libsodium_key` cannot be changed: the old backups would no longer open.
 
 ## Backup
 
-- **WAL contínuo:** o Postgres manda cada segmento de WAL ao Object Storage pelo `archive_command`, no máximo 60 segundos depois da escrita (`archive_timeout`).
-- **Backup base diário** às 03:15 UTC, pelo timer `stellytics-backup.timer`. Mantém os 7 mais novos (`walg_retain_full`).
-- **Ver os backups:**
+- **Continuous WAL:** Postgres sends each WAL segment to Object Storage through `archive_command`, at most 60 seconds after the write (`archive_timeout`).
+- **Daily base backup** at 03:15 UTC, by the `stellytics-backup.timer` timer. It keeps the 7 newest (`walg_retain_full`).
+- **See the backups:**
 
   ```bash
   cd /opt/stellytics/infra/compose
   docker compose -f prod.yaml exec -u postgres postgres wal-g backup-list
   ```
 
-- **Rodar um agora:** `systemctl start stellytics-backup`.
-- A restauração é testada a cada PR pelo job `infra` do CI (`infra/compose/test/prod-stack-test.sh`): ela restaura num contêiner novo e confere que voltou também o que foi gravado depois do backup base.
+- **Run one now:** `systemctl start stellytics-backup`.
+- Restoring is tested on every PR by the CI `infra` job (`infra/compose/test/prod-stack-test.sh`): it restores into a new container and checks that what was written after the base backup also came back.
 
-## Restaurar o banco
+## Restoring the database
 
-**Janela de manutenção:** a restauração derruba o portal, a ingestão (eventos descartados) e o Umami até terminar. O backup novo é baixado para um diretório vazio enquanto os dados antigos ficam em `postgres.antes-*` no mesmo volume, então confira que há espaço livre para os dois (`df -h /srv/stellytics`) antes de começar.
+**Maintenance window:** the restore takes down the portal, ingestion (events are dropped) and Umami until it finishes. The new backup is downloaded into an empty directory while the old data stays in `postgres.before-*` on the same volume, so check there is free space for both (`df -h /srv/stellytics`) before starting.
 
-Na VM, como root:
+On the VM, as root. The block stops the services, moves the current data aside (do not delete it until you have checked the restore), brings the newest backup and all the WAL after it, starts everything again and takes a new base backup right after the restore:
 
 ```bash
 cd /opt/stellytics/infra/compose
 systemctl stop stellytics-backup.timer
 docker compose -f prod.yaml stop portal ingest-web collector rollup umami postgres
 
-# Guarda os dados atuais (não apague até conferir a restauração).
-mv /srv/stellytics/postgres /srv/stellytics/postgres.antes-$(date +%F-%H%M)
+mv /srv/stellytics/postgres /srv/stellytics/postgres.before-$(date +%F-%H%M)
 mkdir /srv/stellytics/postgres
 
-# Traz o backup mais novo e todo o WAL depois dele.
 docker compose -f prod.yaml run --rm --no-deps --entrypoint sh postgres -c \
   'chown postgres:postgres "$PGDATA" && chmod 700 "$PGDATA" && su postgres -c "stellytics-restore LATEST"'
 
 docker compose -f prod.yaml up -d --wait
 systemctl start stellytics-backup.timer
-systemctl start stellytics-backup   # novo backup base logo depois da restauração
+systemctl start stellytics-backup
 ```
 
-Na subida, o Postgres aplica o WAL arquivado e abre o banco numa linha do tempo nova; o WAL-G continua arquivando a partir dela.
+On start, Postgres applies the archived WAL and opens the database on a new timeline; WAL-G keeps archiving from it.
 
-**Voltar a um horário** (por exemplo, antes de um erro às 02:00): um backup base já contém tudo o que aconteceu até ele terminar, então o ponto de partida precisa ser um backup **concluído antes** do horário escolhido. Liste os backups e use o nome do último que terminou antes dele:
+**Going back to a point in time** (for example, before an error at 02:00): a base backup already contains everything that happened up to when it finished, so the starting point must be a backup **completed before** the chosen time. List the backups and use the name of the last one that finished before it:
 
 ```bash
 docker compose -f prod.yaml run --rm --no-deps postgres wal-g backup-list --detail
+```
 
-# No lugar do stellytics-restore LATEST do bloco acima:
+Then run this command in place of the `stellytics-restore LATEST` command from the block above:
+
+```bash
 docker compose -f prod.yaml run --rm --no-deps \
-  -e BACKUP=<nome-do-backup> -e TARGET='2026-11-14 01:59:00+00' --entrypoint sh postgres -c \
+  -e BACKUP=<backup-name> -e TARGET='2026-11-14 01:59:00+00' --entrypoint sh postgres -c \
   'chown postgres:postgres "$PGDATA" && chmod 700 "$PGDATA" && su postgres -c "stellytics-restore \"$BACKUP\" \"$TARGET\""'
 ```
 
-O `stellytics-restore` descarta os alvos de recuperação que vieram dentro do backup (de uma restauração anterior), então cada restauração usa só o alvo pedido.
+`stellytics-restore` discards the recovery targets that came inside the backup (from a previous restore), so each restore uses only the requested target.
 
-## Estado do OpenTofu
+## OpenTofu state
 
-O estado fica em `infra/opentofu/terraform.tfstate`, na máquina de quem aplica (fora do git, porque tem dados da infraestrutura). Para compartilhar entre pessoas, guarde-o no próprio Object Storage: acrescente o bloco `backend` **dentro** do bloco `terraform` que já existe em `versions.tf`:
+The state lives in `infra/opentofu/terraform.tfstate`, on the machine of whoever applies (outside git, because it holds infrastructure data). To share it between people, keep it in the same Object Storage: add the `backend` block **inside** the `terraform` block that already exists in `versions.tf`, keeping `required_version` and `required_providers` as they are:
 
 ```hcl
 terraform {
-  # ... required_version e required_providers como estão ...
-
   backend "s3" {
-    bucket                      = "<bucket-do-estado>"
+    bucket                      = "<state-bucket>"
     key                         = "stellytics/production.tfstate"
     region                      = "nbg1"
     endpoints                   = { s3 = "https://nbg1.your-objectstorage.com" }
@@ -388,107 +420,112 @@ terraform {
 }
 ```
 
-Depois rode `tofu init -migrate-state`. As credenciais vêm de `AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY`.
+Then run `tofu init -migrate-state`. The credentials come from `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`.
 
-## Monitoramento
+## Monitoring
 
-Uma VM separada, em outro data center (`fsn1`), testa de fora o portal e a ingestão a cada 15 segundos e manda e-mail quando algo cai ([ADR 0005](adr/0005-monitoramento-externo.md)). Ela é criada pelo mesmo `tofu apply` (saída `monitor_ipv4`).
+A separate VM, in another data center (`fsn1`), probes the portal and ingestion from the outside every 15 seconds and sends an email when something goes down ([ADR 0005](adr/0005-monitoramento-externo.md)). It is created by the same `tofu apply` (output `monitor_ipv4`).
 
-Faça depois do deploy (passo 4) e do DNS, senão o monitor já nasce alertando.
+Do this after the deployment (step 4) and DNS, otherwise the monitor starts out alerting.
 
-1. No `inventory/production.yml`, confirme o host `monitor` com o `monitor_ipv4` (veja o `.example`). Aceite a chave SSH dele uma vez: `ssh root@<monitor_ipv4> true`.
-2. Em `group_vars/all.yml`, preencha `monitor_alert_email`, `monitor_smtp_smarthost` (`host:porta`), `monitor_smtp_from` e, se o SMTP pedir login, `monitor_smtp_username`. No `secrets.yml`, preencha `monitor_smtp_password`.
-3. **Recomendado:** configure um serviço externo de sinal de vida (qualquer um que receba um POST periódico e avise quando ele parar) e ponha a URL em `monitor_deadman_url`. Sem isso, se a VM de monitoramento cair, ninguém fica sabendo.
-4. Rode, de `infra/ansible/`:
+1. In `inventory/production.yml`, confirm the `monitor` host with `monitor_ipv4` (see the `.example`). Accept its SSH key once: `ssh root@<monitor_ipv4> true`.
+2. In `group_vars/all.yml`, fill in `monitor_alert_email`, `monitor_smtp_smarthost` (`host:port`), `monitor_smtp_from` and, if the SMTP server asks for a login, `monitor_smtp_username`. In `secrets.yml`, fill in `monitor_smtp_password`.
+3. **Recommended:** set up an external dead-man's-switch service (any one that receives a periodic POST and warns when it stops) and put its URL in `monitor_deadman_url`. Without it, if the monitoring VM goes down, nobody finds out.
+4. Run, from `infra/ansible/`:
 
    ```bash
    ansible-playbook monitoring.yml -e @secrets.yml
    ```
 
-| Alerta | Quando |
+| Alert | When |
 |---|---|
-| `EndpointDown` | Portal, gateway web ou ingestão de API sem resposta 2xx por 1 minuto |
-| `TLSCertificateExpiringSoon` | Certificado vencendo em menos de 14 dias (a renovação automática falhou) |
-| `ProbeFailing` | O Prometheus não consegue nem pedir o teste de um alvo ao blackbox |
-| `ProberDown` | O blackbox exporter, que faz os testes, está fora do ar |
-| `ReplicationStopped` / `ReplicationMonitorDown` | Com monitoramento de réplica habilitado: slot ausente ou sem streaming, ou falha de coleta por 2 minutos |
-| `ReplicationLagHigh` / `ReplicationSlotWALHigh` | Atraso acima de 256 MiB por 5 minutos ou retenção acima de 5 GiB por 2 minutos |
+| `EndpointDown` | Portal, web gateway or API ingestion with no 2xx response for 1 minute |
+| `TLSCertificateExpiringSoon` | Certificate expiring in less than 14 days (automatic renewal failed) |
+| `ProbeFailing` | Prometheus cannot even ask blackbox to probe a target |
+| `ProberDown` | The blackbox exporter, which runs the probes, is down |
+| `ReplicationStopped` / `ReplicationMonitorDown` | With replica monitoring enabled: slot missing or not streaming, or collection failing for 2 minutes |
+| `ReplicationLagHigh` / `ReplicationSlotWALHigh` | Lag above 256 MiB for 5 minutes or retention above 5 GiB for 2 minutes |
 
-Confira que o monitoramento enxerga a produção: no Prometheus (túnel abaixo), a página *Status → Targets* (ou a consulta `probe_success`) deve mostrar `1` para o portal, o gateway e a ingestão de API (`ingest-api`, um POST sem chave que espera o 401 do coletor). Para testar o e-mail de alerta de verdade, na VM de produção rode `docker compose -f prod.yaml stop ingest-web`, espere uns 2 minutos pelo `EndpointDown` e suba de novo (`start ingest-web`). **Parar o `ingest-web` descarta os eventos reais que chegarem nesse intervalo.** Faça o teste no primeiro deploy, antes de haver tenants, ou aceite a perda. O Alertmanager e o Prometheus ficam só no loopback; para vê-los, abra um túnel e acesse `http://127.0.0.1:9090` e `http://127.0.0.1:9093`:
+Check that monitoring sees production: in Prometheus (tunnel below), the *Status → Targets* page (or the `probe_success` query) should show `1` for the portal, the gateway and API ingestion (`ingest-api`, a POST without a key that expects the collector's 401). To test the alert email for real, on the production VM run `docker compose -f prod.yaml stop ingest-web`, wait about 2 minutes for `EndpointDown` and start it again (`start ingest-web`). **Stopping `ingest-web` drops the real events that arrive in that interval.** Do the test on the first deployment, before there are tenants, or accept the loss. Alertmanager and Prometheus are only on loopback; to see them, open a tunnel and go to `http://127.0.0.1:9090` and `http://127.0.0.1:9093`:
 
 ```bash
 ssh -N -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 root@<monitor_ipv4>
 ```
 
-**Ingestão de API:** `monitor_api_url` já é montada a partir de `api_host` em `group_vars/all.yml`; mantenha os dois alinhados se mudar o domínio e reaplique `monitoring.yml`. O teste do blackbox só confirma que o coletor exige chave (401), não que uma métrica autorizada será gravada.
+**API ingestion:** `monitor_api_url` is already built from `api_host` in `group_vars/all.yml`; keep the two aligned if you change the domain and re-apply `monitoring.yml`. The blackbox probe only confirms that the collector requires a key (401), not that an authorized metric will be stored.
 
-## Alta disponibilidade (opcional, degraus 1 e 2 do ADR 0009)
+## High availability (optional, steps 1 and 2 of ADR 0009)
 
-> Tudo desligado por padrão: com os valores padrão, `site.yml`, o `prod.yaml` e o `.env` ficam **idênticos** aos de antes (conferido com `docker compose config` e renderizando o `env.j2`). Isto entrega a **configuração** das réplicas; **não** entrega failover automático nem as metas de 99,99% e 99,90% ([`docs/sla.md`](sla.md)). Nada disto foi aplicado numa conta real da Hetzner.
+> Everything is off by default: with the default values, `site.yml`, `prod.yaml` and the `.env` stay **identical** to before (checked with `docker compose config` and by rendering `env.j2`). This delivers the **configuration** of the replicas; it does **not** deliver automatic failover or the 99.99% and 99.90% targets ([`docs/sla.md`](sla.md)). None of this was applied on a real Hetzner account.
 
-O que existe:
+What exists:
 
-| Peça | Arquivos | Para quê |
+| Piece | Files | What for |
 |---|---|---|
-| Primário com replicação | `compose/prod-ha-primary.yaml`, `compose/postgres/init/03-replication.sh`, variável `ha_replication` | Papel `replicator`, `pg_hba` só para a faixa `ha_replication_cidr` (`10.50.0.0/16`), limite de WAL por slot (`max_slot_wal_keep_size`, 10 GB), Postgres e Umami publicados no IP privado `ha_private_ip` |
-| Réplica do Postgres | `standby.yml`, papel `postgres_standby`, `compose/prod-standby.yaml`, `compose/postgres/standby-entrypoint.sh` | `pg_basebackup` + `standby.signal` + slot de replicação, hot standby somente leitura |
-| Ingestão extra | `ingest.yml`, papel `stellytics_ingest`, `compose/prod-ingest.yaml`, `caddy/Caddyfile.ingest` | Só Caddy e gateway web, lendo `ingest_site` (como `stellytics_ingest`) e repassando ao Umami do primário pela rede privada |
-| Failover manual | [`runbooks/failover-do-banco.md`](runbooks/failover-do-banco.md) | Promover a réplica, mover a pilha, o que fazer com o antigo primário |
+| Primary with replication | `compose/prod-ha-primary.yaml`, `compose/postgres/init/03-replication.sh`, variable `ha_replication` | `replicator` role, `pg_hba` only for the `ha_replication_cidr` range (`10.50.0.0/16`), WAL limit per slot (`max_slot_wal_keep_size`, 10 GB), Postgres and Umami published on the private IP `ha_private_ip` |
+| Postgres replica | `standby.yml`, role `postgres_standby`, `compose/prod-standby.yaml`, `compose/postgres/standby-entrypoint.sh` | `pg_basebackup` + `standby.signal` + replication slot, read-only hot standby |
+| Extra ingestion | `ingest.yml`, role `stellytics_ingest`, `compose/prod-ingest.yaml`, `caddy/Caddyfile.ingest` | Only Caddy and the web gateway, reading `ingest_site` (as `stellytics_ingest`) and relaying to the primary's Umami over the private network |
+| Manual failover | [`runbooks/failover-do-banco.md`](runbooks/failover-do-banco.md) | Promote the replica, move the stack, what to do with the old primary |
 
-Ordem (cada passo é um `ansible-playbook` de `infra/ansible`, com o `secrets.yml`):
+Order (each step is an `ansible-playbook` from `infra/ansible`, with `secrets.yml`):
 
-1. **OpenTofu:** ligue `ha_db_standby` e/ou `ha_ingest_replicas` (ver `infra/opentofu/variables.tf`; cria recursos pagos). Preencha o inventário (`inventory/production.example.yml`, grupos `ingest` e `standby`) com os IPs públicos das VMs e o volume da réplica (o OpenTofu só exporta o IP privado da réplica; os demais vêm do console).
-2. **Segredo novo:** `replicator_db_password` em `secrets.yml` (`openssl rand -hex 32`). Guarde-o como os demais.
-3. **Primário:** `ansible-playbook site.yml -e @secrets.yml -e ha_replication=true`. Recria o contêiner do Postgres (reinício curto do banco, e o portal, o Umami e o gateway perdem a conexão por alguns segundos) e aplica `03-replication.sh` no volume existente (idempotente). O Docker só sobe o contêiner se o IP privado existir na VM: depois de reiniciar a VM, confira que a interface da rede privada subiu antes do Docker.
-4. **Réplica:** `ansible-playbook standby.yml -e @secrets.yml`. Copia o primário pela rede privada (o tempo cresce com o tamanho do banco; no teste local, um banco de poucos MB levou 6 s) e confere `pg_is_in_recovery() = t`.
-5. **Conferir:**
+1. **OpenTofu:** turn on `ha_db_standby` and/or `ha_ingest_replicas` (see `infra/opentofu/variables.tf`; creates paid resources). Fill in the inventory (`inventory/production.example.yml`, groups `ingest` and `standby`) with the public IPs of the VMs and the replica's volume (OpenTofu only exports the replica's private IP; the rest come from the console).
+2. **New secret:** `replicator_db_password` in `secrets.yml` (`openssl rand -hex 32`). Keep it like the others.
+3. **Primary:** `ansible-playbook site.yml -e @secrets.yml -e ha_replication=true`. It recreates the Postgres container (a short database restart, and the portal, Umami and the gateway lose the connection for a few seconds) and applies `03-replication.sh` to the existing volume (idempotent). Docker only starts the container if the private IP exists on the VM: after rebooting the VM, check that the private network interface came up before Docker.
+4. **Replica:** `ansible-playbook standby.yml -e @secrets.yml`. It copies the primary over the private network (the time grows with the database size; in the local test, a database of a few MB took 6 s) and checks `pg_is_in_recovery() = t`.
+5. **Check.** On the primary:
 
    ```bash
-   # no primário
    docker compose -f prod.yaml -f prod-ha-primary.yaml exec -T postgres psql -U postgres -Atc \
-     "SELECT state, sync_state, pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn) AS bytes_atras FROM pg_stat_replication"
-   # na réplica
+     "SELECT state, sync_state, pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn) AS bytes_behind FROM pg_stat_replication"
+   ```
+
+   On the replica:
+
+   ```bash
    docker compose -f prod-standby.yaml exec -T postgres psql -U postgres -d stellytics -Atc "SELECT pg_is_in_recovery()"
    ```
 
-6. **Monitorar a réplica (opcional, recomendado):** a opção OpenTofu `ha_db_standby=true` conecta a VM de monitoramento à rede HA em `10.50.0.40`. Publique primeiro uma release assinada contendo a imagem `replication-monitor` e configure `monitor_replication_image` com a referência por digest; o playbook verifica sua assinatura. Gere `replication_monitor_password` com `openssl rand -hex 32` e guarde em `secrets.yml`. Execute `site.yml` e depois `monitoring.yml`, ambos com `-e @secrets.yml -e ha_replication=true -e monitor_replication_enabled=true`. A conta limitada `stellytics_replication_monitor` recebe `pg_monitor` e só entra no banco `postgres` pelo endereço `monitor_replication_cidr` (padrão `10.50.0.40/32`); a conexão trafega sem TLS pela rede privada. Restrinja a rede privada e mantenha a senha protegida. Confira no Prometheus `stellytics_replication_scrape_success=1`, `stellytics_replication_slot_exists=1` e `stellytics_replication_streaming=1`. Se promover a réplica, atualize `ha_primary_private_ip` para o novo primário e execute ambos os playbooks novamente. A rede real da Hetzner ainda não foi testada.
-7. **Ingestão extra:** use o **mesmo** `ingest_proof_secret`, `stellytics_ingest_db_password` e `ingest_web_image` (por digest, verificada com cosign) do primário e rode `ansible-playbook ingest.yml -e @secrets.yml`. O Caddy dessas VMs só publica `/e`, `/c`, `/s/*` e `/healthz` do host da ingestão.
+6. **Monitor the replica (optional, recommended):** the OpenTofu option `ha_db_standby=true` connects the monitoring VM to the HA network at `10.50.0.40`. First publish a signed release containing the `replication-monitor` image and set `monitor_replication_image` to the digest reference; the playbook verifies its signature. Generate `replication_monitor_password` with `openssl rand -hex 32` and keep it in `secrets.yml`. Run `site.yml` and then `monitoring.yml`, both with `-e @secrets.yml -e ha_replication=true -e monitor_replication_enabled=true`. The limited account `stellytics_replication_monitor` gets `pg_monitor` and only enters the `postgres` database from the address `monitor_replication_cidr` (default `10.50.0.40/32`); the connection travels without TLS over the private network. Restrict the private network and keep the password protected. Check in Prometheus `stellytics_replication_scrape_success=1`, `stellytics_replication_slot_exists=1` and `stellytics_replication_streaming=1`. If you promote the replica, update `ha_primary_private_ip` to the new primary and run both playbooks again. The real Hetzner network has not been tested yet.
+7. **Extra ingestion:** use the **same** `ingest_proof_secret`, `stellytics_ingest_db_password` and `ingest_web_image` (by digest, verified with cosign) as the primary and run `ansible-playbook ingest.yml -e @secrets.yml`. Caddy on those VMs only publishes `/e`, `/c`, `/s/*` and `/healthz` of the ingestion host.
 
-Limites e cuidados:
+Limits and cautions:
 
-- **Backup:** só o primário agenda o `stellytics-backup`. A réplica não arquiva WAL enquanto é réplica (testado: `archived_count = 0`) nem faz backup base; o WAL-G continua exatamente como antes no primário (testado). Depois de uma promoção, a nova linha do tempo arquiva no mesmo prefixo; faça um backup base logo.
-- **Slot:** uma réplica parada retém WAL no primário até 10 GB (`ha_replication_max_slot_wal_keep`); passou disso, o slot é invalidado e a réplica precisa ser refeita (apague o diretório de dados dela e rode `standby.yml`). Sem réplica não há slot e o primário não guarda WAL a mais.
-- **Rede:** o Postgres e o Umami do primário passam a escutar o IP privado. O pg_hba.conf da imagem termina em `host all all all scram-sha-256`, que deixaria `postgres`, `umami`, `stellytics` e `stellytics_collector` alcançáveis por essa rede só com senha; por isso o `03-replication.sh` insere, antes dela e para cada faixa de `ha_replication_cidr`, `stellytics_ingest` (só no banco `stellytics`), `replicator` (só replicação) e `reject` para todo o resto (testado: de um cliente na faixa, os quatro papéis são rejeitados e `stellytics_ingest` e `replicator` funcionam; o tráfego do Compose vem de 172.30.0.0/24 e não é afetado). **Risco que sobra:** o Umami (3000) é alcançável por qualquer host da rede privada, sem autenticação em `/api/send`, e aceita o cabeçalho de IP do cliente: quem controlar uma VM da rede injeta eventos com IP falso. Mitigação: firewall da Hetzner liberando 3000 e 5432 só entre os IPs privados conhecidos (o OpenTofu de hoje não faz isso; é pendência). A rede privada real **não foi testada**; no teste local a faixa é a de uma rede do Docker.
-- **TLS das réplicas de ingestão:** cada VM pede o certificado por HTTP-01. Atrás de um balanceador que repassa 80 e 443, o desafio cai numa VM qualquer e pode falhar; certificado no balanceador ou outro método continua em aberto (ADR 0009). O balanceador, o IP flutuante e o DNS **não** são configurados por aqui.
-- **Limites por instância:** `RATE_LIMIT` e `FINGERPRINT_LIMIT` valem por réplica (ADR 0009); com N réplicas o limite efetivo pode chegar a N vezes. Três variáveis do gateway chegam por `.env` (Compose) ou por variáveis do Ansible, todas desligadas por padrão (comportamento idêntico ao de antes):
+- **Backup:** only the primary schedules `stellytics-backup`. The replica does not archive WAL while it is a replica (tested: `archived_count = 0`) and does not take base backups; WAL-G keeps working exactly as before on the primary (tested). After a promotion, the new timeline archives to the same prefix; take a base backup soon after.
+- **Slot:** a stopped replica holds WAL on the primary up to 10 GB (`ha_replication_max_slot_wal_keep`); beyond that, the slot is invalidated and the replica has to be rebuilt (delete its data directory and run `standby.yml`). With no replica there is no slot and the primary does not keep extra WAL.
+- **Network:** Postgres and Umami on the primary start listening on the private IP. The image's pg_hba.conf ends with `host all all all scram-sha-256`, which would leave `postgres`, `umami`, `stellytics` and `stellytics_collector` reachable over that network with only a password; so `03-replication.sh` inserts, before it and for each range of `ha_replication_cidr`, `stellytics_ingest` (only on the `stellytics` database), `replicator` (replication only) and `reject` for everything else (tested: from a client in the range, the four roles are rejected and `stellytics_ingest` and `replicator` work; Compose traffic comes from 172.30.0.0/24 and is not affected). **Remaining risk:** Umami (3000) is reachable from any host on the private network, with no authentication on `/api/send`, and it accepts the client IP header: whoever controls a VM on the network injects events with a fake IP. Mitigation: Hetzner firewall opening 3000 and 5432 only between the known private IPs (today's OpenTofu does not do this; it is pending). The real private network has **not been tested**; in the local test the range is that of a Docker network.
+- **TLS of the ingestion replicas:** each VM requests the certificate through HTTP-01. Behind a load balancer that forwards 80 and 443, the challenge lands on any VM and may fail; a certificate on the load balancer or another method is still open (ADR 0009). The load balancer, the floating IP and DNS are **not** configured here.
+- **Per-instance limits:** `RATE_LIMIT` and `FINGERPRINT_LIMIT` apply per replica (ADR 0009); with N replicas the effective limit can reach N times. Three gateway variables arrive through `.env` (Compose) or through Ansible variables, all off by default (behavior identical to before):
 
-  | Compose / `.env` | Ansible | Padrão | Quando ligar |
+  | Compose / `.env` | Ansible | Default | When to turn on |
   |---|---|---|---|
-  | `INGEST_SITE_STALE_TTL` | `ingest_site_stale_ttl` | `0` | Máx. 1 h (ex.: `10m`). Com o banco fora, o gateway serve a última resposta de um site **aceito** por esse tempo. Contrapartida: tenant removido durante a queda segue aceitando eventos até `SITE_CACHE_TTL` + este valor. |
-  | `INGEST_RELAY_MAX_INFLIGHT` | `ingest_relay_max_inflight` | `0` (sem limite) | Só se o Umami saturar e o gateway começar a acumular memória. Sob saturação, o gateway responde `204` e registra os descartes no log; diferenças de tempo ainda podem fornecer pistas (ADR 0011). |
-  | `INGEST_RELAY_QUEUE_WAIT` | `ingest_relay_queue_wait` | `250ms` | Só vale com o limite acima ligado (0 a 10 s). |
-- **Portal e Umami** continuam numa VM só, com o banco local a ela (`postgres:5432` no `prod.yaml`).
+  | `INGEST_SITE_STALE_TTL` | `ingest_site_stale_ttl` | `0` | Max. 1 h (e.g. `10m`). With the database down, the gateway serves the last response for an **accepted** site for that long. Trade-off: a tenant removed during the outage keeps accepting events until `SITE_CACHE_TTL` + this value. |
+  | `INGEST_RELAY_MAX_INFLIGHT` | `ingest_relay_max_inflight` | `0` (no limit) | Only if Umami saturates and the gateway starts accumulating memory. Under saturation, the gateway answers `204` and logs the drops; timing differences may still give clues (ADR 0011). |
+  | `INGEST_RELAY_QUEUE_WAIT` | `ingest_relay_queue_wait` | `250ms` | Only applies with the limit above turned on (0 to 10 s). |
+- **Portal and Umami** stay on a single VM, with the database local to it (`postgres:5432` in `prod.yaml`).
 
-## O que o guia ainda não cobre
+## What the guide does not cover yet
 
-- **Coletor de API:** está no `prod.yaml` e no Caddy ([ADR 0014](adr/0014-infra-em-docker-compose.md)), mas nunca rodou numa conta real. O Caddy não limita requisições por IP e o coletor não limita por chave; o teto de memória do contêiner é `collector_mem_limit` (padrão `512m`). As VMs extras de ingestão (`prod-ingest.yaml`) só têm o gateway web: a ingestão de API continua numa VM só.
-- **API de leitura do SCF (`/api/v1`, [#48](https://github.com/romulospl/stellytics/issues/48)):** é servida pelo portal, no host `app.stellytics.xyz`. O Caddy não aplica limite por IP. O limite existente é do portal, em memória e por instância ([ADR 0006](adr/0006-api-de-leitura-do-scf.md)); um ataque distribuído não é contido.
-- **Domínio e DNS na IaC:** hoje os registros são criados à mão (ADR 0004).
-- **SMTP de produção:** o guia exige um provedor, mas não escolhe nem configura nenhum (SPF, DKIM e DMARC do domínio do `mail_from` ficam com você).
-- **Transferir a operação para outra equipe:** plano, ordem, janela, migração de dados testada localmente (`infra/scripts/db-export.sh` e `db-import.sh`) e critérios de aceite em [`docs/transferencia.md`](transferencia.md) ([#54](https://github.com/romulospl/stellytics/issues/54)).
-- **Alta disponibilidade:** por padrão é uma VM só; se ela cair, o serviço cai até a recriação (restauração do backup em VM nova, seção "Restaurar o banco"). A seção "Alta disponibilidade" acima configura réplica do Postgres e ingestão extra, mas o failover é manual, não há balanceador nem IP flutuante configurado e nada foi aplicado numa conta real.
-- **Teste de restauração em produção:** a restauração é testada no CI com S3 local, não contra o bucket real. Faça um ensaio numa VM descartável antes de precisar dela.
-- **Atualização do Umami e do Postgres:** só por PR (imagens por digest no `prod.yaml`); não há guia de migração de versão maior do Postgres. A configuração do Caddy é entregue pelo Ansible e executada em contêiner.
+- **API collector:** it is in `prod.yaml` and in Caddy ([ADR 0014](adr/0014-infra-em-docker-compose.md)), but has never run on a real account. Caddy does not rate-limit requests per IP and the collector does not rate-limit per key; the container memory cap is `collector_mem_limit` (default `512m`). The extra ingestion VMs (`prod-ingest.yaml`) only have the web gateway: API ingestion stays on a single VM.
+- **SCF read API (`/api/v1`, [#48](https://github.com/romulospl/stellytics/issues/48)):** it is served by the portal, on the host `app.stellytics.xyz`. Caddy does not apply a per-IP limit. The existing limit is the portal's, in memory and per instance ([ADR 0006](adr/0006-api-de-leitura-do-scf.md)); a distributed attack is not contained.
+- **Domain and DNS in the IaC:** today the records are created by hand (ADR 0004).
+- **Production SMTP:** the guide requires a provider, but does not choose or configure one (SPF, DKIM and DMARC for the `mail_from` domain are up to you).
+- **Handing the operation over to another team:** plan, order, window, locally tested data migration (`infra/scripts/db-export.sh` and `db-import.sh`) and acceptance criteria in [`docs/transferencia.md`](transferencia.md) ([#54](https://github.com/romulospl/stellytics/issues/54)).
+- **High availability:** by default it is a single VM; if it goes down, the service is down until it is recreated (restoring the backup on a new VM, section "Restoring the database"). The "High availability" section above configures the Postgres replica and extra ingestion, but failover is manual, there is no load balancer or floating IP configured and nothing was applied on a real account.
+- **Restore test in production:** the restore is tested in CI with a local S3, not against the real bucket. Rehearse it on a disposable VM before you need it.
+- **Updating Umami and Postgres:** only through a PR (images by digest in `prod.yaml`); there is no migration guide for a major Postgres version. The Caddy configuration is delivered by Ansible and runs in a container.
 
-## Como este guia foi conferido
+## How this guide was checked
 
-Sem credenciais da Hetzner, de DNS ou de SMTP, foi possível conferir:
+Without Hetzner, DNS or SMTP credentials, it was possible to check:
 
-- `docker compose -f infra/compose/prod.yaml config` com um `.env` montado a partir do `env.j2` do Ansible (todas as variáveis obrigatórias do Compose vêm de lá);
-- `tofu validate` (contêiner `ghcr.io/opentofu/opentofu:1.13.2`) em `infra/opentofu/`;
-- `ansible-playbook --syntax-check` de `site.yml`, `monitoring.yml`, `ingest.yml` e `standby.yml` (ansible-core 2.21) com os arquivos de exemplo;
-- os nomes de variáveis, saídas do OpenTofu, scripts (`pnpm umami:service-account`, `operator:create`) e caminhos citados, contra os arquivos do repositório;
-- as rotas TLS do Caddy, os serviços internos, uma métrica de API gravada, o backup cifrado e a restauração, pelo job `infra` do CI (`infra/compose/test/prod-stack-test.sh`);
-- a replicação, a promoção e a ingestão replicada, em Docker local, por `infra/compose/test/ha-replication-test.sh` (job `infra`).
+- `docker compose -f infra/compose/prod.yaml config` with a `.env` built from Ansible's `env.j2` (all the required Compose variables come from there);
+- `tofu validate` (container `ghcr.io/opentofu/opentofu:1.13.2`) in `infra/opentofu/`;
+- `ansible-playbook --syntax-check` of `site.yml`, `monitoring.yml`, `ingest.yml` and `standby.yml` (ansible-core 2.21) with the example files;
+- the variable names, OpenTofu outputs, scripts (`pnpm umami:service-account`, `operator:create`) and cited paths, against the repository files;
+- the Caddy TLS routes, the internal services, a stored API metric, the encrypted backup and the restore, through the CI `infra` job (`infra/compose/test/prod-stack-test.sh`);
+- replication, promotion and replicated ingestion, in local Docker, with `infra/compose/test/ha-replication-test.sh` (`infra` job).
 
-**Não foi possível conferir** sem credenciais: o `tofu apply` e o `ansible-playbook` de verdade, a emissão do certificado, o envio de e-mail, o `cosign verify` contra imagens reais (ainda não há release publicada) a visibilidade dos pacotes no GHCR e o bloco `backend "s3"` do estado do OpenTofu (`region = "nbg1"` e os `skip_*`). Os passos do console da Hetzner e do GitHub seguem a documentação dessas ferramentas e podem ter mudado de nome na interface.
+**It was not possible to check** without credentials: the real `tofu apply` and `ansible-playbook`, certificate issuance, email sending, `cosign verify` against real images (there is no published release yet), the visibility of the packages on GHCR and the `backend "s3"` block for the OpenTofu state (`region = "nbg1"` and the `skip_*` settings). The Hetzner console and GitHub steps follow the documentation of those tools and may have changed names in the interface.
+
+**Minimal path.** `init.sh`, `deploy.sh` and `infra/compose/prod-vps.yaml` were added on 19 Nov 2026 and have no recorded run on a real VPS yet. Checking the minimal path, by someone who follows the guide, is also part of the acceptance criterion of [#42](https://github.com/romulospl/stellytics/issues/42).

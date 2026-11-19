@@ -21,7 +21,7 @@ Plano e procedimento para passar a operação do stellytics a um operador da com
 | **Conta Hetzner (Cloud)** | O novo operador cria o **próprio projeto** e roda o OpenTofu nele (`docs/deploy.md`, passo 1): a VM, o volume e o bucket da produção têm `delete_protection` e `prevent_destroy`, e o estado do OpenTofu (`terraform.tfstate`) é local, na máquina de quem aplicou. Não se transfere infraestrutura; recria-se e migra-se **os dados** (abaixo). A infraestrutura antiga fica ligada até o fim do período de reversão | `infra/opentofu/` |
 | **Object Storage e bucket de backup** | Bucket novo, na conta nova, com credenciais S3 novas (`backup_bucket`, `walg_s3_access_key`, `walg_s3_secret_key`, `walg_s3_prefix`). Os backups do operador antigo **não são migrados no caminho recomendado**: o novo operador começa a própria linha de backups com `systemctl start stellytics-backup` logo depois da migração. O bucket antigo é guardado pelo período de reversão e depois apagado, junto com a chave de cifra antiga | `docs/runbooks/backup-e-restauracao.md` |
 | **`walg_libsodium_key`** | Pelo caminho **lógico** (recomendado), o novo operador **gera uma chave nova** e a chave antiga **não passa de mãos**: quem a tem consegue ler os backups antigos, que contêm todos os dados (inclusive hashes de senha e sessões do portal), então ela some com o bucket antigo. Pelo caminho **físico** (WAL-G), a chave antiga é necessária para ler o bucket copiado e precisa ser entregue por canal seguro; depois da migração, comece um bucket e uma chave novos e descarte a antiga. Ela **não é rotacionável** (`docs/runbooks/rotacao-de-segredos.md`), por isso a troca de operador é a oportunidade natural de gerar outra | `infra/ansible/secrets.example.yml` |
-| **SMTP** | O novo operador contrata o próprio provedor e ajusta `smtp_url`, `mail_from` e SPF, DKIM e DMARC do domínio do remetente. Sem SMTP ninguém se cadastra (e-mail confirmado é obrigatório), e a recuperação de senha também depende dele | `docs/deploy.md` ("O que você precisa") |
+| **SMTP** | O novo operador contrata o próprio provedor e ajusta `smtp_url`, `mail_from` e SPF, DKIM e DMARC do domínio do remetente. Sem SMTP ninguém se cadastra (e-mail confirmado é obrigatório), e a recuperação de senha também depende dele | `docs/deploy.md` ("What you need") |
 | **Segredos de `secrets.yml`** | Tabela abaixo: quase todos são **gerados de novo**, três merecem cuidado | `infra/ansible/secrets.example.yml` |
 | **Contas de operador do SCF** | As contas existem no banco (`user.role = 'operator'`) e **migram com os dados**. O novo operador cria as suas com `pnpm operator:create` (ou `operator:promote`) e rebaixa as antigas com `operator:demote` (grava no `audit_log` e encerra as sessões). As **chaves de leitura do SCF** (`/api/v1`, tabela `operator_api_key`) também migram e continuam valendo: quem as usa precisa saber, e o novo operador decide se as revoga e reemite | `apps/portal/scripts/operator.mjs`, `docs/adr/0006-api-de-leitura-do-scf.md` |
 | **Senha de `admin` do Umami** | **Migra com o banco** (o usuário `admin` está no banco `umami`; conferido no teste). Quem operava antes a conhece: o novo operador troca a senha pelo túnel **antes de qualquer outra coisa** depois da migração | `docs/deploy.md` passo 5 |
@@ -67,7 +67,7 @@ O script de rastreamento é instalado em sites de terceiros com `src="https://<h
 - um provedor de SMTP com envio autenticado e o domínio do remetente configurado;
 - um cofre de senhas de equipe (o `secrets.yml` e a `walg_libsodium_key` ficam lá, **fora da VM e do repositório**; sem a chave, nenhum backup é restaurável);
 - pelo menos **duas pessoas** com acesso administrativo a tudo acima (uma pessoa só é o risco que esta transferência existe para tirar);
-- as ferramentas de `docs/deploy.md` ("O que você precisa"): `git`, `ssh`, `openssl`, OpenTofu 1.13.2, ansible-core 2.21, Docker, `jq`, Node 24 e pnpm 10.34.5.
+- as ferramentas de `docs/deploy.md` ("What you need"): `git`, `ssh`, `openssl`, OpenTofu 1.13.2, ansible-core 2.21, Docker, `jq`, Node 24 e pnpm 10.34.5.
 
 **Saber (leia na ordem):**
 
@@ -77,7 +77,7 @@ O script de rastreamento é instalado em sites de terceiros com `src="https://<h
 4. [`docs/privacidade.md`](privacidade.md) e [`docs/umami.md`](umami.md): o IP completo nunca é persistido; o Umami nunca é exposto; qualquer patch no Umami fica documentado;
 5. as restrições do `CLAUDE.md` ("Restrições que não são óbvias"): Umami fixado, licenças aprovadas pela OSI, o `tenant.id` vem sempre da chave de ingestão, script imutável por versão.
 
-**Pendências conhecidas que o novo operador herda** (`docs/deploy.md`, "O que o guia ainda não cobre"): o coletor de API e o `rollup` ainda **não estão em produção**; a API de leitura do SCF não tem limite por IP no Caddy; é uma VM só, sem alta disponibilidade; a restauração contra o bucket real nunca foi ensaiada.
+**Pendências conhecidas que o novo operador herda** (`docs/deploy.md`, "What the guide does not cover yet"): o coletor de API e o `rollup` ainda **não estão em produção**; a API de leitura do SCF não tem limite por IP no Caddy; é uma VM só, sem alta disponibilidade; a restauração contra o bucket real nunca foi ensaiada.
 
 ## Ordem e janela de manutenção
 
@@ -110,7 +110,7 @@ Antes de tocar nos dados, porque tudo o que sobe no destino precisa de imagens d
 ### Fase 2: infraestrutura nova e ensaio (T-14 a T-1)
 
 1. No projeto novo da Hetzner: `docs/deploy.md`, passos 1 a 4 (OpenTofu, DNS **de ensaio** em domínio do novo operador, release e Ansible; o Caddy obtém o certificado após a virada do DNS) e o monitoramento. O DNS precisa apontar para a VM nova e as portas 80/443 estar acessíveis para o Caddy emitir os certificados; para testar com os nomes definitivos, eles precisam apontar para a VM nova durante o ensaio.
-2. **Ensaio de migração**, para medir o tempo e conferir o procedimento com dados reais antes da janela: restaure o backup mais recente do operador antigo numa VM descartável (`docs/deploy.md`, "Restaurar o banco"; é também o primeiro ensaio de restauração que o `backup-e-restauracao.md` marca como "nunca realizado"), e rode nela e na VM nova o procedimento da [Migração de dados](#migração-de-dados-testada) do começo ao fim. Anote o tempo.
+2. **Ensaio de migração**, para medir o tempo e conferir o procedimento com dados reais antes da janela: restaure o backup mais recente do operador antigo numa VM descartável (`docs/deploy.md`, "Restoring the database"; é também o primeiro ensaio de restauração que o `backup-e-restauracao.md` marca como "nunca realizado"), e rode nela e na VM nova o procedimento da [Migração de dados](#migração-de-dados-testada) do começo ao fim. Anote o tempo.
 3. **Baixe o TTL** dos registros do portal e da ingestão para 300 s pelo menos um TTL antigo antes da janela (T-2 se o TTL for 24 h).
 
 ### Fase 3: a janela (T)
@@ -180,7 +180,7 @@ A transferência **só conta como concluída quando o novo operador roda o siste
 5. Ingestão chegando: uma visita de um site real dos tenants aparece no painel **depois de 7 dias**, e nenhum tenant relatou perda.
 6. Backups diários dele no bucket dele (`backup-list`) e **um ensaio de restauração a partir dele**, numa VM descartável, com a data registrada em `backup-e-restauracao.md`.
 7. Monitoramento dele alertando por e-mail (alerta de teste recebido) e o sinal de vida configurado.
-8. Ele executou sozinho, sem ajuda: uma atualização da aplicação (PR do Renovate ou release própria, `docs/deploy.md`, "Atualizar a aplicação"), uma rotação de segredo (`rotacao-de-segredos.md`), a criação e o rebaixamento de um operador e a revogação de uma chave de ingestão de teste.
+8. Ele executou sozinho, sem ajuda: uma atualização da aplicação (PR do Renovate ou release própria, `docs/deploy.md`, "Updating the application"), uma rotação de segredo (`rotacao-de-segredos.md`), a criação e o rebaixamento de um operador e a revogação de uma chave de ingestão de teste.
 9. O operador antigo não tem mais acesso a nada (lista conferida: GitHub, Hetzner, DNS e domínio, SMTP, cofre, VMs, bucket) e destruiu a chave de cifra antiga e os dumps.
 10. Documentação atualizada: `cosign_identity_regexp`, imagens, contatos e links do repositório; o `CLAUDE.md` e o `docs/andamento.md` registram o novo operador.
 
@@ -196,7 +196,7 @@ Até o fim do período de reversão (30 dias) o antigo operador mantém tudo o q
 | **Repositório** | A transferência de volta é outra transferência no GitHub; não é preciso reverter para voltar a operar |
 | **Domínio** | Na opção A, a devolução depende de o operador novo cooperar: registre no acordo da Fase 0 quem decide e em quanto tempo |
 
-Se o problema aparecer depois dos 30 dias, a reversão deixa de ser um plano e vira restauração de backup (`docs/deploy.md`, "Restaurar o banco").
+Se o problema aparecer depois dos 30 dias, a reversão deixa de ser um plano e vira restauração de backup (`docs/deploy.md`, "Restoring the database").
 
 ## Migração de dados (testada)
 
@@ -214,13 +214,13 @@ Os scripts vão para a VM pelo `site.yml` (`/opt/stellytics/infra/scripts/`).
 ### Dois caminhos
 
 - **A. Lógico (`pg_dump`/`pg_restore`), o recomendado.** Funciona entre contas, não depende da chave de cifra antiga, deixa o destino com **senhas, chave de backup e bucket próprios** e não carrega os papéis do banco da origem (o destino cria os dele). O custo é a janela proporcional ao tamanho dos dados.
-- **B. Físico (WAL-G).** Copia o bucket de backup para o do novo operador e restaura com `stellytics-restore` (`docs/deploy.md`, "Restaurar o banco"). Serve se o volume de dados for tão grande que o dump não caiba na janela. Exige a **chave de cifra antiga** nas mãos do novo operador e **traz os papéis da origem, com as senhas da origem** (achado abaixo). Um backup base final mais o WAL arquivado fecham a diferença até a parada.
+- **B. Físico (WAL-G).** Copia o bucket de backup para o do novo operador e restaura com `stellytics-restore` (`docs/deploy.md`, "Restoring the database"). Serve se o volume de dados for tão grande que o dump não caiba na janela. Exige a **chave de cifra antiga** nas mãos do novo operador e **traz os papéis da origem, com as senhas da origem** (achado abaixo). Um backup base final mais o WAL arquivado fecham a diferença até a parada.
 
 **Passos do caminho B** (os que o teste executou, na ordem), com a pilha de destino **sem o Postgres iniciado** e o `.env` do destino com a `walg_libsodium_key` da origem e o `walg_s3_prefix` do bucket novo:
 
 1. Origem, janela aberta: `docker compose -f prod.yaml stop caddy portal ingest-web collector rollup umami`; `docker compose -f prod.yaml exec -T -u postgres postgres stellytics-backup`; troque o segmento de WAL (`select pg_switch_wal()`) e espere o `pg_stat_archiver` arquivá-lo.
 2. Copie o prefixo do bucket antigo para o novo (o teste usou `rclone sync --checksum` entre dois endpoints S3 e conferiu a contagem e o tamanho dos objetos).
-3. Destino: `docs/deploy.md`, "Restaurar o banco", com a pasta de dados vazia (`stellytics-restore LATEST`), e suba o Postgres.
+3. Destino: `docs/deploy.md`, "Restoring the database", com a pasta de dados vazia (`stellytics-restore LATEST`), e suba o Postgres.
 4. Alinhe as senhas dos papéis ao `.env` do destino (achado 4 abaixo) e reaplique o `02-ingest-roles.sh`.
 5. Compare `db-fingerprint.sh` com o da origem e suba a aplicação.
 
@@ -282,7 +282,7 @@ Depois, com a aplicação rodando no destino:
    - **o diário do Drizzle** (`drizzle.__drizzle_migrations`, 8 linhas) vem no dump do `stellytics`: o portal novo não reaplica migração (o log do portal diz só "migrações aplicadas" na subida);
    - **certificados TLS** (`/srv/stellytics/caddy`): não se migram; o Caddy no novo VPS emite certificados automaticamente após a virada do DNS;
    - **histórico de backup do WAL-G e dados do Prometheus:** não migram; o destino começa linhas novas (`systemctl start stellytics-backup` depois da migração).
-6. **Versão do destino.** O `db-import.sh` confere a impressão digital **antes** de a aplicação subir, então ela só bate se o destino restaurou exatamente o que a origem tinha. Se as imagens do destino forem **mais novas** e trouxerem migração, o portal as aplica na subida (comportamento normal do `RUN_MIGRATIONS`; **não foi testado na migração**). Nunca suba uma versão **mais antiga** que a da origem sobre os dados: as migrações só andam para frente (`docs/deploy.md`, "Atualizar a aplicação").
+6. **Versão do destino.** O `db-import.sh` confere a impressão digital **antes** de a aplicação subir, então ela só bate se o destino restaurou exatamente o que a origem tinha. Se as imagens do destino forem **mais novas** e trouxerem migração, o portal as aplica na subida (comportamento normal do `RUN_MIGRATIONS`; **não foi testado na migração**). Nunca suba uma versão **mais antiga** que a da origem sobre os dados: as migrações só andam para frente (`docs/deploy.md`, "Updating the application").
 7. **O destino precisa estar vazio de dados, não de estrutura.** Se o `site.yml` já subiu o portal e o Umami, eles criaram tabelas vazias, e o restore bateria nelas (não tentado). O `db-import.sh` por isso exige a aplicação parada, restaura em bancos temporários e troca pelos de verdade (é o caminho testado). Ele **recusa** um destino com tenants (a origem, por exemplo) sem `--force-nonempty`; com a opção, apaga esses dados: confira o host antes.
 8. **Falhas e reexecução.** O `db-import.sh` pode ser rodado de novo. Uma falha **antes** da troca (soma que não bate, dump que não abre, restore que falha, aplicação rodando, destino não vazio) deixa o destino **como estava** (testado: os OIDs dos bancos não mudam). Uma falha **depois** da troca (impressão digital diferente) deixa o destino com os dados restaurados e **a aplicação parada**: investigue ou rode de novo; não suba a aplicação. Se o `db-import.sh` for interrompido à força (queda da máquina) no meio, podem sobrar `stellytics_new` ou `umami_new`, que a execução seguinte apaga.
 9. **`sha256sums` prova integridade, não autenticidade.** Quem consegue alterar a pasta altera também a soma; a autenticidade vem do canal (ssh entre as duas VMs, pela máquina de quem administra). O `db-export.sh` recusa uma pasta de saída que não esteja vazia: depois de uma exportação interrompida, apague a pasta parcial (`rm -rf`) antes de repetir.

@@ -22,7 +22,7 @@ O Umami é a ferramenta base ([ADR 0001](../adr/0001-ferramenta-base.md)) e roda
    - o teste de isolamento do portal (`apps/portal/test/isolation.test.ts`) e o do coletor/ingestão que o CI já executa.
 3. Se o painel usa uma resposta nova do Umami (`/stats`, `/pageviews`, `/metrics`), compare a forma na versão nova com `apps/portal/src/lib/umami/` e com o Umami falso (`apps/portal/test/fake-umami.ts`); lembre que no `/metrics` do 3.4.1 o `y` conta visitantes.
 4. Confira `docs/umami.md` (recorder desligado, porta fechada) e ajuste nomes que mudaram.
-5. Deploy: o PR passa pelo CI inteiro (`ci` agregador, incluindo `infra`) e é mesclado por revisão humana. Na produção, depois de mesclado, rode `ansible-playbook site.yml -e @secrets.yml`. **Antes**, force um backup base (`systemctl start stellytics-backup`), porque o Umami migra o próprio banco ao subir e a migração só anda para frente (`docs/deploy.md`, "Voltar atrás").
+5. Deploy: o PR passa pelo CI inteiro (`ci` agregador, incluindo `infra`) e é mesclado por revisão humana. Na produção, depois de mesclado, rode `ansible-playbook site.yml -e @secrets.yml`. **Antes**, force um backup base (`systemctl start stellytics-backup`), porque o Umami migra o próprio banco ao subir e a migração só anda para frente (`docs/deploy.md`, "Rolling back").
 
 ## Verificação
 

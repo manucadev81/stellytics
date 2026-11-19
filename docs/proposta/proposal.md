@@ -126,7 +126,7 @@ Delivered on `main` as of 2026-11-15 (source: [`docs/andamento.md`](../andamento
 
 **Not delivered, and this proposal does not claim otherwise:**
 
-- **The production environment has not been applied.** No Hetzner account, domain, DNS or SMTP is set up, and no release has been published. The `cosign verify` of real images, certificate issuance and e-mail delivery were never exercised ([`docs/deploy.md`](../deploy.md), "Como este guia foi conferido").
+- **The production environment has not been applied.** No Hetzner account, domain, DNS or SMTP is set up, and no release has been published. The `cosign verify` of real images, certificate issuance and e-mail delivery were never exercised ([`docs/deploy.md`](../deploy.md), "How this guide was checked").
 - **The API collector and rollup are not in production** (`infra/compose/prod.yaml`, Caddyfile).
 - **No pilot and no letters of interest.**
 - **No load test, no high availability and no handover plan.** Runbooks are in PR [#111](https://github.com/romulospl/stellytics/pull/111), open and pending merge; they are not on `main`.
@@ -224,7 +224,7 @@ RFP targets (Raven, `getRfps` 2026-11-15): 99.99% ingestion availability, 99.90%
 
 In absolute terms: 99.99% is about 4.3 minutes of downtime in a 30-day month and 99.90% is about 43 minutes.
 
-**Where we are:** a single VM. Per [`docs/deploy.md`](../deploy.md): "Se ela cair, o serviço cai até a recriação" (restore of the backup onto a new VM). That cannot meet 99.99%. External monitoring (Prometheus and blackbox on a separate VM in `fsn1`, e-mail alerts, [ADR 0005](../adr/0005-monitoramento-externo.md)) detects outages and is tested in CI, but does not prevent them. It does not yet cover API ingestion.
+**Where we are:** a single VM. Per [`docs/deploy.md`](../deploy.md): "if it goes down, the service is down until it is recreated" (restore of the backup onto a new VM). That cannot meet 99.99%. External monitoring (Prometheus and blackbox on a separate VM in `fsn1`, e-mail alerts, [ADR 0005](../adr/0005-monitoramento-externo.md)) detects outages and is tested in CI, but does not prevent them. It does not yet cover API ingestion.
 
 **Commitment proposed:**
 

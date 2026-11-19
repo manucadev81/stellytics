@@ -1,6 +1,6 @@
 # Runbook: rotação de segredos
 
-A ordem exata para trocar um segredo (editar o `secrets.yml`, rodar o playbook, atualizar a senha no banco, reiniciar) está em [`docs/deploy.md`](../deploy.md), seção "Atualizar a aplicação", bloco **Trocar um segredo**. Siga-o; **não** trocar só o `secrets.yml`: os usuários do banco guardam a senha antiga. Este runbook diz o que cada segredo afeta e como conferir.
+A ordem exata para trocar um segredo (editar o `secrets.yml`, rodar o playbook, atualizar a senha no banco, reiniciar) está em [`docs/deploy.md`](../deploy.md), seção "Updating the application", bloco **Changing a secret**. Siga-o; **não** trocar só o `secrets.yml`: os usuários do banco guardam a senha antiga. Este runbook diz o que cada segredo afeta e como conferir.
 
 ## Quando rotacionar
 
@@ -25,7 +25,7 @@ Todos listados em `infra/ansible/secrets.example.yml`.
 | `smtp_url` | Confirmação de e-mail e recuperação de senha dependem dele | Teste com um cadastro ou `/forgot-password` depois |
 | `walg_s3_access_key`, `walg_s3_secret_key` | O arquivamento de WAL e o backup usam a nova credencial ao recriar o Postgres | Crie a credencial nova na Hetzner antes, rode o playbook e confirme `backup-list`; só então revogue a antiga ([backup e restauração](backup-e-restauracao.md)) |
 | `walg_libsodium_key` | **Não é rotacionável**: o `docs/deploy.md` diz que ela não pode ser trocada, porque os backups antigos deixariam de abrir (o `prod.yaml` aceita uma chave só) | Não troque por rotina. Se ela vazar, veja "Chave de cifra" em [backup e restauração](backup-e-restauracao.md) |
-| `monitor_smtp_password` | Alertas por e-mail | `ansible-playbook monitoring.yml -e @secrets.yml` e teste de alerta (ver `docs/deploy.md`, "Monitoramento") |
+| `monitor_smtp_password` | Alertas por e-mail | `ansible-playbook monitoring.yml -e @secrets.yml` e teste de alerta (ver `docs/deploy.md`, "Monitoring") |
 | `HCLOUD_TOKEN` e credenciais do Object Storage do OpenTofu | Só valem na sua máquina | Revogue no console da Hetzner e crie outras |
 | Chave SSH de administração | Acesso às duas VMs | **Trocar `admin_ssh_public_key` no OpenTofu não revoga a antiga**: as VMs têm `ignore_changes = [user_data, image, ssh_keys]` (`infra/opentofu/main.tf`). Procedimento (não testado): 1) acrescente a chave nova em `/root/.ssh/authorized_keys` da VM de produção **e** da de monitoramento; 2) teste o login com a nova em ambas, em outra sessão; 3) remova a antiga dos dois `authorized_keys`; 4) só então atualize a variável no OpenTofu (para que VM futura nasça com a nova) |
 | Chaves de ingestão dos tenants (`ntf_...`) | Ficam com o tenant | [Vulnerabilidades: chave de ingestão vazada](vulnerabilidades.md#chave-de-ingestão-vazada) |
@@ -51,4 +51,4 @@ Passo 6 de `docs/deploy.md` (curls de fora e `docker compose ps`), entrar no por
 
 ## Não testado
 
-Nenhuma troca foi feita em produção. A seção "Trocar um segredo" do `docs/deploy.md` foi escrita a partir dos arquivos de infra, não executada; o comportamento de `umami_api_key` depois de trocar o `umami_app_secret` também não foi observado.
+Nenhuma troca foi feita em produção. A seção "Changing a secret" do `docs/deploy.md` foi escrita a partir dos arquivos de infra, não executada; o comportamento de `umami_api_key` depois de trocar o `umami_app_secret` também não foi observado.
