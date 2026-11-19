@@ -2,9 +2,8 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-ANSIBLE_DIR="$ROOT_DIR/infra/ansible"
-INVENTORY="$ANSIBLE_DIR/inventory/production.yml"
-SECRETS="$ANSIBLE_DIR/secrets.yml"
+COMPOSE_FILE="$ROOT_DIR/infra/compose/prod-vps.yaml"
+ENV_FILE="$ROOT_DIR/.env.production"
 
 fail() {
   printf 'deploy: %s\n' "$*" >&2
@@ -13,50 +12,32 @@ fail() {
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   cat <<'USAGE'
-Uso: ./deploy.sh
+Uso: sudo ./deploy.sh
 
-Aplica o playbook de produção da aplicação via Ansible. Antes, provisiona a
-infraestrutura, publica as imagens assinadas e configura:
-  infra/ansible/inventory/production.yml
-  infra/ansible/secrets.yml
-
-O script valida os arquivos e a sintaxe do playbook antes de iniciar o deploy.
-Para provisionar a Hetzner, siga docs/deploy.md (OpenTofu é uma etapa separada).
+Valida .env.production, constrói as imagens da aplicação e sobe a stack mínima
+de produção nesta VPS: portal, gateway web, API OTLP, Umami, Postgres, rollup e
+Caddy. O Postgres e os dados TLS ficam em volumes Docker locais.
 USAGE
   exit 0
 fi
 
-[[ $# -eq 0 ]] || fail "argumentos não reconhecidos; use --help"
-command -v ansible-playbook >/dev/null 2>&1 || fail "ansible-playbook não encontrado (instale ansible-core conforme docs/deploy.md)"
-command -v ansible-inventory >/dev/null 2>&1 || fail "ansible-inventory não encontrado (instale ansible-core conforme docs/deploy.md)"
-command -v python3 >/dev/null 2>&1 || fail "python3 não encontrado"
-[[ -f "$INVENTORY" ]] || fail "inventário ausente: $INVENTORY (copie inventory/production.example.yml e preencha)"
-[[ -f "$SECRETS" ]] || fail "segredos ausentes: $SECRETS (copie secrets.example.yml e preencha)"
+[[ $# -eq 0 ]] || fail "argumento não reconhecido; use --help"
+[[ "$EUID" -eq 0 ]] || fail "execute com sudo: sudo ./deploy.sh"
+command -v docker >/dev/null 2>&1 || fail "Docker não encontrado; execute sudo ./init.sh primeiro"
+command -v python3 >/dev/null 2>&1 || fail "Python 3 não encontrado; execute sudo ./init.sh primeiro"
+docker compose version >/dev/null 2>&1 || fail "Docker Compose não encontrado; execute sudo ./init.sh primeiro"
+docker info >/dev/null 2>&1 || fail "o daemon Docker não está em execução"
+[[ -f "$ENV_FILE" ]] || fail "arquivo ausente: $ENV_FILE (execute sudo ./init.sh primeiro)"
+[[ -f "$COMPOSE_FILE" ]] || fail "Compose de VPS ausente: $COMPOSE_FILE"
 
-# O arquivo é ignorado pelo Git e contém segredos usados para gerar o .env
-# protegido na VM. Recuse permissões acessíveis a grupo ou outros usuários.
-python3 -c '
-import os, stat, sys
-mode = stat.S_IMODE(os.stat(sys.argv[1]).st_mode)
-if mode & 0o077:
-    raise SystemExit(f"deploy: secrets.yml está acessível a grupo/outros (modo {mode:04o}); execute chmod 600 {sys.argv[1]!r}")
-' "$SECRETS"
+python3 "$ROOT_DIR/infra/scripts/production-env.py" validate "$ENV_FILE"
 
-cd "$ANSIBLE_DIR"
-inventory_host="$(ansible-inventory --inventory "$INVENTORY" --host stellytics)" || fail "não foi possível carregar o host stellytics do inventário"
-python3 -c '
-import json, sys
-host = json.loads(sys.argv[1])
-address = str(host.get("ansible_host", ""))
-volume = str(host.get("data_volume_device", ""))
-if not address or address.startswith("203.0.113."):
-    raise SystemExit("deploy: ansible_host de stellytics não está configurado com o IP real")
-if not volume or any(marker in volume for marker in ("12345678", "CONFIRA")):
-    raise SystemExit("deploy: data_volume_device de stellytics não está configurado com o dispositivo real")
-' "$inventory_host"
+compose=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+printf 'Validando a configuração do Compose...\n'
+"${compose[@]}" config --quiet
 
-printf 'Validando sintaxe do playbook e dos arquivos de produção...\n'
-ansible-playbook --inventory "$INVENTORY" --syntax-check site.yml --extra-vars "@$SECRETS"
+printf 'Construindo e iniciando a stack mínima da VPS...\n'
+"${compose[@]}" up -d --build --wait --remove-orphans
 
-printf 'Iniciando deploy da aplicação no host stellytics...\n'
-exec ansible-playbook --inventory "$INVENTORY" site.yml --extra-vars "@$SECRETS"
+printf '\nEstado dos serviços:\n'
+"${compose[@]}" ps
