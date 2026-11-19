@@ -56,7 +56,6 @@ function BrandPanel() {
   );
 }
 
-// Moldura das telas públicas de conta (entrar, cadastrar, senha).
 export function AuthLayout({
   title,
   subtitle,
