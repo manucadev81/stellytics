@@ -22,7 +22,7 @@ O monorepo tem a estrutura do ADR 0002 (issue #11). O código de aplicação at�
 
 ## Portal (`apps/portal`)
 
-- Next.js 16 (App Router, `src/proxy.ts` no lugar do antigo `middleware.ts`), Better Auth com Drizzle, Tailwind 4, Vitest. Interface em inglês; comentários e docs em português.
+- Next.js 16 (App Router, `src/proxy.ts` no lugar do antigo `middleware.ts`), Better Auth com Drizzle, Tailwind 4, Vitest. Interface, comentários e docs em inglês.
 - Toda página privada pega um contexto de `src/lib/access.ts`: `requireTenantContext()` (ou `getTenantContext()`, que devolve nulo para quem ainda não tem projeto) ou `requireOperatorContext()`. `requireSession()` (`src/lib/session.ts`) só serve para dados da própria sessão, como o e-mail no cabeçalho. O `proxy.ts` é só um redirecionamento otimista e **não** substitui essa checagem.
 - **Isolamento (ADR 0003, #18):** o tenant vem sempre da sessão, nunca de valor do cliente. Todo acesso ao banco fica em `src/lib/data/` (funções do operador em `src/lib/data/operator/`) e todo acesso ao Umami em `src/lib/umami/`, sempre recebendo um contexto (tipo marcado, só `access.ts` cria). O ESLint proíbe importar o cliente do banco, o driver e o cliente HTTP do Umami fora dessas pastas (`eslint.config.mjs`, testado em `test/lint-boundaries.test.ts`); o esquema (`db/schema`) é liberado. Recurso de outro tenant responde 404: a função de `data/` devolve nulo e a página chama `notFound()`. Rotas do tenant não levam o ID do tenant na URL; só as de `/operator` aceitam `tenantId`. O portal cria só sites no Umami, sem usuários nem equipes.
 - Variáveis lidas por `src/lib/env.ts`; no `next build` ele usa valores inertes, então não acesse o banco em tempo de build.
@@ -149,9 +149,9 @@ Duas linguagens: **TypeScript** para interface e script do navegador; **Go** só
   - O escopo é um substantivo entre parênteses com a parte do código afetada, por exemplo `feat(collector):`, `fix(tracker):`, `docs(adr):`.
   - O corpo começa depois de uma linha em branco. O rodapé também, com uma informação por linha (ex.: `closes #32`).
   - Quebra de compatibilidade: `BREAKING CHANGE: <descrição>` no início do corpo ou de uma linha do rodapé; opcionalmente `!` antes dos dois-pontos (`feat(portal)!: ...`).
-- **Mensagens de commit sempre em inglês** (descrição, corpo e rodapé), mesmo com a documentação e as issues em português. A descrição fica no imperativo, curta e em minúsculas (ex.: `feat(collector): add Stellar address normalization`). Títulos e descrições de PR também em inglês.
+- **Mensagens de commit sempre em inglês** (descrição, corpo e rodapé). A descrição fica no imperativo, curta e em minúsculas (ex.: `feat(collector): add Stellar address normalization`). Títulos e descrições de PR também em inglês.
 
 ## Convenções
 
-- Documentação, ADRs e issues em português do Brasil (commits e PRs em inglês, ver acima).
+- **Tudo em inglês a partir de 2026-11-19:** código, comentários, documentação, ADRs, issues, commits e PRs. Docs antigos em português são traduzidos quando forem tocados.
 - Decisão de arquitetura nova vira ADR novo, a partir de `docs/adr/template.md`. ADR aceito não é reescrito: crie outro e marque o antigo como substituído.
