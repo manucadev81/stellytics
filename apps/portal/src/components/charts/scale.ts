@@ -1,4 +1,3 @@
-// Topo do eixo e passo "redondos" (1, 2 ou 5 vezes uma potência de 10).
 export function niceScale(max: number): { top: number; step: number } {
   if (max <= 0) return { top: 4, step: 1 };
   const raw = max / 3;
@@ -7,8 +6,6 @@ export function niceScale(max: number): { top: number; step: number } {
   const roundedStep = Math.max(1, step);
   return { top: Math.ceil(max / roundedStep) * roundedStep, step: roundedStep };
 }
-
-// Topo do eixo e passo "redondos" em segundos (1, 2 ou 5 vezes uma potência de 10).
 export function niceSeconds(max: number): { top: number; step: number } {
   if (max <= 0) return { top: 0.1, step: 0.025 };
   const raw = max / 3;
@@ -20,8 +17,6 @@ export function niceSeconds(max: number): { top: number; step: number } {
 export function ticksFor(top: number, step: number): number[] {
   return Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step);
 }
-
-// Só alguns rótulos no eixo x (início, meio e fim), para não colidirem.
 export function axisLabelIndexes(count: number): number[] {
   const last = count - 1;
   return last > 1 ? [0, Math.floor(last / 2), last] : [0, last];

@@ -6,6 +6,7 @@ import { getApiService } from "@/lib/data/api-services";
 import { type ApiCounts, ENDPOINT_LIMIT, getServiceDashboard } from "@/lib/data/api-metrics";
 import { getProject } from "@/lib/data/tenants";
 import { bucketLabel, formatCount, formatLatency, formatShare, statusLabel } from "@/lib/format";
+import { ChartFrame } from "@/components/charts/chart-frame";
 import { ColumnChart } from "@/components/charts/column-chart";
 import { PALETTE } from "@/components/charts/palette";
 import { Sparkline } from "@/components/charts/sparkline";
@@ -68,6 +69,13 @@ export default async function ServicePage({
   const { totals, series, endpoints, endpointCount, statuses } = data;
   const unitName = period.unit === "hour" ? "Hour" : period.unit === "day" ? "Day" : "Month";
   const points = series.map((p) => ({ ...p, label: bucketLabel(period.unit, p.at), longLabel: bucketLabel(period.unit, p.at, true) }));
+  const statusPoints = points.map((p) => ({
+    label: p.label,
+    longLabel: p.longLabel,
+    ok: Math.max(0, p.requests - p.clientErrors - p.serverErrors),
+    clientErrors: p.clientErrors,
+    serverErrors: p.serverErrors,
+  }));
 
   return (
     <section>
@@ -130,24 +138,38 @@ export default async function ServicePage({
           </div>
         </div>
       </div>
-      <div className={`mt-4 ${card}`}>
-        <h2 className="font-semibold">Responses by status class</h2>
-        <p className="text-sm text-muted">
-          {period.label}, per {period.unit} (UTC). OK is every request without a 4xx or 5xx status.
-        </p>
-        <div className="mt-4">
-          <StatusChart
-            points={points.map((p) => ({
-              label: p.label,
-              longLabel: p.longLabel,
-              ok: Math.max(0, p.requests - p.clientErrors - p.serverErrors),
-              clientErrors: p.clientErrors,
-              serverErrors: p.serverErrors,
-            }))}
-            colors={{ ok: PALETTE.ok, clientErrors: PALETTE.clientError, serverErrors: PALETTE.serverError }}
-          />
-        </div>
-      </div>
+      <ChartFrame
+        className="mt-4"
+        title="Responses by status class"
+        subtitle={`${period.label}, per ${period.unit} (UTC). OK is every request without a 4xx or 5xx status.`}
+        table={
+          <table className="w-full text-left tabular-nums">
+            <thead className="text-muted">
+              <tr>
+                <th className="py-1 font-medium">{unitName}</th>
+                <th className="py-1 text-right font-medium">OK</th>
+                <th className="py-1 text-right font-medium">4xx</th>
+                <th className="py-1 text-right font-medium">5xx</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {statusPoints.map((p) => (
+                <tr key={p.longLabel}>
+                  <td className="whitespace-nowrap py-1 pr-3">{p.longLabel}</td>
+                  <td className="py-1 text-right">{full.format(p.ok)}</td>
+                  <td className="py-1 text-right">{full.format(p.clientErrors)}</td>
+                  <td className="py-1 text-right">{full.format(p.serverErrors)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        }
+      >
+        <StatusChart
+          points={statusPoints}
+          colors={{ ok: PALETTE.ok, clientErrors: PALETTE.clientError, serverErrors: PALETTE.serverError }}
+        />
+      </ChartFrame>
       <details className={`mt-4 ${card} text-sm`}>
         <summary className="cursor-pointer text-muted">Show charts as a table</summary>
         <div className="mt-2 max-h-72 overflow-auto">

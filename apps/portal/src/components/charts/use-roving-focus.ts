@@ -1,10 +1,6 @@
 "use client";
 
 import { type KeyboardEvent, useRef, useState } from "react";
-
-// Foco por teclado nos gráficos: uma parada de Tab por gráfico (o balde mais
-// recente) e as setas, Home e End para andar entre os baldes. Sem isso, um
-// período de 90 dias seriam 90 paradas de Tab.
 export function useRovingFocus(count: number, onMove: (i: number) => void) {
   const [current, setCurrent] = useState(count - 1);
   const items = useRef<(HTMLElement | null)[]>([]);

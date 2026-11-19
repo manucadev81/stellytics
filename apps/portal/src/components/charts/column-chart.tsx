@@ -6,18 +6,11 @@ import { ChartTooltip, tooltipSide } from "./chart-tooltip";
 import { niceScale, ticksFor } from "./scale";
 import { useRovingFocus } from "./use-roving-focus";
 
-// Colunas de uma série por balde do período, usadas pelos painéis do tenant
-// (#28, visualizações; #37, requisições). Uma série só, então sem legenda: o
-// título do cartão diz o que é. Cor validada para os dois modos (skill dataviz,
-// slot 1: #2a78d6 no claro, #3987e5 no escuro). O tooltip só complementa: a
-// tabela logo abaixo do gráfico traz os mesmos valores.
-
 export type ColumnPoint = {
-  label: string; // eixo x
-  longLabel: string; // tooltip e tabela
-  value: number; // altura da coluna
-  description: string; // texto para leitor de tela, com todos os valores
-  // Linhas do tooltip; a primeira é a da coluna e leva a amostra da cor.
+  label: string;
+  longLabel: string;
+  value: number;
+  description: string;
   tooltip: { value: string; unit: string }[];
 };
 

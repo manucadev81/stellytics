@@ -1,7 +1,4 @@
 import { axisLabelIndexes } from "./scale";
-
-// Eixo x. Com poucas colunas, cada rótulo fica centrado na sua; com muitas, as
-// pontas encostam nas bordas para não sair do cartão.
 export function AxisLabels({ labels, offsetClass = "ml-10" }: { labels: string[]; offsetClass?: string }) {
   return (
     <div className={`relative ${offsetClass} mt-1 h-4 text-xs text-muted`} aria-hidden>
