@@ -25,6 +25,9 @@ import { MetricCard } from "@/components/metrics/metric-card";
 import { PeriodPicker } from "@/components/metrics/period-picker";
 import { RankedList, type RankedRow } from "@/components/metrics/ranked-list";
 import { cardClass } from "@/components/ui/card";
+import { ChartFrame } from "@/components/charts/chart-frame";
+import { DonutChart } from "@/components/charts/donut-chart";
+import { Sparkline } from "@/components/charts/sparkline";
 import { parsePeriodKey, resolvePeriod } from "@/lib/period";
 import { type CountedItem, getSiteDashboard, type RankedItem, type SiteDashboard, UmamiError } from "@/lib/umami/stats";
 import { trackerSnippets } from "@/lib/tracker-snippet";
@@ -125,12 +128,14 @@ export default async function SitePage({
           value={formatCount(totals.pageviews)}
           delta={relativeDelta(totals.pageviews, previous.pageviews)}
           vs={vsLabel}
+          trend={points.map((p) => p.pageviews)}
         />
         <StatTile
           label="Unique visitors"
           value={formatCount(totals.visitors)}
           delta={relativeDelta(totals.visitors, previous.visitors)}
           vs={vsLabel}
+          trend={points.map((p) => p.visitors)}
         />
         <StatTile
           label="Average visit duration"
@@ -147,27 +152,20 @@ export default async function SitePage({
         />
       </div>
 
-      <div className={`mt-4 ${card}`}>
-        <h2 className="font-medium">Page views</h2>
-        <p className="text-sm text-zinc-500">
-          {period.label}, per {period.unit} (UTC), including the current {period.unit}
-        </p>
-        {empty && <p className="mt-2 text-sm text-zinc-500">No page views in this period yet.</p>}
-        <div className="mt-4">
-          <PageviewsChart points={points} />
-        </div>
-        <details className="mt-4 text-sm">
-          <summary className="cursor-pointer text-zinc-500">Show as table</summary>
-          <div className="mt-2 max-h-72 overflow-y-auto">
+      <ChartFrame
+        className="mt-4"
+        title="Page views"
+        subtitle={`${period.label}, per ${period.unit} (UTC), including the current ${period.unit}`}
+        table={
             <table className="w-full text-left tabular-nums">
-              <thead className="text-zinc-500">
+              <thead className="text-muted">
                 <tr>
                   <th className="py-1 font-medium">{period.unit === "hour" ? "Hour" : period.unit === "day" ? "Day" : "Month"}</th>
                   <th className="py-1 text-right font-medium">Page views</th>
                   <th className="py-1 text-right font-medium">Visitors</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+              <tbody className="divide-y divide-border">
                 {points.map((p) => (
                   <tr key={p.longLabel}>
                     <td className="py-1">{p.longLabel}</td>
@@ -177,15 +175,17 @@ export default async function SitePage({
                 ))}
               </tbody>
             </table>
-          </div>
-        </details>
-      </div>
+        }
+      >
+        {empty && <p className="mb-2 text-sm text-muted">No page views in this period yet.</p>}
+        <PageviewsChart points={points} />
+      </ChartFrame>
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <RankedList title="Referrers" unit="Visitors" rows={ranked(byVisitors(breakdowns.referrer), referrerName)} />
         <RankedList title="Countries" unit="Visitors" rows={ranked(byVisitors(breakdowns.country), countryName)} />
-        <RankedList title="Devices" unit="Visitors" rows={ranked(byVisitors(breakdowns.device), deviceName)} />
-        <RankedList title="Browsers" unit="Visitors" rows={ranked(byVisitors(breakdowns.browser), browserName)} />
+        <ShareCard title="Devices" unit="Visitors" rows={ranked(byVisitors(breakdowns.device), deviceName)} />
+        <ShareCard title="Browsers" unit="Visitors" rows={ranked(byVisitors(breakdowns.browser), browserName)} />
       </div>
 
       {/* Custom events and wallets (#50, ADR 0015). */}
@@ -214,15 +214,17 @@ function StatTile({
   delta,
   vs,
   upIsGood = true,
+  trend,
 }: {
   label: string;
   value: string;
   delta: Delta;
   vs: string;
   upIsGood?: boolean;
+  trend?: number[];
 }) {
   return (
-    <MetricCard label={label} value={value}>
+    <MetricCard label={label} value={value} chart={trend && <Sparkline values={trend} />}>
       {delta ? (
         <>
           <DeltaBadge delta={delta} upIsGood={upIsGood} /> <span className="text-muted">{vs}</span>
@@ -241,4 +243,23 @@ const byCount = (items: CountedItem[]): ListItem[] => items.map((i) => ({ name: 
 
 function ranked(items: ListItem[], name: (raw: string) => string): RankedRow[] {
   return items.map((item) => ({ key: item.name, name: name(item.name), value: item.value, display: item.value.toLocaleString("en") }));
+}
+
+function ShareCard({ title, unit, rows }: { title: string; unit: string; rows: RankedRow[] }) {
+  const total = rows.reduce((sum, row) => sum + row.value, 0);
+  return (
+    <div className={card}>
+      <div className="flex items-baseline justify-between">
+        <h2 className="font-semibold">{title}</h2>
+        <span className="text-xs text-muted">{unit}</span>
+      </div>
+      <div className="mt-3">
+        {rows.length === 0 ? (
+          <p className="text-sm text-muted">No data in this period.</p>
+        ) : (
+          <DonutChart items={rows.map((row) => ({ key: row.key, name: row.name, value: row.value, display: row.display }))} total={total} />
+        )}
+      </div>
+    </div>
+  );
 }

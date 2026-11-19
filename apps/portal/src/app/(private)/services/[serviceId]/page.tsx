@@ -6,7 +6,10 @@ import { getApiService } from "@/lib/data/api-services";
 import { type ApiCounts, ENDPOINT_LIMIT, getServiceDashboard } from "@/lib/data/api-metrics";
 import { getProject } from "@/lib/data/tenants";
 import { bucketLabel, formatCount, formatLatency, formatShare, statusLabel } from "@/lib/format";
-import { ColumnChart } from "@/components/column-chart";
+import { ColumnChart } from "@/components/charts/column-chart";
+import { PALETTE } from "@/components/charts/palette";
+import { Sparkline } from "@/components/charts/sparkline";
+import { StatusChart } from "./status-chart";
 import { MetricCard } from "@/components/metrics/metric-card";
 import { PeriodPicker } from "@/components/metrics/period-picker";
 import { RankedList } from "@/components/metrics/ranked-list";
@@ -82,14 +85,15 @@ export default async function ServicePage({
       )}
 
       <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatTile label="Requests" value={formatCount(totals.requests)} />
+        <StatTile label="Requests" value={formatCount(totals.requests)} trend={points.map((p) => p.requests)} />
         <StatTile
           label="Server errors (5xx)"
           value={formatShare(totals.serverErrors, totals.requests)}
           note={totals.requests > 0 ? plural(totals.serverErrors, "request", "requests") : undefined}
+          trend={points.map((p) => p.serverErrors)}
         />
-        <StatTile label="Median latency (p50)" value={formatLatency(totals.p50)} />
-        <StatTile label="p95 latency" value={formatLatency(totals.p95)} />
+        <StatTile label="Median latency (p50)" value={formatLatency(totals.p50)} trend={points.map((p) => p.p50)} />
+        <StatTile label="p95 latency" value={formatLatency(totals.p95)} trend={points.map((p) => p.p95)} />
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-2">
@@ -101,6 +105,7 @@ export default async function ServicePage({
           <div className="mt-4">
             <ColumnChart
               label="Requests per period"
+              currentIncomplete
               points={points.map((p) => ({
                 label: p.label,
                 longLabel: p.longLabel,
@@ -125,8 +130,26 @@ export default async function ServicePage({
           </div>
         </div>
       </div>
+      <div className={`mt-4 ${card}`}>
+        <h2 className="font-semibold">Responses by status class</h2>
+        <p className="text-sm text-muted">
+          {period.label}, per {period.unit} (UTC). OK is every request without a 4xx or 5xx status.
+        </p>
+        <div className="mt-4">
+          <StatusChart
+            points={points.map((p) => ({
+              label: p.label,
+              longLabel: p.longLabel,
+              ok: Math.max(0, p.requests - p.clientErrors - p.serverErrors),
+              clientErrors: p.clientErrors,
+              serverErrors: p.serverErrors,
+            }))}
+            colors={{ ok: PALETTE.ok, clientErrors: PALETTE.clientError, serverErrors: PALETTE.serverError }}
+          />
+        </div>
+      </div>
       <details className={`mt-4 ${card} text-sm`}>
-        <summary className="cursor-pointer text-zinc-500">Show charts as a table</summary>
+        <summary className="cursor-pointer text-muted">Show charts as a table</summary>
         <div className="mt-2 max-h-72 overflow-auto">
           <table className="w-full text-left tabular-nums">
             <thead className="text-zinc-500">
@@ -209,8 +232,12 @@ export default async function ServicePage({
   );
 }
 
-function StatTile({ label, value, note }: { label: string; value: string; note?: string }) {
-  return <MetricCard label={label} value={value}>{note && <span className="text-muted">{note}</span>}</MetricCard>;
+function StatTile({ label, value, note, trend }: { label: string; value: string; note?: string; trend?: (number | null)[] }) {
+  return (
+    <MetricCard label={label} value={value} chart={trend && <Sparkline values={trend} />}>
+      {note && <span className="text-muted">{note}</span>}
+    </MetricCard>
+  );
 }
 
 // Distribuição de status: código, barra e número por linha, como as listas do
